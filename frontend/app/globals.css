@@ -13,9 +13,12 @@
   --danger: #b42318;
   --success: #15803d;
   --warning: #b7791f;
-  --shadow-soft: 0 18px 44px rgba(17, 24, 39, 0.06);
-  --shadow-card: 0 12px 28px rgba(17, 24, 39, 0.08);
-  --shadow-hairline: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  --radius-lg: 18px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+  --control-height: 38px;
+  --shadow-soft: 0 18px 46px rgba(15, 39, 66, 0.06);
+  --shadow-card: 0 10px 26px rgba(15, 39, 66, 0.075);
   --text-xs: 11px;
   --text-sm: 12px;
   --text-md: 13px;
@@ -33,11 +36,15 @@ body {
     radial-gradient(circle at top left, rgba(35, 103, 232, 0.08), transparent 30vw),
     linear-gradient(180deg, #fbfcfe 0, var(--background) 360px);
   color: var(--foreground);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Noto Sans KR", Arial, Helvetica, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, Helvetica, sans-serif;
   font-size: var(--text-base);
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent-blue) 22%, transparent);
 }
 
 .app-frame {
@@ -208,11 +215,11 @@ textarea,
 select {
   width: 100%;
   border: 1px solid var(--border);
-  border-radius: 11px;
-  background: #ffffff;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
   color: var(--foreground);
-  min-height: 36px;
-  padding: 7px 10px;
+  min-height: var(--control-height);
+  padding: 8px 10px;
   font: inherit;
   font-size: var(--text-md);
 }
@@ -243,7 +250,7 @@ textarea {
 
 .hero-card,
 .panel {
-  border-radius: 18px;
+  border-radius: var(--radius-lg);
 }
 
 .hero-card {
@@ -289,7 +296,12 @@ textarea {
 }
 
 .panel {
-  padding: 14px;
+  padding: 15px;
+}
+
+.compact-topbar {
+  align-items: flex-start;
+  padding-bottom: 10px;
 }
 
 .panel-title-row h2 {
@@ -343,6 +355,14 @@ textarea {
   text-decoration: none;
   cursor: pointer;
   transition: background 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.primary-link:active,
+.secondary-button:active,
+.report-controls button:active,
+.stacked-form button:active,
+.form-actions button:active {
+  transform: translateY(0);
 }
 
 .primary-link:hover,
@@ -512,9 +532,9 @@ textarea {
 .metric-card {
   display: grid;
   align-content: space-between;
-  min-height: 68px;
-  border-radius: 14px;
-  padding: 11px;
+  min-height: 74px;
+  border-radius: var(--radius-md);
+  padding: 12px;
 }
 
 .metric-card:hover {
@@ -544,7 +564,7 @@ textarea {
     "progress progress capture"
     "status delayed capture"
     "completed recent recent";
-  gap: 13px;
+  gap: 12px;
   align-items: stretch;
 }
 
@@ -716,7 +736,7 @@ textarea {
   overflow-x: auto;
   margin-top: 8px;
   border: 1px solid var(--border);
-  border-radius: 13px;
+  border-radius: var(--radius-md);
   background: #ffffff;
 }
 
@@ -762,7 +782,7 @@ textarea {
 .candidate-card {
   display: grid;
   gap: 8px;
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   padding: 11px;
 }
 
@@ -801,7 +821,7 @@ textarea {
 .report-controls {
   display: grid;
   grid-template-columns: minmax(140px, 0.7fr) repeat(2, minmax(180px, 1fr)) auto;
-  gap: 8px;
+  gap: 9px;
   align-items: end;
 }
 
@@ -819,7 +839,7 @@ textarea {
   max-height: 620px;
   margin: 12px 0 0;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   background: var(--accent-strong);
   color: #e8eef7;
   padding: 14px;
@@ -863,7 +883,7 @@ code {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(220px, 320px);
   gap: 14px;
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   color: inherit;
   padding: 16px;
   text-decoration: none;
@@ -891,9 +911,9 @@ code {
 
 .task-card {
   display: grid;
-  gap: 7px;
-  border-radius: 14px;
-  padding: 11px;
+  gap: 8px;
+  border-radius: var(--radius-md);
+  padding: 12px;
 }
 
 .task-card h3,
@@ -945,7 +965,7 @@ code {
 .compact-project {
   display: grid;
   gap: 4px;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   color: inherit;
   padding: 10px;
   text-decoration: none;
@@ -1094,7 +1114,7 @@ code {
 .compact-form input,
 .compact-form select,
 .compact-form textarea {
-  min-height: 38px;
+  min-height: var(--control-height);
 }
 
 .compact-form textarea {
@@ -1113,7 +1133,7 @@ code {
 .quick-capture-form select,
 .quick-capture-form textarea {
   min-height: 36px;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
 }
 
 .quick-capture-form textarea {

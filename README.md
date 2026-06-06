@@ -160,6 +160,21 @@ Frontend 확인:
 `WORK_SUPPORT_BACKEND_URL=http://localhost:8000` 값을 사용해
 백엔드와 통신합니다.
 
+### Frontend UI polish conventions
+
+프론트엔드 UI는 `frontend/app/globals.css`의 공통 토큰과 컴포넌트
+클래스를 우선 사용합니다. Apple-inspired 방향성은 장식 추가가 아니라
+업무 도구의 밀도와 일관성을 높이는 기준입니다.
+
+- 색상, radius, shadow, control height는 `:root` 토큰을 재사용합니다.
+- Dashboard, Projects, Reports는 `page-shell`, `dashboard-topbar`,
+  `summary-grid`, `dashboard-grid`, `panel`, `data-table`, `dense-list`
+  리듬을 공유합니다.
+- 한국어 B2B 업무 화면의 실용성을 위해 카드 간격은 작게 유지하고,
+  제목·배지·테이블·폼 컨트롤의 높이를 맞춥니다.
+- UI polish는 frontend-only로 처리하며 backend API payload, proxy route,
+  dependency 변경 없이 검증합니다.
+
 ## 환경변수 정리
 
 ### 루트 `.env`

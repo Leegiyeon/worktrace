@@ -11,6 +11,7 @@ const dashboardPage = read("app/page.tsx");
 const projectsPage = read("app/projects/page.tsx");
 const detailPage = read("app/projects/[projectId]/page.tsx");
 const reportsPage = read("app/reports/page.tsx");
+const readme = read("../README.md");
 
 test("global logo always links back to dashboard", () => {
   assert.match(layoutPage, /<AppLogo \/>/);
@@ -66,4 +67,17 @@ test("UI polish styles preserve accessible alignment and focus affordances", () 
   assert.match(globals, /focus-visible/);
   assert.match(globals, /\.task-form-panel/);
   assert.match(globals, /\.data-table tbody tr:hover/);
+});
+
+test("Apple-inspired frontend polish keeps shared tokens and documented route rhythm", () => {
+  for (const token of ["--radius-lg", "--radius-md", "--control-height", "--shadow-soft"]) {
+    assert.match(globals, new RegExp(token));
+  }
+  assert.match(globals, /-apple-system/);
+  assert.match(globals, /\.compact-topbar/);
+  assert.match(readme, /Frontend UI polish conventions/);
+  for (const route of ["Dashboard", "Projects", "Reports"]) {
+    assert.match(readme, new RegExp(route));
+  }
+  assert.match(readme, /frontend-only/);
 });
