@@ -15,8 +15,13 @@ export type ReportProject = {
 export type WorkLogItem = {
   id: string;
   log_date: string;
+  work_type: string;
   title: string;
   content: string;
+  decisions: string;
+  collaborators: string;
+  next_actions: string;
+  duration_minutes: number;
   blockers: string;
   project_id: string | null;
   project_title: string;

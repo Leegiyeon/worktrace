@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from app.api import career_assets
 from app.main import app
 from app.schemas.career_assets import CareerAsset
+from app.services import career_assets as career_asset_service
 from app.services.career_assets import CareerAssetProjectNotFoundError
 
 HEADERS = {
@@ -60,3 +61,66 @@ def test_career_asset_list_returns_project_not_found(monkeypatch):
 
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "PROJECT_NOT_FOUND"
+
+
+def test_career_asset_generate_route_uses_owner_context(monkeypatch):
+    calls = []
+
+    def fake_generate_project_career_asset(settings, owner_id, project_id, target_role):
+        calls.append((owner_id, project_id, target_role))
+        return sample_asset()
+
+    monkeypatch.setattr(career_assets, "generate_project_career_asset", fake_generate_project_career_asset)
+    client = TestClient(app)
+
+    response = client.post(
+        f"/projects/{PROJECT_ID}/career-assets/generate",
+        headers=HEADERS,
+        json={"target_role": "AI서비스기획"},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["id"] == sample_asset().id
+    assert calls == [("local-owner", UUID(PROJECT_ID), "AI서비스기획")]
+
+
+def test_career_asset_generate_returns_project_not_found(monkeypatch):
+    def fake_generate_project_career_asset(settings, owner_id, project_id, target_role):
+        raise CareerAssetProjectNotFoundError()
+
+    monkeypatch.setattr(career_assets, "generate_project_career_asset", fake_generate_project_career_asset)
+    client = TestClient(app)
+
+    response = client.post(
+        f"/projects/{PROJECT_ID}/career-assets/generate",
+        headers=HEADERS,
+        json={"target_role": "PM"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "PROJECT_NOT_FOUND"
+
+
+def test_template_generation_does_not_fabricate_metric_values():
+    content = career_asset_service._build_career_asset_content(
+        {"title": "업무지원", "status": "in_progress", "role": "PM"},
+        [{"title": "성과 후보 확인", "status": "done"}],
+        [{"title": "성과 후보 정리"}],
+        [
+            {
+                "title": "성과 후보를 확정 성과로 전환",
+                "after_state": "사용자가 확인한 성과만 저장",
+                "metric_name": "전환율",
+                "metric_value": None,
+                "metric_unit": "%",
+                "evidence_work_log_ids": ["00000000-0000-0000-0000-000000000501"],
+                "resume_ready": True,
+            }
+        ],
+        "PM",
+    )
+
+    assert "전환율" not in content["resume_bullets"]
+    assert "%" not in content["resume_bullets"]
+    assert "사용자가 확인한 성과만 저장" in content["markdown"]
+    assert content["generation_method"] == "template:PM"

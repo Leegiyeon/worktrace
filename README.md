@@ -56,6 +56,7 @@ MacBook에서 가장 단순한 실행 방법입니다. Docker Desktop이 실행 
 
 ```bash
 cp .env.example .env
+# .env에서 POSTGRES_PASSWORD와 REPORT_ACCESS_TOKEN을 실제 로컬 값으로 채웁니다.
 docker compose up -d --build
 ```
 
@@ -101,6 +102,7 @@ docker compose up -d --build
 
 ```bash
 cp .env.example .env
+# .env에서 POSTGRES_PASSWORD를 실제 로컬 값으로 채웁니다.
 docker compose up -d db
 ```
 
@@ -120,6 +122,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
 cp .env.example .env
+# backend/.env에서 POSTGRES_PASSWORD를 루트 .env와 같은 값으로 채웁니다.
 python scripts/init_db.py
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
@@ -170,18 +173,18 @@ cp .env.example .env
 주요 값:
 
 - `POSTGRES_DB`: `work_support` — 로컬 DB 이름
-- `POSTGRES_USER`: `work_support` — 로컬 DB 사용자
-- `POSTGRES_PASSWORD`: `work_support_dev_password` — 로컬 개발용 비밀번호
-- `DATABASE_URL`: Docker backend가 DB 컨테이너에 접속할 때 사용
+- `POSTGRES_USER`: `leegiyeon` — 로컬 DB 사용자
+- `POSTGRES_PASSWORD`: 빈 placeholder — 루트 `.env`에만 실제 로컬 비밀번호 입력
+- `POSTGRES_HOST`: `db` — Docker backend가 DB 컨테이너에 접속할 때 사용
 - `BACKEND_PORT`: `8000` — host에 노출할 backend port
 - `FRONTEND_PORT`: `3000` — host에 노출할 frontend port
 - `NEXT_PUBLIC_API_BASE_URL`: `http://localhost:8000` — 브라우저 안내용
 - `WORK_SUPPORT_BACKEND_URL`: `http://backend:8000` — Docker frontend용
 - `DEFAULT_OWNER_ID`: `local-owner` — 개인 로컬 데이터 owner 기본값
-- `REPORT_ACCESS_TOKEN`: `dev-only-report-token` — 로컬 리포트 접근 가드
+- `REPORT_ACCESS_TOKEN`: 빈 placeholder — 루트 `.env`에만 실제 로컬 토큰 입력
 - `REPORT_TIMEZONE`: `Asia/Seoul` — 리포트 기간 경계 해석 기준
 - `NEXT_PUBLIC_WORK_SUPPORT_OWNER_ID`: `local-owner` — 과거 호환용 공개 owner
-- `OPENAI_API_KEY`: 빈 값 — 현재 필수 아님
+- `OPENAI_API_KEY` / `OPENAI_MODEL`: 빈 placeholder — 필요 시 루트 `.env`에만 입력
 
 ### Backend 로컬 `.env`
 
@@ -192,7 +195,10 @@ cd backend
 cp .env.example .env
 ```
 
-이 파일의 `DATABASE_URL`은 `localhost:5432`를 바라봅니다.
+이 파일의 DB 설정은 `POSTGRES_HOST=localhost`, `POSTGRES_USER=leegiyeon`을
+사용합니다. 실제 DB 비밀번호는 `backend/.env`의 `POSTGRES_PASSWORD`에만
+입력하고 커밋하지 않습니다. `DATABASE_URL`을 직접 쓰는 경우에도 host는
+`localhost` 또는 `127.0.0.1`이어야 합니다.
 로컬 직접 실행은 `127.0.0.1` 바인딩을 기본으로 사용합니다.
 `0.0.0.0`은 Docker 컨테이너 내부 바인딩에서만 사용하세요.
 
@@ -256,7 +262,7 @@ Docker DB 컨테이너에 직접 적용:
 
 ```bash
 cat infrastructure/postgres/init/002_work_support_schema.sql \
-  | docker compose exec -T db psql -U work_support -d work_support
+  | docker compose exec -T db psql -U leegiyeon -d work_support
 ```
 
 ### 로컬 DB를 완전히 초기화해야 할 때
@@ -426,7 +432,7 @@ DB volume이 오래되어 최신 SQL이 적용되지 않은 상태입니다. 다
 ```bash
 # 데이터 유지, 스키마만 재적용
 cat infrastructure/postgres/init/002_work_support_schema.sql \
-  | docker compose exec -T db psql -U work_support -d work_support
+  | docker compose exec -T db psql -U leegiyeon -d work_support
 
 # 또는 로컬 DB 데이터 삭제 후 재생성
 docker compose down -v
@@ -489,7 +495,8 @@ docker compose ps
 ## 보안 주의
 
 - 실제 secret은 `.env` 또는 `.env.local`에만 저장하고 커밋하지 않습니다.
-- `work_support_dev_password`, `dev-only-report-token`은 로컬 개발용 예시입니다.
+- `.env.example` 파일은 placeholder만 제공합니다. DB 비밀번호, report token,
+  OpenAI key는 실제 `.env` / `.env.local`에만 입력합니다.
 - 외부 네트워크에 노출하기 전에 DB 비밀번호, report token, CORS origin,
   인증 방식을 반드시 교체/강화해야 합니다.
 - 업로드 원본 파일은 추후에도 public 경로에 직접 노출하지 않는 구조를 유지합니다.

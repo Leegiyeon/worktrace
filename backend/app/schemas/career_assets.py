@@ -1,4 +1,13 @@
+from typing import Literal
+
 from pydantic import BaseModel
+
+
+CareerTargetRole = Literal["IT기획", "PM", "AI서비스기획", "Backend", "DevOps"]
+
+
+class CareerAssetGenerateRequest(BaseModel):
+    target_role: CareerTargetRole = "PM"
 
 
 class CareerAsset(BaseModel):

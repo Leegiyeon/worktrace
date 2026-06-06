@@ -3,6 +3,7 @@ export type TaskStatus = "planned" | "in_progress" | "done" | "on_hold";
 export type TaskPriority = "low" | "medium" | "high";
 export type WorkType = "planning" | "meeting" | "research" | "deliverable" | "development" | "testing" | "reporting" | "coordination" | "problem_solving" | "other";
 export type OutcomeType = "quantitative" | "qualitative";
+export type CareerTargetRole = "IT기획" | "PM" | "AI서비스기획" | "Backend" | "DevOps";
 
 export type ProjectSummary = {
   id: string;

@@ -10,5 +10,5 @@ def connect(settings: Settings, *, row_factory: Any | None = dict_row) -> psycop
     """Create a psycopg connection using the app's configured database URL."""
 
     if row_factory is None:
-        return psycopg.connect(settings.database_url)
-    return psycopg.connect(settings.database_url, row_factory=row_factory)
+        return psycopg.connect(settings.resolved_database_url)
+    return psycopg.connect(settings.resolved_database_url, row_factory=row_factory)

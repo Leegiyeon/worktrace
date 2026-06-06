@@ -7,6 +7,7 @@ import { FormEvent, use, useCallback, useEffect, useMemo, useState } from "react
 import { parseApiErrorMessage } from "../../reports/api-error";
 import type {
   CareerAsset,
+  CareerTargetRole,
   ProjectOutcome,
   ProjectStatus,
   ProjectSummary,
@@ -70,6 +71,12 @@ type OutcomeForm = {
   resume_ready: boolean;
 };
 
+type OutcomeCandidate = OutcomeForm & {
+  id: string;
+  evidence: string[];
+  source: "task" | "work_log";
+};
+
 const tabs: { id: DetailTab; label: string }[] = [
   { id: "overview", label: "개요" },
   { id: "board", label: "업무 보드" },
@@ -83,6 +90,7 @@ const tabs: { id: DetailTab; label: string }[] = [
 
 const taskStatusOrder: TaskStatus[] = ["planned", "in_progress", "done", "on_hold"];
 const priorityOrder: Record<TaskPriority, number> = { high: 1, medium: 2, low: 3 };
+const careerTargetRoles: CareerTargetRole[] = ["IT기획", "PM", "AI서비스기획", "Backend", "DevOps"];
 
 const initialTaskForm: TaskForm = {
   title: "",
@@ -190,6 +198,87 @@ function sortTasks(tasks: ProjectTask[]) {
   });
 }
 
+function compactEvidenceText(value: string, maxLength = 150) {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 1)}…`;
+}
+
+function logEvidenceText(log: WorkLogItem) {
+  return `${log.log_date} · ${workTypeLabels[log.work_type]} · ${log.title}`;
+}
+
+function logContainsTask(log: WorkLogItem, task: ProjectTask) {
+  const taskTitle = task.title.trim().toLocaleLowerCase();
+  if (!taskTitle) return false;
+  return [log.title, log.content, log.decisions, log.next_actions]
+    .some((value) => value.toLocaleLowerCase().includes(taskTitle));
+}
+
+function createLogCandidate(log: WorkLogItem): OutcomeCandidate {
+  const afterState = [log.content, log.decisions ? `결정: ${log.decisions}` : "", log.next_actions ? `다음 액션: ${log.next_actions}` : ""]
+    .filter(Boolean)
+    .join(" / ");
+
+  return {
+    id: `log-${log.id}`,
+    title: `${log.title} 성과 후보`,
+    outcome_type: "qualitative",
+    before_state: log.blockers ? `블로커: ${log.blockers}` : "",
+    after_state: compactEvidenceText(afterState || log.title),
+    metric_name: "",
+    metric_value: "",
+    metric_unit: "",
+    evidence_work_log_ids: [log.id],
+    resume_ready: false,
+    evidence: [logEvidenceText(log)],
+    source: "work_log"
+  };
+}
+
+function createTaskCandidate(task: ProjectTask, evidenceLogs: WorkLogItem[]): OutcomeCandidate {
+  return {
+    id: `task-${task.id}`,
+    title: `${task.title} 완료 성과`,
+    outcome_type: "qualitative",
+    before_state: task.description ? compactEvidenceText(task.description) : "",
+    after_state: `완료 업무: ${task.title}`,
+    metric_name: "",
+    metric_value: "",
+    metric_unit: "",
+    evidence_work_log_ids: evidenceLogs.map((log) => log.id),
+    resume_ready: false,
+    evidence: [`완료 업무: ${task.title}`, ...evidenceLogs.map(logEvidenceText)],
+    source: "task"
+  };
+}
+
+function buildOutcomeCandidates(logs: WorkLogItem[], tasks: ProjectTask[], outcomes: ProjectOutcome[]) {
+  const usedLogIds = new Set(outcomes.flatMap((outcome) => outcome.evidence_work_log_ids));
+  const existingTitles = new Set(outcomes.map((outcome) => outcome.title.trim().toLocaleLowerCase()));
+  const sortedLogs = [...logs].sort((a, b) => b.log_date.localeCompare(a.log_date));
+  const candidates: OutcomeCandidate[] = [];
+
+  for (const task of tasks.filter((item) => item.status === "done")) {
+    const evidenceLogs = sortedLogs.filter((log) => logContainsTask(log, task) && !usedLogIds.has(log.id)).slice(0, 3);
+    if (evidenceLogs.length === 0) continue;
+    const candidate = createTaskCandidate(task, evidenceLogs);
+    if (!existingTitles.has(candidate.title.trim().toLocaleLowerCase())) {
+      candidates.push(candidate);
+    }
+  }
+
+  for (const log of sortedLogs) {
+    if (usedLogIds.has(log.id)) continue;
+    const candidate = createLogCandidate(log);
+    if (!existingTitles.has(candidate.title.trim().toLocaleLowerCase())) {
+      candidates.push(candidate);
+    }
+  }
+
+  return candidates.slice(0, 6);
+}
+
 export default function ProjectDetailPage({ params }: PageProps) {
   const { projectId } = use(params);
   const router = useRouter();
@@ -211,7 +300,9 @@ export default function ProjectDetailPage({ params }: PageProps) {
   const [isSavingTask, setIsSavingTask] = useState(false);
   const [isSavingLog, setIsSavingLog] = useState(false);
   const [isSavingOutcome, setIsSavingOutcome] = useState(false);
+  const [isGeneratingCareer, setIsGeneratingCareer] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [careerMessage, setCareerMessage] = useState("");
 
   const groupedTasks = useMemo(() => {
     return taskStatusOrder.map((status) => ({
@@ -528,6 +619,22 @@ export default function ProjectDetailPage({ params }: PageProps) {
     setActiveTab("outcomes");
   }
 
+  function applyOutcomeCandidate(candidate: OutcomeCandidate) {
+    setEditingOutcomeId(null);
+    setOutcomeForm({
+      title: candidate.title,
+      outcome_type: candidate.outcome_type,
+      before_state: candidate.before_state,
+      after_state: candidate.after_state,
+      metric_name: candidate.metric_name,
+      metric_value: "",
+      metric_unit: candidate.metric_unit,
+      evidence_work_log_ids: candidate.evidence_work_log_ids,
+      resume_ready: false
+    });
+    setActiveTab("outcomes");
+  }
+
   async function deleteOutcome(outcome: ProjectOutcome) {
     if (!window.confirm("성과를 삭제할까요?")) return;
     setErrorMessage("");
@@ -542,6 +649,29 @@ export default function ProjectDetailPage({ params }: PageProps) {
       setOutcomeForm(createInitialOutcomeForm());
     }
     await loadProject();
+  }
+
+  async function handleGenerateCareerAsset(targetRole: CareerTargetRole) {
+    setIsGeneratingCareer(true);
+    setErrorMessage("");
+    setCareerMessage("");
+    try {
+      const response = await fetch(`/api/projects/${projectId}/career-assets/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target_role: targetRole })
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(parseApiErrorMessage(detail, "경력 자산을 생성하지 못했습니다."));
+      }
+      setCareerMessage("경력 자산 생성 완료");
+      await loadProject();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "경력 자산을 생성하지 못했습니다.");
+    } finally {
+      setIsGeneratingCareer(false);
+    }
   }
 
   return (
@@ -652,9 +782,9 @@ export default function ProjectDetailPage({ params }: PageProps) {
 
           {activeTab === "logs" ? <LogPanel deleteLog={deleteLog} editingLogId={editingLogId} isSavingLog={isSavingLog} logForm={logForm} logs={workLogs} projectTitle={project.title} setLogForm={setLogForm} startEditLog={startEditLog} tasks={tasks} onCancel={() => { setEditingLogId(null); setLogForm(createInitialWorkLogForm()); }} onSubmit={handleSaveLog} /> : null}
 
-          {activeTab === "outcomes" ? <OutcomePanel deleteOutcome={deleteOutcome} editingOutcomeId={editingOutcomeId} isSavingOutcome={isSavingOutcome} logs={workLogs} outcomeForm={outcomeForm} outcomes={outcomes} quantitativeOutcomes={dashboard.quantitativeOutcomes} resumeReadyOutcomes={dashboard.resumeReadyOutcomes} setOutcomeForm={setOutcomeForm} startEditOutcome={startEditOutcome} onCancel={() => { setEditingOutcomeId(null); setOutcomeForm(createInitialOutcomeForm()); }} onSubmit={handleSaveOutcome} /> : null}
+          {activeTab === "outcomes" ? <OutcomePanel deleteOutcome={deleteOutcome} editingOutcomeId={editingOutcomeId} isSavingOutcome={isSavingOutcome} logs={workLogs} outcomeForm={outcomeForm} outcomes={outcomes} quantitativeOutcomes={dashboard.quantitativeOutcomes} resumeReadyOutcomes={dashboard.resumeReadyOutcomes} setOutcomeForm={setOutcomeForm} startEditOutcome={startEditOutcome} tasks={tasks} onApplyCandidate={applyOutcomeCandidate} onCancel={() => { setEditingOutcomeId(null); setOutcomeForm(createInitialOutcomeForm()); }} onSubmit={handleSaveOutcome} /> : null}
 
-          {activeTab === "career" ? <CareerPanel careerAssets={careerAssets} /> : null}
+          {activeTab === "career" ? <CareerPanel careerAssets={careerAssets} careerMessage={careerMessage} isGeneratingCareer={isGeneratingCareer} onGenerate={handleGenerateCareerAsset} /> : null}
         </>
       ) : null}
     </main>
@@ -982,6 +1112,8 @@ function OutcomePanel({
   resumeReadyOutcomes,
   setOutcomeForm,
   startEditOutcome,
+  tasks,
+  onApplyCandidate,
   onCancel,
   onSubmit
 }: {
@@ -995,14 +1127,49 @@ function OutcomePanel({
   resumeReadyOutcomes: number;
   setOutcomeForm: (form: OutcomeForm) => void;
   startEditOutcome: (outcome: ProjectOutcome) => void;
+  tasks: ProjectTask[];
+  onApplyCandidate: (candidate: OutcomeCandidate) => void;
   onCancel: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const sortedOutcomes = [...outcomes].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
   const sortedLogs = [...logs].sort((a, b) => b.log_date.localeCompare(a.log_date));
+  const outcomeCandidates = buildOutcomeCandidates(logs, tasks, outcomes);
 
   return (
     <section className="outcome-dashboard">
+      <section className="panel outcome-candidate-panel">
+        <div className="panel-title-row">
+          <h2>성과 후보</h2>
+          <span className="count-badge">{outcomeCandidates.length}개</span>
+        </div>
+        {outcomeCandidates.length === 0 ? <div className="empty-state">근거 로그 기반 후보 없음</div> : null}
+        {outcomeCandidates.length > 0 ? (
+          <div className="outcome-candidate-grid">
+            {outcomeCandidates.map((candidate) => (
+              <article className="candidate-card outcome-candidate-card" key={candidate.id}>
+                <div className="panel-title-row">
+                  <strong>{candidate.title}</strong>
+                  <span className="meta-pill">{candidate.source === "task" ? "완료 업무" : "업무 로그"}</span>
+                </div>
+                <p>{candidate.after_state || "저장된 근거를 성과로 정리합니다."}</p>
+                <div className="outcome-candidate-facts">
+                  <div><span>근거 로그</span><b>{candidate.evidence_work_log_ids.length}개</b></div>
+                  <div><span>수치</span><b>사용자 입력</b></div>
+                  <div><span>이력서</span><b>보류</b></div>
+                </div>
+                <div className="outcome-candidate-evidence">
+                  {candidate.evidence.slice(0, 3).map((item) => <span key={item}>{item}</span>)}
+                </div>
+                <div className="form-actions compact-actions">
+                  <button className="secondary-button" type="button" onClick={() => onApplyCandidate(candidate)}>양식에 적용</button>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : null}
+      </section>
+
       <section className="panel log-form-panel outcome-form-panel">
         <div className="panel-title-row"><h2>{editingOutcomeId ? "성과 수정" : "성과 추가"}</h2>{editingOutcomeId ? <button className="secondary-button" type="button" onClick={onCancel}>취소</button> : <span className="meta-pill">필수: 개선 항목</span>}</div>
         <form className="stacked-form compact-form" onSubmit={onSubmit}>
@@ -1076,11 +1243,43 @@ function copyCareerText(text: string) {
   void navigator.clipboard?.writeText(text);
 }
 
-function CareerPanel({ careerAssets }: { careerAssets: CareerAsset[] }) {
-  if (careerAssets.length === 0) return <section className="panel"><div className="empty-state">경력 자산 없음</div></section>;
+function CareerPanel({
+  careerAssets,
+  careerMessage,
+  isGeneratingCareer,
+  onGenerate
+}: {
+  careerAssets: CareerAsset[];
+  careerMessage: string;
+  isGeneratingCareer: boolean;
+  onGenerate: (targetRole: CareerTargetRole) => Promise<void>;
+}) {
+  const [targetRole, setTargetRole] = useState<CareerTargetRole>("PM");
 
   return (
     <section className="career-dashboard">
+      <section className="panel career-generate-panel">
+        <div className="panel-title-row">
+          <h2>경력 자산 생성</h2>
+          <span className="meta-pill">template</span>
+        </div>
+        <div className="form-grid three-columns">
+          <label>목표 역할
+            <select value={targetRole} onChange={(event) => setTargetRole(event.target.value as CareerTargetRole)}>
+              {careerTargetRoles.map((role) => <option key={role} value={role}>{role}</option>)}
+            </select>
+          </label>
+          <div className="metric-card compact-metric"><span>방식</span><strong>결정론</strong></div>
+          <div className="metric-card compact-metric"><span>수치</span><strong>확정값만</strong></div>
+        </div>
+        <div className="form-actions compact-actions">
+          <button type="button" onClick={() => void onGenerate(targetRole)} disabled={isGeneratingCareer}>
+            {isGeneratingCareer ? "생성 중" : "생성"}
+          </button>
+        </div>
+        {careerMessage ? <div className="alert success">{careerMessage}</div> : null}
+      </section>
+
       <section className="summary-grid inline outcome-metrics" aria-label="경력 자산 지표">
         <div className="metric-card"><span>자산</span><strong>{careerAssets.length}</strong></div>
         <div className="metric-card"><span>이력서</span><strong>{careerAssets.filter((asset) => asset.resume_bullets).length}</strong></div>
@@ -1092,12 +1291,13 @@ function CareerPanel({ careerAssets }: { careerAssets: CareerAsset[] }) {
         <div className="data-table-wrap">
           <table className="data-table dense-task-table">
             <thead><tr><th>생성 방식</th><th>업데이트</th><th>수행 요약</th><th>성과 요약</th></tr></thead>
-            <tbody>{careerAssets.map((asset) => <tr key={asset.id}><td><span className="meta-pill status-navy">{asset.generation_method}</span></td><td>{asset.updated_at.slice(0, 10)}</td><td className="truncate-cell">{asset.work_summary || "-"}</td><td className="truncate-cell">{asset.outcome_summary || "-"}</td></tr>)}</tbody>
+            <tbody>{careerAssets.length === 0 ? <tr><td colSpan={4}>경력 자산 없음</td></tr> : careerAssets.map((asset) => <tr key={asset.id}><td><span className="meta-pill status-navy">{asset.generation_method}</span></td><td>{asset.updated_at.slice(0, 10)}</td><td className="truncate-cell">{asset.work_summary || "-"}</td><td className="truncate-cell">{asset.outcome_summary || "-"}</td></tr>)}</tbody>
           </table>
         </div>
       </section>
 
       <section className="career-result-grid">
+        {careerAssets.length === 0 ? <section className="panel"><div className="empty-state">생성된 결과 없음</div></section> : null}
         {careerAssets.map((asset) => {
           const text = careerCopyText(asset);
           return (

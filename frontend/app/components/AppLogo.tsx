@@ -4,15 +4,15 @@ export function AppLogo() {
   return (
     <Link className="app-logo" href="/" aria-label="work-support 대시보드로 이동">
       <span className="app-logo-mark" aria-hidden="true">
-        <svg viewBox="0 0 40 40" role="img" focusable="false">
-          <rect x="4" y="4" width="32" height="32" rx="10" />
-          <path d="M12 14l4.2 12L20 17l3.8 9L28 14" />
-          <path d="M12 29h16" />
+        <svg viewBox="0 0 44 44" role="img" focusable="false">
+          <rect className="mark-bg" x="3" y="3" width="38" height="38" rx="12" />
+          <path className="mark-grid" d="M14 14h8M14 34h16M30 28h4" />
+          <path className="mark-check" d="M13 23.5l5 5L31 15" />
         </svg>
       </span>
       <span className="app-logo-text">
         <strong>work-support</strong>
-        <small>Dashboard</small>
+        <small>WORK OS</small>
       </span>
     </Link>
   );
