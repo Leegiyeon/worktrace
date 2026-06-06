@@ -1,20 +1,21 @@
 :root {
   color-scheme: light;
-  --background: #f4f7fb;
-  --foreground: #0f172a;
-  --muted: #475569;
+  --background: #f5f6f8;
+  --foreground: #111827;
+  --muted: #647084;
   --surface: #ffffff;
-  --surface-muted: #eef3f8;
-  --accent: #0f2742;
-  --accent-strong: #081827;
-  --accent-soft: #dbe7f3;
-  --accent-blue: #2563eb;
-  --border: #d8e1ee;
+  --surface-muted: #f0f3f7;
+  --accent: #172033;
+  --accent-strong: #0b1220;
+  --accent-soft: #e6edf7;
+  --accent-blue: #2367e8;
+  --border: #d9e0ea;
   --danger: #b42318;
   --success: #15803d;
   --warning: #b7791f;
-  --shadow-soft: 0 16px 44px rgba(15, 39, 66, 0.07);
-  --shadow-card: 0 10px 28px rgba(15, 39, 66, 0.08);
+  --shadow-soft: 0 18px 44px rgba(17, 24, 39, 0.06);
+  --shadow-card: 0 12px 28px rgba(17, 24, 39, 0.08);
+  --shadow-hairline: inset 0 1px 0 rgba(255, 255, 255, 0.72);
   --text-xs: 11px;
   --text-sm: 12px;
   --text-md: 13px;
@@ -28,11 +29,15 @@
 
 body {
   margin: 0;
-  background: linear-gradient(180deg, #edf3fa 0, var(--background) 340px);
+  background:
+    radial-gradient(circle at top left, rgba(35, 103, 232, 0.08), transparent 30vw),
+    linear-gradient(180deg, #fbfcfe 0, var(--background) 360px);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Noto Sans KR", Arial, Helvetica, sans-serif;
   font-size: var(--text-base);
   line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 .app-frame {
@@ -46,9 +51,9 @@ body {
   display: flex;
   align-items: center;
   width: 100%;
-  border-bottom: 1px solid rgba(216, 225, 238, 0.9);
-  background: rgba(244, 247, 251, 0.92);
-  backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(217, 224, 234, 0.78);
+  background: rgba(251, 252, 254, 0.86);
+  backdrop-filter: saturate(180%) blur(18px);
 }
 
 .app-header::before {
@@ -63,9 +68,9 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 9px;
-  width: min(1440px, calc(100% - 32px));
+  width: min(1320px, calc(100% - 40px));
   margin: 0 auto;
-  padding: 8px 0;
+  padding: 9px 0;
   color: var(--accent);
   text-decoration: none;
 }
@@ -130,9 +135,9 @@ body {
 }
 
 .page-shell {
-  width: min(1440px, calc(100% - 32px));
+  width: min(1320px, calc(100% - 40px));
   margin: 0 auto;
-  padding: 24px 0;
+  padding: 22px 0 28px;
 }
 
 h1,
@@ -144,7 +149,7 @@ p {
 
 h1 {
   margin-bottom: 0;
-  font-size: clamp(24px, 2.8vw, 34px);
+  font-size: clamp(24px, 2.6vw, 32px);
   line-height: 1.12;
   letter-spacing: -0.04em;
 }
@@ -203,11 +208,11 @@ textarea,
 select {
   width: 100%;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 11px;
   background: #ffffff;
   color: var(--foreground);
-  min-height: 38px;
-  padding: 8px 10px;
+  min-height: 36px;
+  padding: 7px 10px;
   font: inherit;
   font-size: var(--text-md);
 }
@@ -231,9 +236,9 @@ textarea {
 .task-card,
 .compact-project,
 .candidate-card {
-  border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--surface) 96%, transparent);
-  box-shadow: var(--shadow-soft);
+  border: 1px solid rgba(217, 224, 234, 0.92);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(252, 253, 255, 0.94));
+  box-shadow: var(--shadow-soft), var(--shadow-hairline);
 }
 
 .hero-card,
@@ -284,7 +289,7 @@ textarea {
 }
 
 .panel {
-  padding: 16px;
+  padding: 14px;
 }
 
 .panel-title-row h2 {
@@ -327,12 +332,12 @@ textarea {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-height: 36px;
+  min-height: 34px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 11px;
   background: var(--accent);
   color: #ffffff;
-  padding: 8px 12px;
+  padding: 7px 12px;
   font-size: var(--text-md);
   font-weight: 800;
   text-decoration: none;
@@ -394,7 +399,7 @@ textarea {
 .status-pill {
   background: var(--accent-soft);
   color: var(--accent);
-  padding: 6px 10px;
+  padding: 5px 10px;
   font-size: var(--text-sm);
 }
 
@@ -451,7 +456,7 @@ textarea {
 /* Dashboard */
 .dashboard-page {
   display: grid;
-  gap: 14px;
+  gap: 13px;
 }
 
 .dashboard-topbar {
@@ -459,8 +464,11 @@ textarea {
   align-items: end;
   justify-content: space-between;
   gap: 16px;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 12px;
+  border: 1px solid rgba(217, 224, 234, 0.86);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: var(--shadow-hairline);
+  padding: 14px 16px;
 }
 
 .section-kicker {
@@ -490,7 +498,7 @@ textarea {
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .summary-grid.inline {
@@ -504,9 +512,9 @@ textarea {
 .metric-card {
   display: grid;
   align-content: space-between;
-  min-height: 74px;
+  min-height: 68px;
   border-radius: 14px;
-  padding: 12px;
+  padding: 11px;
 }
 
 .metric-card:hover {
@@ -531,12 +539,12 @@ textarea {
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.82fr) minmax(280px, 0.9fr);
+  grid-template-columns: minmax(0, 1.12fr) minmax(260px, 0.78fr) minmax(300px, 0.88fr);
   grid-template-areas:
     "progress progress capture"
     "status delayed capture"
     "completed recent recent";
-  gap: 14px;
+  gap: 13px;
   align-items: stretch;
 }
 
@@ -589,7 +597,7 @@ textarea {
   align-items: center;
   border-bottom: 1px solid var(--border);
   color: inherit;
-  padding: 7px 0;
+  padding: 6px 0;
   text-decoration: none;
 }
 
@@ -708,7 +716,7 @@ textarea {
   overflow-x: auto;
   margin-top: 8px;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 13px;
   background: #ffffff;
 }
 
@@ -721,7 +729,7 @@ textarea {
 .data-table th,
 .data-table td {
   border-bottom: 1px solid var(--border);
-  padding: 8px 8px;
+  padding: 7px 8px;
   text-align: left;
   vertical-align: middle;
 }
@@ -787,13 +795,13 @@ textarea {
 .report-page,
 .project-page {
   display: grid;
-  gap: 14px;
+  gap: 13px;
 }
 
 .report-controls {
   display: grid;
   grid-template-columns: minmax(140px, 0.7fr) repeat(2, minmax(180px, 1fr)) auto;
-  gap: 10px;
+  gap: 8px;
   align-items: end;
 }
 
@@ -830,7 +838,7 @@ code {
 /* Projects */
 .stacked-form {
   display: grid;
-  gap: 10px;
+  gap: 9px;
 }
 
 .stacked-form > button {
@@ -873,6 +881,7 @@ code {
 .task-board {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: start;
+  gap: 10px;
 }
 
 .task-column {
@@ -882,9 +891,9 @@ code {
 
 .task-card {
   display: grid;
-  gap: 8px;
+  gap: 7px;
   border-radius: 14px;
-  padding: 12px;
+  padding: 11px;
 }
 
 .task-card h3,
@@ -982,7 +991,7 @@ code {
 
 @media (max-width: 760px) {
   .app-logo {
-    width: min(100% - 20px, 1440px);
+    width: min(100% - 20px, 1320px);
   }
 
   .app-logo-text small {
@@ -990,7 +999,7 @@ code {
   }
 
   .page-shell {
-    width: min(100% - 20px, 1440px);
+    width: min(100% - 20px, 1320px);
     padding: 20px 0;
   }
 
@@ -1033,30 +1042,33 @@ code {
   display: flex;
   gap: 6px;
   overflow-x: auto;
-  border-bottom: 1px solid var(--border);
+  border: 1px solid rgba(217, 224, 234, 0.86);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 4px;
   scrollbar-width: thin;
 }
 
 .tab-nav button {
   min-width: max-content;
   border: 0;
-  border-bottom: 3px solid transparent;
+  border-radius: 12px;
   background: transparent;
   color: var(--muted);
-  padding: 9px 11px;
+  padding: 8px 11px;
   font-size: var(--text-md);
   font-weight: 900;
   cursor: pointer;
 }
 
 .tab-nav button.active {
-  border-bottom-color: var(--accent-blue);
-  background: #f8fbff;
+  background: #ffffff;
+  box-shadow: 0 6px 16px rgba(17, 24, 39, 0.07);
   color: var(--accent);
 }
 
 .tab-nav button[aria-selected="true"] {
-  box-shadow: inset 0 -1px 0 var(--accent-blue);
+  box-shadow: 0 6px 16px rgba(17, 24, 39, 0.07), inset 0 0 0 1px rgba(217, 224, 234, 0.72);
 }
 
 .detail-grid {
@@ -1140,14 +1152,14 @@ code {
 .board-layout .task-column {
   min-width: 0;
   min-height: 340px;
-  background: #f7f9fc;
+  background: linear-gradient(180deg, #fbfcfe 0%, #f5f7fa 100%);
   box-shadow: none;
 }
 
 .jira-task-card {
   border-radius: 10px;
-  border-color: #cfd9e6;
-  box-shadow: 0 8px 20px rgba(15, 39, 66, 0.08);
+  border-color: rgba(207, 217, 230, 0.9);
+  box-shadow: 0 8px 20px rgba(17, 24, 39, 0.07);
   padding: 10px;
 }
 
@@ -1215,7 +1227,7 @@ code {
   margin: 0;
   color: var(--foreground);
   white-space: pre-wrap;
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Noto Sans KR", Arial, Helvetica, sans-serif;
   font-size: var(--text-md);
   line-height: 1.5;
 }
