@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, use, useCallback, useEffect, useMemo, useState } from "react";
 
 import { parseApiErrorMessage } from "../../reports/api-error";
+import { CareerPanel } from "./CareerPanel";
 import type {
   CareerAsset,
   CareerTargetRole,
@@ -30,7 +31,8 @@ type PageProps = {
   params: Promise<{ projectId: string }>;
 };
 
-type DetailTab = "overview" | "board" | "list" | "calendar" | "wbs" | "logs" | "outcomes" | "career";
+type DetailTab = "overview" | "tasks" | "logs" | "outcomes" | "career";
+type TaskViewMode = "board" | "list" | "calendar";
 
 type TaskForm = {
   title: string;
@@ -78,11 +80,8 @@ type OutcomeCandidate = OutcomeForm & {
 };
 
 const tabs: { id: DetailTab; label: string }[] = [
-  { id: "overview", label: "개요" },
-  { id: "board", label: "업무 보드" },
-  { id: "list", label: "업무 목록" },
-  { id: "calendar", label: "마감 캘린더" },
-  { id: "wbs", label: "WBS 업로드" },
+  { id: "overview", label: "현황" },
+  { id: "tasks", label: "업무" },
   { id: "logs", label: "업무 로그" },
   { id: "outcomes", label: "성과" },
   { id: "career", label: "경력 자산" }
@@ -90,8 +89,6 @@ const tabs: { id: DetailTab; label: string }[] = [
 
 const taskStatusOrder: TaskStatus[] = ["planned", "in_progress", "done", "on_hold"];
 const priorityOrder: Record<TaskPriority, number> = { high: 1, medium: 2, low: 3 };
-const careerTargetRoles: CareerTargetRole[] = ["IT기획", "PM", "AI서비스기획", "Backend", "DevOps"];
-
 const initialTaskForm: TaskForm = {
   title: "",
   description: "",
@@ -283,6 +280,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
   const { projectId } = use(params);
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<DetailTab>("overview");
+  const [taskViewMode, setTaskViewMode] = useState<TaskViewMode>("board");
   const [project, setProject] = useState<ProjectSummary | null>(null);
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [workLogs, setWorkLogs] = useState<WorkLogItem[]>([]);
@@ -456,7 +454,16 @@ export default function ProjectDetailPage({ params }: PageProps) {
       priority: task.priority,
       due_date: task.due_date ?? ""
     });
-    setActiveTab("board");
+    setTaskViewMode("board");
+    setActiveTab("tasks");
+  }
+
+  function openCreateTask() {
+    setEditingTaskId(null);
+    setTaskForm(initialTaskForm);
+    setTaskViewMode("board");
+    setErrorMessage("");
+    setActiveTab("tasks");
   }
 
   async function updateStatus(task: ProjectTask, status: TaskStatus) {
@@ -535,6 +542,13 @@ export default function ProjectDetailPage({ params }: PageProps) {
       duration_minutes: String(log.duration_minutes),
       blockers: log.blockers
     });
+    setActiveTab("logs");
+  }
+
+  function openCreateLog() {
+    setEditingLogId(null);
+    setLogForm(createInitialWorkLogForm());
+    setErrorMessage("");
     setActiveTab("logs");
   }
 
@@ -619,6 +633,13 @@ export default function ProjectDetailPage({ params }: PageProps) {
     setActiveTab("outcomes");
   }
 
+  function openCreateOutcome() {
+    setEditingOutcomeId(null);
+    setOutcomeForm(createInitialOutcomeForm());
+    setErrorMessage("");
+    setActiveTab("outcomes");
+  }
+
   function applyOutcomeCandidate(candidate: OutcomeCandidate) {
     setEditingOutcomeId(null);
     setOutcomeForm({
@@ -674,14 +695,16 @@ export default function ProjectDetailPage({ params }: PageProps) {
     }
   }
 
+  function handleCareerAssetUpdated(updatedAsset: CareerAsset) {
+    setCareerAssets((current) => current.map((asset) => asset.id === updatedAsset.id ? updatedAsset : asset));
+  }
+
   return (
     <main className="page-shell project-page project-detail-page">
       <div className="dashboard-topbar compact-topbar">
         <div>
           <Link className="text-link" href="/projects">← 프로젝트</Link>
-          <span className="section-kicker">Project detail</span>
           <h1>{project?.title ?? "프로젝트"}</h1>
-          <p className="page-subtitle">업무, 로그, 성과, 경력 자산을 탭별로 정리합니다.</p>
         </div>
         {project ? (
           <div className="task-meta">
@@ -704,6 +727,13 @@ export default function ProjectDetailPage({ params }: PageProps) {
             <div className="metric-card"><span>로그</span><strong>{workLogs.length}</strong></div>
             <div className="metric-card"><span>성과</span><strong>{outcomes.length}</strong></div>
           </section>
+
+          <nav className="project-quick-actions" aria-label="프로젝트 빠른 작업">
+            <button type="button" onClick={openCreateTask}>업무 추가</button>
+            <button className="secondary-button" type="button" onClick={openCreateLog}>로그 기록</button>
+            <button className="secondary-button" type="button" onClick={openCreateOutcome}>성과 정리</button>
+            <button className="secondary-button" type="button" onClick={() => setActiveTab("career")}>경력 문장</button>
+          </nav>
 
           <nav className="tab-nav" aria-label="프로젝트 상세 탭" role="tablist">
             {tabs.map((tab) => (
@@ -757,34 +787,47 @@ export default function ProjectDetailPage({ params }: PageProps) {
             </section>
           ) : null}
 
-          {activeTab === "board" ? (
-            <section className="board-layout">
-              <TaskFormPanel editingTaskId={editingTaskId} isSavingTask={isSavingTask} taskForm={taskForm} setTaskForm={setTaskForm} onSubmit={handleSaveTask} onCancel={() => { setEditingTaskId(null); setTaskForm(initialTaskForm); }} />
-              <section className="task-board" aria-label="업무 보드">
-                {groupedTasks.map((group) => (
-                  <div className="panel task-column" key={group.status}>
-                    <div className="panel-title-row"><h2>{group.label}</h2><span className="count-badge">{group.items.length}개</span></div>
-                    {group.items.length === 0 ? <div className="empty-state">없음</div> : null}
-                    {group.items.map((task) => <TaskCard deleteTask={deleteTask} key={task.id} startEdit={startEdit} task={task} updateStatus={updateStatus} />)}
-                  </div>
+          {activeTab === "tasks" ? (
+            <section className="task-workspace">
+              <div className="view-switcher" aria-label="업무 보기 방식">
+                {(["board", "list", "calendar"] as TaskViewMode[]).map((mode) => (
+                  <button
+                    aria-pressed={taskViewMode === mode}
+                    className={taskViewMode === mode ? "active" : ""}
+                    key={mode}
+                    type="button"
+                    onClick={() => setTaskViewMode(mode)}
+                  >
+                    {{ board: "보드", list: "목록", calendar: "캘린더" }[mode]}
+                  </button>
                 ))}
-              </section>
+              </div>
+              {taskViewMode === "board" ? (
+                <section className="board-layout">
+                  <TaskFormPanel editingTaskId={editingTaskId} isSavingTask={isSavingTask} taskForm={taskForm} setTaskForm={setTaskForm} onSubmit={handleSaveTask} onCancel={() => { setEditingTaskId(null); setTaskForm(initialTaskForm); }} />
+                  <section className="task-board" aria-label="업무 보드">
+                    {groupedTasks.map((group) => (
+                      <div className="panel task-column" key={group.status}>
+                        <div className="panel-title-row"><h2>{group.label}</h2><span className="count-badge">{group.items.length}개</span></div>
+                        {group.items.length === 0 ? <div className="empty-state">없음</div> : null}
+                        {group.items.map((task) => <TaskCard deleteTask={deleteTask} key={task.id} startEdit={startEdit} task={task} updateStatus={updateStatus} />)}
+                      </div>
+                    ))}
+                  </section>
+                </section>
+              ) : null}
+              {taskViewMode === "list" ? (
+                <section className="panel"><TaskTable startEdit={startEdit} tasks={dashboard.sortedTasks} updateStatus={updateStatus} /></section>
+              ) : null}
+              {taskViewMode === "calendar" ? <CalendarPanel tasks={tasks} /> : null}
             </section>
           ) : null}
-
-          {activeTab === "list" ? (
-            <section className="panel"><TaskTable startEdit={startEdit} tasks={dashboard.sortedTasks} updateStatus={updateStatus} /></section>
-          ) : null}
-
-          {activeTab === "calendar" ? <CalendarPanel tasks={tasks} /> : null}
-
-          {activeTab === "wbs" ? <WbsUploadPanel tasks={dashboard.sortedTasks} /> : null}
 
           {activeTab === "logs" ? <LogPanel deleteLog={deleteLog} editingLogId={editingLogId} isSavingLog={isSavingLog} logForm={logForm} logs={workLogs} projectTitle={project.title} setLogForm={setLogForm} startEditLog={startEditLog} tasks={tasks} onCancel={() => { setEditingLogId(null); setLogForm(createInitialWorkLogForm()); }} onSubmit={handleSaveLog} /> : null}
 
           {activeTab === "outcomes" ? <OutcomePanel deleteOutcome={deleteOutcome} editingOutcomeId={editingOutcomeId} isSavingOutcome={isSavingOutcome} logs={workLogs} outcomeForm={outcomeForm} outcomes={outcomes} quantitativeOutcomes={dashboard.quantitativeOutcomes} resumeReadyOutcomes={dashboard.resumeReadyOutcomes} setOutcomeForm={setOutcomeForm} startEditOutcome={startEditOutcome} tasks={tasks} onApplyCandidate={applyOutcomeCandidate} onCancel={() => { setEditingOutcomeId(null); setOutcomeForm(createInitialOutcomeForm()); }} onSubmit={handleSaveOutcome} /> : null}
 
-          {activeTab === "career" ? <CareerPanel careerAssets={careerAssets} careerMessage={careerMessage} isGeneratingCareer={isGeneratingCareer} onGenerate={handleGenerateCareerAsset} /> : null}
+          {activeTab === "career" ? <CareerPanel projectId={projectId} careerAssets={careerAssets} careerMessage={careerMessage} isGeneratingCareer={isGeneratingCareer} onAssetUpdated={handleCareerAssetUpdated} onGenerate={handleGenerateCareerAsset} /> : null}
         </>
       ) : null}
     </main>
@@ -894,26 +937,6 @@ function TaskTable({ tasks, updateStatus, startEdit }: { tasks: ProjectTask[]; u
 }
 
 
-
-function WbsUploadPanel({ tasks }: { tasks: ProjectTask[] }) {
-  return (
-    <section className="wbs-disabled-grid" aria-label="WBS 업로드 준비 중">
-      <section className="panel muted wbs-disabled-panel">
-        <div className="panel-title-row"><h2>WBS 업로드</h2><span className="count-badge">준비 중</span></div>
-        <button type="button" disabled>업로드 비활성화</button>
-      </section>
-      <section className="panel">
-        <div className="panel-title-row"><h2>현재 WBS</h2><span className="count-badge">{tasks.length}개</span></div>
-        <div className="data-table-wrap">
-          <table className="data-table dense-task-table">
-            <thead><tr><th>ID</th><th>업무명</th><th>상태</th><th>우선순위</th><th>마감일</th><th>진척도</th></tr></thead>
-            <tbody>{tasks.map((task, index) => <tr key={task.id}><td>{`1.${index + 1}`}</td><td>{task.title}</td><td>{taskStatusLabels[task.status]}</td><td>{taskPriorityLabels[task.priority]}</td><td>{task.due_date ?? "-"}</td><td><div className="table-progress"><div className="mini-progress"><span style={{ width: `${taskProgress(task)}%` }} /></div><b>{taskProgress(task)}%</b></div></td></tr>)}</tbody>
-          </table>
-        </div>
-      </section>
-    </section>
-  );
-}
 
 function CalendarPanel({ tasks }: { tasks: ProjectTask[] }) {
   const today = new Date();
@@ -1229,84 +1252,6 @@ function OutcomePanel({
             <tbody>{sortedOutcomes.length === 0 ? <tr><td colSpan={10}>성과 없음</td></tr> : sortedOutcomes.map((outcome) => <tr key={outcome.id}><td>{outcome.title}</td><td>{outcomeTypeLabels[outcome.outcome_type]}</td><td className="truncate-cell">{outcome.before_state || "-"}</td><td className="truncate-cell">{outcome.after_state || "-"}</td><td>{outcome.metric_name || "-"}</td><td>{outcome.metric_value ?? "-"}</td><td>{outcome.metric_unit || "-"}</td><td>{outcomeEvidence(outcome, logs)}</td><td>{outcome.resume_ready ? <span className="meta-pill priority-medium">가능</span> : <span className="meta-pill">보류</span>}</td><td><div className="table-actions"><button className="table-link-button" type="button" onClick={() => startEditOutcome(outcome)}>수정</button><button className="table-link-button danger-link" type="button" onClick={() => void deleteOutcome(outcome)}>삭제</button></div></td></tr>)}</tbody>
           </table>
         </div>
-      </section>
-    </section>
-  );
-}
-
-function careerCopyText(asset: CareerAsset) {
-  return asset.markdown || [asset.resume_bullets, asset.career_description, asset.portfolio_description, asset.star_answer].filter(Boolean).join("\n\n");
-}
-
-function copyCareerText(text: string) {
-  if (!text) return;
-  void navigator.clipboard?.writeText(text);
-}
-
-function CareerPanel({
-  careerAssets,
-  careerMessage,
-  isGeneratingCareer,
-  onGenerate
-}: {
-  careerAssets: CareerAsset[];
-  careerMessage: string;
-  isGeneratingCareer: boolean;
-  onGenerate: (targetRole: CareerTargetRole) => Promise<void>;
-}) {
-  const [targetRole, setTargetRole] = useState<CareerTargetRole>("PM");
-
-  return (
-    <section className="career-dashboard">
-      <section className="panel career-generate-panel">
-        <div className="panel-title-row">
-          <h2>경력 자산 생성</h2>
-          <span className="meta-pill">template</span>
-        </div>
-        <div className="form-grid three-columns">
-          <label>목표 역할
-            <select value={targetRole} onChange={(event) => setTargetRole(event.target.value as CareerTargetRole)}>
-              {careerTargetRoles.map((role) => <option key={role} value={role}>{role}</option>)}
-            </select>
-          </label>
-          <div className="metric-card compact-metric"><span>방식</span><strong>결정론</strong></div>
-          <div className="metric-card compact-metric"><span>수치</span><strong>확정값만</strong></div>
-        </div>
-        <div className="form-actions compact-actions">
-          <button type="button" onClick={() => void onGenerate(targetRole)} disabled={isGeneratingCareer}>
-            {isGeneratingCareer ? "생성 중" : "생성"}
-          </button>
-        </div>
-        {careerMessage ? <div className="alert success">{careerMessage}</div> : null}
-      </section>
-
-      <section className="summary-grid inline outcome-metrics" aria-label="경력 자산 지표">
-        <div className="metric-card"><span>자산</span><strong>{careerAssets.length}</strong></div>
-        <div className="metric-card"><span>이력서</span><strong>{careerAssets.filter((asset) => asset.resume_bullets).length}</strong></div>
-        <div className="metric-card"><span>포트폴리오</span><strong>{careerAssets.filter((asset) => asset.portfolio_description).length}</strong></div>
-        <div className="metric-card"><span>면접</span><strong>{careerAssets.filter((asset) => asset.star_answer).length}</strong></div>
-      </section>
-      <section className="panel career-index-panel">
-        <div className="panel-title-row"><h2>경력 자산</h2><span className="count-badge">{careerAssets.length}개</span></div>
-        <div className="data-table-wrap">
-          <table className="data-table dense-task-table">
-            <thead><tr><th>생성 방식</th><th>업데이트</th><th>수행 요약</th><th>성과 요약</th></tr></thead>
-            <tbody>{careerAssets.length === 0 ? <tr><td colSpan={4}>경력 자산 없음</td></tr> : careerAssets.map((asset) => <tr key={asset.id}><td><span className="meta-pill status-navy">{asset.generation_method}</span></td><td>{asset.updated_at.slice(0, 10)}</td><td className="truncate-cell">{asset.work_summary || "-"}</td><td className="truncate-cell">{asset.outcome_summary || "-"}</td></tr>)}</tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="career-result-grid">
-        {careerAssets.length === 0 ? <section className="panel"><div className="empty-state">생성된 결과 없음</div></section> : null}
-        {careerAssets.map((asset) => {
-          const text = careerCopyText(asset);
-          return (
-            <article className="panel career-result-card" key={asset.id}>
-              <div className="panel-title-row"><h2>{asset.generation_method}</h2><button className="secondary-button" type="button" onClick={() => copyCareerText(text)}>복사</button></div>
-              <details className="career-copy-details"><summary>복사 영역</summary><pre className="career-copy-output">{text || "경력 문장 없음"}</pre></details>
-            </article>
-          );
-        })}
       </section>
     </section>
   );

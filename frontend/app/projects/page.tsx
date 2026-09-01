@@ -107,9 +107,7 @@ export default function ProjectsPage() {
       <header className="dashboard-topbar compact-topbar">
         <div>
           <Link className="text-link" href="/">← 대시보드</Link>
-          <span className="section-kicker">Projects</span>
           <h1>프로젝트</h1>
-          <p className="page-subtitle">새 프로젝트를 만들고 진척, 역할, 잔여 업무를 정리합니다.</p>
         </div>
         <div className="task-meta">
           <span className="meta-pill status-navy">진행 {dashboard.activeProjects.length}</span>

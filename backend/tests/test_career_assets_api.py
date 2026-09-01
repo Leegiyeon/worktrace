@@ -1,23 +1,26 @@
 from uuid import UUID
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.api import career_assets
+from app.core.config import Settings
 from app.main import app
-from app.schemas.career_assets import CareerAsset
+from app.schemas.career_assets import CareerAsset, CareerAssetUpdateRequest
 from app.services import career_assets as career_asset_service
-from app.services.career_assets import CareerAssetProjectNotFoundError
+from app.services.career_assets import CareerAssetNotFoundError, CareerAssetProjectNotFoundError
 
 HEADERS = {
     "X-Work-Support-Owner-Id": "local-owner",
     "X-Work-Support-Report-Token": "dev-only-report-token",
 }
 PROJECT_ID = "00000000-0000-0000-0000-000000000001"
+CAREER_ASSET_ID = "00000000-0000-0000-0000-000000000301"
 
 
 def sample_asset() -> CareerAsset:
     return CareerAsset(
-        id="00000000-0000-0000-0000-000000000301",
+        id=CAREER_ASSET_ID,
         project_id=PROJECT_ID,
         source_summary="업무 로그 2건",
         work_summary="업무 요약",
@@ -99,6 +102,164 @@ def test_career_asset_generate_returns_project_not_found(monkeypatch):
 
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "PROJECT_NOT_FOUND"
+
+
+def test_career_asset_patch_route_uses_owner_context_and_preserves_generation_method(monkeypatch):
+    calls = []
+
+    def fake_update_project_career_asset(settings, owner_id, project_id, career_asset_id, payload):
+        calls.append((owner_id, project_id, career_asset_id, payload))
+        asset = sample_asset()
+        return asset.model_copy(
+            update={
+                "work_summary": payload.work_summary,
+                "resume_bullets": payload.resume_bullets,
+                "generation_method": asset.generation_method,
+            }
+        )
+
+    monkeypatch.setattr(career_assets, "update_project_career_asset", fake_update_project_career_asset)
+    client = TestClient(app)
+
+    response = client.patch(
+        f"/projects/{PROJECT_ID}/career-assets/{CAREER_ASSET_ID}",
+        headers=HEADERS,
+        json={
+            "source_summary": "클라이언트가 바꾸려는 근거",
+            "work_summary": "사용자가 고친 업무 요약",
+            "resume_bullets": "- 사용자가 고친 이력서 문장",
+            "generation_method": "manual",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["work_summary"] == "사용자가 고친 업무 요약"
+    assert body["resume_bullets"] == "- 사용자가 고친 이력서 문장"
+    assert body["generation_method"] == "seed_template"
+    assert calls[0][:3] == ("local-owner", UUID(PROJECT_ID), UUID(CAREER_ASSET_ID))
+    assert not hasattr(calls[0][3], "source_summary")
+    assert not hasattr(calls[0][3], "generation_method")
+
+
+def test_career_asset_update_service_scopes_query_and_preserves_evidence(monkeypatch):
+    captured = []
+    stored_asset = sample_asset().model_dump()
+
+    class FakeResult:
+        def __init__(self, row):
+            self.row = row
+
+        def fetchone(self):
+            return self.row
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, query, params):
+            captured.append((query, params))
+            if "SELECT id FROM projects" in query:
+                return FakeResult({"id": PROJECT_ID})
+            updated = {
+                **stored_asset,
+                "work_summary": params["work_summary"] or stored_asset["work_summary"],
+            }
+            return FakeResult(updated)
+
+    monkeypatch.setattr(career_asset_service, "connect", lambda settings: FakeConnection())
+
+    updated = career_asset_service.update_project_career_asset(
+        Settings(database_url="postgresql://example"),
+        "local-owner",
+        UUID(PROJECT_ID),
+        UUID(CAREER_ASSET_ID),
+        CareerAssetUpdateRequest(work_summary="사용자 수정"),
+    )
+
+    update_query, update_params = captured[1]
+    update_set_clause = update_query.split("WHERE", 1)[0]
+    assert updated.work_summary == "사용자 수정"
+    assert updated.source_summary == stored_asset["source_summary"]
+    assert "source_summary =" not in update_set_clause
+    assert "generation_method =" not in update_set_clause
+    assert "source_summary" not in update_params
+    assert update_params["owner_id"] == "local-owner"
+    assert update_params["project_id"] == UUID(PROJECT_ID)
+    assert update_params["career_asset_id"] == UUID(CAREER_ASSET_ID)
+    assert "owner_id = %(owner_id)s" in update_query
+    assert "project_id = %(project_id)s" in update_query
+    assert "id = %(career_asset_id)s" in update_query
+
+
+def test_career_asset_update_service_blocks_unknown_owner(monkeypatch):
+    captured = []
+
+    class FakeResult:
+        def fetchone(self):
+            return None
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, query, params):
+            captured.append((query, params))
+            return FakeResult()
+
+    monkeypatch.setattr(career_asset_service, "connect", lambda settings: FakeConnection())
+
+    with pytest.raises(CareerAssetProjectNotFoundError):
+        career_asset_service.update_project_career_asset(
+            Settings(database_url="postgresql://example"),
+            "other-owner",
+            UUID(PROJECT_ID),
+            UUID(CAREER_ASSET_ID),
+            CareerAssetUpdateRequest(work_summary="권한 없는 수정"),
+        )
+
+    assert len(captured) == 1
+    assert captured[0][1]["owner_id"] == "other-owner"
+
+
+def test_career_asset_patch_returns_project_not_found(monkeypatch):
+    def fake_update_project_career_asset(settings, owner_id, project_id, career_asset_id, payload):
+        raise CareerAssetProjectNotFoundError()
+
+    monkeypatch.setattr(career_assets, "update_project_career_asset", fake_update_project_career_asset)
+    client = TestClient(app)
+
+    response = client.patch(
+        f"/projects/{PROJECT_ID}/career-assets/{CAREER_ASSET_ID}",
+        headers=HEADERS,
+        json={"work_summary": "사용자 수정"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "PROJECT_NOT_FOUND"
+
+
+def test_career_asset_patch_returns_career_asset_not_found(monkeypatch):
+    def fake_update_project_career_asset(settings, owner_id, project_id, career_asset_id, payload):
+        raise CareerAssetNotFoundError()
+
+    monkeypatch.setattr(career_assets, "update_project_career_asset", fake_update_project_career_asset)
+    client = TestClient(app)
+
+    response = client.patch(
+        f"/projects/{PROJECT_ID}/career-assets/{CAREER_ASSET_ID}",
+        headers=HEADERS,
+        json={"work_summary": "사용자 수정"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "CAREER_ASSET_NOT_FOUND"
 
 
 def test_template_generation_does_not_fabricate_metric_values():

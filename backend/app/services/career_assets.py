@@ -2,10 +2,14 @@ from uuid import UUID
 
 from app.core.config import Settings
 from app.db.connection import connect
-from app.schemas.career_assets import CareerAsset, CareerTargetRole
+from app.schemas.career_assets import CareerAsset, CareerAssetUpdateRequest, CareerTargetRole
 
 
 class CareerAssetProjectNotFoundError(Exception):
+    pass
+
+
+class CareerAssetNotFoundError(Exception):
     pass
 
 
@@ -142,6 +146,60 @@ def generate_project_career_asset(
                 **generated,
             },
         ).fetchone()
+
+    return _career_asset_from_row(row)
+
+
+def update_project_career_asset(
+    settings: Settings,
+    owner_id: str,
+    project_id: UUID,
+    career_asset_id: UUID,
+    payload: CareerAssetUpdateRequest,
+) -> CareerAsset:
+    with connect(settings) as connection:
+        project = connection.execute(
+            "SELECT id FROM projects WHERE owner_id = %(owner_id)s AND id = %(project_id)s",
+            {"owner_id": owner_id, "project_id": project_id},
+        ).fetchone()
+        if project is None:
+            raise CareerAssetProjectNotFoundError()
+
+        row = connection.execute(
+            """
+            UPDATE career_assets
+            SET work_summary = COALESCE(%(work_summary)s, work_summary),
+                outcome_summary = COALESCE(%(outcome_summary)s, outcome_summary),
+                resume_bullets = COALESCE(%(resume_bullets)s, resume_bullets),
+                career_description = COALESCE(%(career_description)s, career_description),
+                portfolio_description = COALESCE(%(portfolio_description)s, portfolio_description),
+                star_answer = COALESCE(%(star_answer)s, star_answer),
+                markdown = COALESCE(%(markdown)s, markdown),
+                updated_at = now()
+            WHERE owner_id = %(owner_id)s AND project_id = %(project_id)s AND id = %(career_asset_id)s
+            RETURNING id::text,
+                      project_id::text,
+                      source_summary,
+                      work_summary,
+                      outcome_summary,
+                      resume_bullets,
+                      career_description,
+                      portfolio_description,
+                      star_answer,
+                      markdown,
+                      generation_method,
+                      created_at::text,
+                      updated_at::text
+            """,
+            {
+                "owner_id": owner_id,
+                "project_id": project_id,
+                "career_asset_id": career_asset_id,
+                **payload.model_dump(),
+            },
+        ).fetchone()
+        if row is None:
+            raise CareerAssetNotFoundError()
 
     return _career_asset_from_row(row)
 

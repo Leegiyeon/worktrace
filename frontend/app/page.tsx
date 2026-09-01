@@ -142,6 +142,15 @@ export default function HomePage() {
     const completedThisWeek = allTasks
       .filter((task) => isCompletedThisWeek(task, weekStart))
       .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+    const attentionTasks = allTasks
+      .filter((task) => task.status !== "done" && (isDelayed(task) || task.status === "in_progress" || task.priority === "high"))
+      .sort((a, b) => {
+        const delayedDifference = Number(isDelayed(b)) - Number(isDelayed(a));
+        if (delayedDifference) return delayedDifference;
+        const priorityDifference = Number(b.priority === "high") - Number(a.priority === "high");
+        if (priorityDifference) return priorityDifference;
+        return (a.due_date ?? "9999-12-31").localeCompare(b.due_date ?? "9999-12-31");
+      });
     const weeklyLogs = recentWorkLogs.filter((log) => new Date(`${log.log_date}T00:00:00`) >= weekStart);
     const taskStatusCounts = taskStatusOrder.map((status) => ({
       status,
@@ -152,6 +161,7 @@ export default function HomePage() {
 
     return {
       activeProjects,
+      attentionTasks,
       averageProgress,
       completedThisWeek,
       delayedTasks,
@@ -270,12 +280,11 @@ export default function HomePage() {
     <main className="page-shell dashboard-page">
       <header className="dashboard-topbar">
         <div>
-          <span className="section-kicker">Dashboard</span>
           <h1>대시보드</h1>
-          <p className="page-subtitle">프로젝트 진척, 지연 업무, 업무 기록을 한 화면에서 관리합니다.</p>
         </div>
         <nav className="hero-actions" aria-label="주요 이동">
-          <Link className="primary-link" href="/projects">프로젝트 보기</Link>
+          <Link className="primary-link" href="#quick-capture">업무 기록</Link>
+          <Link className="secondary-button" href="/projects">프로젝트</Link>
           <Link className="secondary-button" href="/reports">리포트 생성</Link>
         </nav>
       </header>
@@ -318,7 +327,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="panel quick-capture-panel">
+        <section className="panel quick-capture-panel" id="quick-capture">
           <div className="panel-title-row">
             <h2>빠른 기록</h2>
             <span className="meta-pill">{draftConfidence === null ? "업무 로그" : `신뢰도 ${Math.round(draftConfidence * 100)}%`}</span>
@@ -398,33 +407,56 @@ export default function HomePage() {
                 />
               </label>
             </div>
-            <div className="form-grid three-columns">
-              <label>결정
-                <textarea
-                  placeholder="결정사항"
-                  value={quickCaptureForm.decisions}
-                  onChange={(event) => setQuickCaptureForm({ ...quickCaptureForm, decisions: event.target.value })}
-                />
-              </label>
-              <label>협업자
-                <input
-                  placeholder="이름/팀"
-                  value={quickCaptureForm.collaborators}
-                  onChange={(event) => setQuickCaptureForm({ ...quickCaptureForm, collaborators: event.target.value })}
-                />
-              </label>
-              <label>블로커
-                <textarea
-                  placeholder="막힌 점"
-                  value={quickCaptureForm.blockers}
-                  onChange={(event) => setQuickCaptureForm({ ...quickCaptureForm, blockers: event.target.value })}
-                />
-              </label>
-            </div>
+            <details className="quick-advanced-fields">
+              <summary>결정 · 협업자 · 블로커</summary>
+              <div className="form-grid three-columns">
+                <label>결정
+                  <textarea
+                    placeholder="결정사항"
+                    value={quickCaptureForm.decisions}
+                    onChange={(event) => setQuickCaptureForm({ ...quickCaptureForm, decisions: event.target.value })}
+                  />
+                </label>
+                <label>협업자
+                  <input
+                    placeholder="이름/팀"
+                    value={quickCaptureForm.collaborators}
+                    onChange={(event) => setQuickCaptureForm({ ...quickCaptureForm, collaborators: event.target.value })}
+                  />
+                </label>
+                <label>블로커
+                  <textarea
+                    placeholder="막힌 점"
+                    value={quickCaptureForm.blockers}
+                    onChange={(event) => setQuickCaptureForm({ ...quickCaptureForm, blockers: event.target.value })}
+                  />
+                </label>
+              </div>
+            </details>
             <div className="form-actions">
               <button type="submit" disabled={isSavingQuickCapture}>{isSavingQuickCapture ? "저장 중" : "기록 저장"}</button>
             </div>
           </form>
+        </section>
+
+        <section className="panel attention-panel">
+          <div className="panel-title-row">
+            <h2>지금 할 일</h2>
+            <span className="count-badge">{dashboard.attentionTasks.length}개</span>
+          </div>
+          {dashboard.attentionTasks.length === 0 ? <div className="empty-state">긴급 업무 없음</div> : null}
+          <div className="attention-queue">
+            {dashboard.attentionTasks.slice(0, 8).map((task) => (
+              <Link className="attention-row" href={`/projects/${task.project_id}`} key={task.id}>
+                <span>
+                  <strong>{task.title}</strong>
+                  <small>{task.project_title}</small>
+                </span>
+                <span className={`meta-pill priority-${task.priority}`}>{isDelayed(task) ? "지연" : taskStatusLabels[task.status]}</span>
+                <time>{task.due_date ?? "마감 없음"}</time>
+              </Link>
+            ))}
+          </div>
         </section>
 
         <section className="panel status-graph-panel">

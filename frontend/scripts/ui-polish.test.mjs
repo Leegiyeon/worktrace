@@ -10,6 +10,7 @@ const logoComponent = read("app/components/AppLogo.tsx");
 const dashboardPage = read("app/page.tsx");
 const projectsPage = read("app/projects/page.tsx");
 const detailPage = read("app/projects/[projectId]/page.tsx");
+const careerPanel = read("app/projects/[projectId]/CareerPanel.tsx");
 const reportsPage = read("app/reports/page.tsx");
 const readme = read("../README.md");
 
@@ -20,9 +21,19 @@ test("global logo always links back to dashboard", () => {
   assert.match(globals, /\.app-logo/);
 });
 
-test("top-level work surfaces keep concise guidance subtitles", () => {
-  for (const [name, source] of Object.entries({ dashboardPage, projectsPage, detailPage, reportsPage })) {
-    assert.match(source, /className="page-subtitle"/, `${name} should include a compact page subtitle`);
+test("global header exposes compact product navigation", () => {
+  assert.match(layoutPage, /className="app-header-inner"/);
+  assert.match(layoutPage, /className="app-nav"/);
+  for (const label of ["대시보드", "프로젝트", "리포트"]) {
+    assert.match(layoutPage, new RegExp(label));
+  }
+  assert.match(globals, /\.app-nav/);
+});
+
+test("top-level work surfaces prioritize commands and data over explanatory chrome", () => {
+  for (const source of [dashboardPage, projectsPage, detailPage, reportsPage]) {
+    assert.doesNotMatch(source, /className="section-kicker"/);
+    assert.doesNotMatch(source, /className="page-subtitle"/);
   }
 });
 
@@ -61,12 +72,37 @@ test("project outcomes tab exposes editable evidence-based outcome fields", () =
   assert.match(detailPage, /outcome_type === "quantitative" && !outcomeForm\.metric_value\.trim\(\)/);
 });
 
+test("daily workflow exposes an attention queue and project quick actions", () => {
+  assert.match(dashboardPage, /지금 할 일/);
+  assert.match(dashboardPage, /className="attention-queue"/);
+  assert.match(detailPage, /className="project-quick-actions"/);
+  for (const helper of ["openCreateTask", "openCreateLog", "openCreateOutcome"]) {
+    assert.match(detailPage, new RegExp(`function ${helper}\\(\\)`));
+  }
+  for (const setter of ["setEditingTaskId", "setEditingLogId", "setEditingOutcomeId"]) {
+    assert.match(detailPage, new RegExp(`${setter}\\(null\\)`));
+  }
+  assert.doesNotMatch(detailPage, /WBS 업로드/);
+});
+
+test("career assets can be reviewed, edited, saved, and copied", () => {
+  for (const label of ["수행 요약", "성과 요약", "이력서 문장", "경력기술서", "포트폴리오", "STAR 답변"]) {
+    assert.match(careerPanel, new RegExp(label));
+  }
+  assert.match(careerPanel, /handleSave/);
+  assert.match(careerPanel, /method: "PATCH"/);
+  assert.match(careerPanel, /수정 저장/);
+  assert.match(careerPanel, /Markdown 복사/);
+});
+
 test("UI polish styles preserve accessible alignment and focus affordances", () => {
   assert.match(globals, /\.stacked-form > button/);
   assert.match(globals, /\.form-actions\s*\{/);
   assert.match(globals, /focus-visible/);
   assert.match(globals, /\.task-form-panel/);
   assert.match(globals, /\.data-table tbody tr:hover/);
+  assert.match(dashboardPage, /className="quick-advanced-fields"/);
+  assert.match(globals, /\.quick-advanced-fields/);
 });
 
 test("Apple-inspired frontend polish keeps shared tokens and documented route rhythm", () => {

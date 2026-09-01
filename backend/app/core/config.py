@@ -8,8 +8,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Runtime settings for the skeleton API.
 
-    The MVP stores files locally first. Upload, AI analysis, and authentication
-    are intentionally out of scope for this initial scaffold.
+    The current MVP manages local work evidence and career assets. File ingestion,
+    document analysis, RAG, and authentication remain outside this slice.
     """
 
     app_name: str = "work-support API"

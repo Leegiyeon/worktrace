@@ -150,9 +150,7 @@ export default function WeeklyReportPage() {
       <header className="dashboard-topbar compact-topbar">
         <div>
           <Link className="text-link" href="/">← 대시보드</Link>
-          <span className="section-kicker">Reports</span>
           <h1>자동 리포트</h1>
-          <p className="page-subtitle">저장된 업무 로그와 프로젝트 근거만 사용해 Markdown으로 정리합니다.</p>
         </div>
         <div className="task-meta"><span className="meta-pill status-navy">{periodLabel}</span></div>
       </header>

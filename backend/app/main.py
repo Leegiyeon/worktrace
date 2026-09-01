@@ -17,7 +17,8 @@ app = FastAPI(
     version="0.1.0",
     description=(
         "API for the work-support MVP. "
-        "Weekly reports are generated from stored project/document records; upload, AI analysis, and login are not implemented in this slice."
+        "Projects, work logs, outcomes, career assets, and reports are available; "
+        "file ingestion, document analysis, RAG, and login are not implemented in this slice."
     ),
 )
 
@@ -43,5 +44,5 @@ def root() -> dict[str, str]:
     return {
         "service": settings.app_name,
         "message": "work-support backend is running",
-        "scope": "weekly-report slice: report generation from stored records; upload, AI analysis, and login are not implemented",
+        "scope": "personal work evidence and career asset MVP; file ingestion, document analysis, RAG, and login are not implemented",
     }

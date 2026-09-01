@@ -1,13 +1,12 @@
 # work-support
 
 `work-support`는 개인 업무 기록을 프로젝트 단위로 관리하고,
-진행률·잔여 업무·주간 리포트·향후 경력 자산화까지 연결하기 위한
+진행률·잔여 업무·주간 리포트·경력 자산화까지 연결하기 위한
 업무 자동화 플랫폼입니다.
 
-현재 저장소는 **로컬 MVP(v0.1) 실행 골격 + 프로젝트/업무 관리 +
-주간 리포트 수직 슬라이스** 단계입니다. MacBook에서 README만 보고
-프론트엔드·백엔드·PostgreSQL을 실행하고, 프로젝트를 만든 뒤
-프로젝트별 업무·잔여 업무·진척도를 관리할 수 있게 하는 데 집중합니다.
+현재 저장소는 **개인용 1차 서비스(v0.1)** 단계입니다. MacBook에서
+프론트엔드·백엔드·PostgreSQL을 실행하고, 매일 업무를 기록한 뒤
+프로젝트 진행·성과 근거·경력 문장·리포트까지 연결할 수 있습니다.
 
 ## 현재 구현된 범위
 
@@ -20,11 +19,15 @@
 - 완료 업무 기준 프로젝트 진행률과 잔여 업무 수 표시
 - 대시보드에서 진행 중 프로젝트와 잔여 업무 표시
 - 문서 메타데이터/추출 항목/업무 로그 기반 주간 리포트 생성 API와 화면
+- 대시보드 빠른 업무 기록과 지연·진행·고우선순위 실행 대기열
+- 업무 로그 생성/조회/수정/삭제와 OpenAI 기반 검토용 초안 생성
+- 프로젝트 성과 생성/조회/수정/삭제와 근거 업무 로그 연결
+- 근거 기반 경력 자산 생성, 사용자 편집·저장, Markdown 복사
 - 로컬 개발용 샘플 seed 데이터 생성 스크립트
 - PostgreSQL + pgvector Docker Compose 구성
 - `/health` 헬스체크 API
 
-아직 파일 업로드, AI 문서 분석, RAG, 경력 문장 생성, 로그인, 배포/백업 자동화는 구현하지 않았습니다.
+아직 파일 업로드, AI 문서 분석, RAG, 로그인, 배포/백업 자동화는 구현하지 않았습니다.
 
 ## 기술 스택
 
@@ -33,7 +36,7 @@
 - Database: PostgreSQL + pgvector
 - File Storage: 로컬 저장소 우선(`storage/uploads`), 추후 S3/Supabase Storage 확장 가능
 - Container: Docker Compose
-- AI: OpenAI API 연동 예정, 현재 로컬 실행 필수값 아님
+- AI: OpenAI Responses API 기반 업무 로그 초안, API key가 없으면 나머지 기능은 계속 사용 가능
 
 ## 디렉토리 구조
 
@@ -44,6 +47,7 @@ work-support/
 ├─ infrastructure/postgres/init/ # PostgreSQL 초기화 SQL, pgvector extension
 ├─ storage/uploads/             # 로컬 업로드 저장소 placeholder
 ├─ docs/                        # 설계/운영 문서 확장 위치
+├─ DESIGN.md                    # 제품 정보 구조와 UI/UX 구현 계약
 ├─ docker-compose.yml
 ├─ .env.example                 # Docker Compose용 루트 환경변수 예시
 ├─ AGENTS.md
@@ -502,8 +506,8 @@ docker compose ps
 
 ## 현재 v0.1 범위에서 하지 않은 것
 
-- AI 기능 추가
-- 파일 업로드 추가
+- 문서 업로드·텍스트 추출·AI 문서 분석
+- 문서 청크 검색·임베딩·근거 기반 Q&A
 - 배포 작업
 - 로그인/권한 체계 도입
 

@@ -10,6 +10,16 @@ class CareerAssetGenerateRequest(BaseModel):
     target_role: CareerTargetRole = "PM"
 
 
+class CareerAssetUpdateRequest(BaseModel):
+    work_summary: str | None = None
+    outcome_summary: str | None = None
+    resume_bullets: str | None = None
+    career_description: str | None = None
+    portfolio_description: str | None = None
+    star_answer: str | None = None
+    markdown: str | None = None
+
+
 class CareerAsset(BaseModel):
     id: str
     project_id: str
