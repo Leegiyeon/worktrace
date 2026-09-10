@@ -2,7 +2,7 @@
 
 ## Source of truth
 - Status: Active
-- Last refreshed: 2026-09-01
+- Last refreshed: 2026-09-11
 - Primary product surfaces: dashboard, project list, project detail, reports
 - Evidence reviewed: `AGENTS.md`, `docs/DESIGN_SYSTEM.md`, `README.md`, frontend routes, shared CSS, API contracts, and current UI tests
 
@@ -35,8 +35,8 @@
 
 ## Visual language
 - Color: navy for product identity, neutral surfaces for density, semantic green/amber/red only for state
-- Typography: system sans-serif, compact headings, no viewport-scaled type, letter spacing `0`
-- Spacing/layout rhythm: 8px-based compact rhythm, constrained wide content, stable grid tracks
+- Typography: one shared system sans-serif stack for text and controls, compact headings, no viewport-scaled type, letter spacing `0`
+- Spacing/layout rhythm: 8px-based compact rhythm, fluid page gutters, constrained wide content, stable grid tracks
 - Shape/radius/elevation: 6-8px radius, restrained borders and shadows, no floating section cards
 - Motion: minimal state transitions; respect reduced-motion preferences
 - Imagery/iconography: no decorative imagery; familiar text commands remain acceptable until an icon library is part of the existing stack
@@ -56,8 +56,8 @@
 
 ## Responsive behavior
 - Supported breakpoints/devices: current desktop browsers and mobile widths down to 360px
-- Layout adaptations: dashboard grids collapse to one column; dense tables keep horizontal scrolling; action bars wrap without overlap
-- Touch/hover differences: actions remain visible and usable without hover; controls retain at least the existing control height
+- Layout adaptations: dashboard grids move from the desktop composition to two columns and then one; forms move from three columns to two and then one; auto-fit cards preserve useful minimum widths; dense tables keep horizontal scrolling; action bars wrap without overlap
+- Touch/hover differences: actions remain visible and usable without hover; standard controls use a consistent 40px height and compact table controls use 32px
 
 ## Interaction states
 - Loading: preserve layout and use short status text

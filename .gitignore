@@ -23,6 +23,7 @@ build/
 # Runtime data
 storage/uploads/*
 !storage/uploads/.gitkeep
+backups/
 
 # OS/editor
 .DS_Store

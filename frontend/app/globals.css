@@ -1,5 +1,7 @@
 :root {
   color-scheme: light;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Noto Sans KR", Arial, Helvetica, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   --background: #f5f6f8;
   --foreground: #111827;
   --muted: #647084;
@@ -17,7 +19,9 @@
   --radius-lg: 8px;
   --radius-md: 8px;
   --radius-sm: 6px;
-  --control-height: 38px;
+  --control-height: 40px;
+  --compact-control-height: 32px;
+  --page-gutter: clamp(12px, 2.5vw, 32px);
   --shadow-soft: 0 18px 46px rgba(15, 39, 66, 0.06);
   --shadow-card: 0 10px 26px rgba(15, 39, 66, 0.075);
   --shadow-hairline: inset 0 1px 0 rgba(255, 255, 255, 0.78);
@@ -32,11 +36,18 @@
   box-sizing: border-box;
 }
 
+html {
+  min-width: 320px;
+  font-family: var(--font-sans);
+  font-size: 16px;
+}
+
 body {
+  min-width: 320px;
   margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Noto Sans KR", Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
   font-size: var(--text-base);
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
@@ -70,13 +81,14 @@ body {
 }
 
 .app-header-inner {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  width: min(1320px, calc(100% - 40px));
+  width: 100%;
+  max-width: 1384px;
   margin: 0 auto;
-  padding: 8px 0;
+  padding: 8px var(--page-gutter);
 }
 
 .app-logo {
@@ -149,6 +161,7 @@ body {
 .app-nav {
   display: inline-flex;
   align-items: center;
+  min-width: 0;
   gap: 4px;
   border: 1px solid rgba(217, 224, 234, 0.78);
   border-radius: 999px;
@@ -164,6 +177,7 @@ body {
   font-size: var(--text-sm);
   font-weight: 900;
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .app-nav a:hover,
@@ -173,9 +187,10 @@ body {
 }
 
 .page-shell {
-  width: min(1320px, calc(100% - 40px));
+  width: 100%;
+  max-width: 1384px;
   margin: 0 auto;
-  padding: 22px 0 28px;
+  padding: 22px var(--page-gutter) 28px;
 }
 
 h1,
@@ -214,9 +229,11 @@ input,
 select,
 textarea,
 .primary-link,
+.primary-button,
 .secondary-button,
 .text-link {
-  font: inherit;
+  font-family: var(--font-sans);
+  letter-spacing: 0;
 }
 
 button,
@@ -241,18 +258,52 @@ button:disabled {
   opacity: 0.65;
 }
 
+button {
+  min-height: var(--control-height);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: var(--text-md);
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
 input,
 textarea,
 select {
+  min-width: 0;
   width: 100%;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
   color: var(--foreground);
   min-height: var(--control-height);
-  padding: 8px 10px;
-  font: inherit;
-  font-size: var(--text-md);
+  padding: 9px 11px;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #8a96a8;
+  opacity: 1;
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  border-color: #e3e8ef;
+  background: #f1f4f8;
+  color: #7a8798;
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+select[multiple] {
+  min-height: 112px;
+  padding-block: 6px;
 }
 
 input:focus,
@@ -265,6 +316,11 @@ select:focus {
 textarea {
   min-height: 76px;
   resize: vertical;
+}
+
+label {
+  min-width: 0;
+  line-height: 1.3;
 }
 
 .hero-card,
@@ -366,7 +422,19 @@ textarea {
   color: var(--success);
 }
 
+.data-load-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.data-load-alert .secondary-button {
+  flex: 0 0 auto;
+}
+
 .primary-link,
+.primary-button,
 .secondary-button,
 .report-controls button,
 .stacked-form button,
@@ -375,7 +443,7 @@ textarea {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-height: 34px;
+  min-height: var(--control-height);
   border: 0;
   border-radius: var(--radius-lg);
   background: var(--accent);
@@ -389,6 +457,7 @@ textarea {
 }
 
 .primary-link:active,
+.primary-button:active,
 .secondary-button:active,
 .report-controls button:active,
 .stacked-form button:active,
@@ -397,6 +466,7 @@ textarea {
 }
 
 .primary-link:hover,
+.primary-button:hover,
 .secondary-button:hover,
 .report-controls button:hover,
 .stacked-form button:hover,
@@ -406,6 +476,7 @@ textarea {
 }
 
 .primary-link:hover,
+.primary-button:hover,
 .report-controls button:hover,
 .stacked-form button:hover,
 .form-actions button:hover {
@@ -420,6 +491,12 @@ textarea {
   border: 1px solid var(--border);
   background: #ffffff;
   color: var(--accent);
+}
+
+.primary-button {
+  border: 1px solid transparent;
+  background: var(--accent);
+  color: #ffffff;
 }
 
 .form-actions .secondary-button,
@@ -548,7 +625,7 @@ textarea {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
   gap: 10px;
 }
 
@@ -813,6 +890,8 @@ textarea {
 
 .data-table-wrap {
   overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
   margin-top: 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -848,6 +927,13 @@ textarea {
 
 .data-table td {
   color: #24364b;
+  line-height: 1.4;
+}
+
+.data-table select {
+  min-height: var(--compact-control-height);
+  padding: 4px 28px 4px 8px;
+  font-size: inherit;
 }
 
 .data-table tr:last-child td {
@@ -910,7 +996,7 @@ textarea {
   gap: 5px;
   color: var(--muted);
   font-size: var(--text-sm);
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .markdown-output {
@@ -922,7 +1008,7 @@ textarea {
   background: var(--accent-strong);
   color: #e8eef7;
   padding: 14px;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   font-size: var(--text-md);
   line-height: 1.65;
   white-space: pre-wrap;
@@ -937,7 +1023,7 @@ code {
 /* Projects */
 .stacked-form {
   display: grid;
-  gap: 9px;
+  gap: 12px;
 }
 
 .stacked-form > button {
@@ -947,7 +1033,12 @@ code {
 
 .form-grid {
   display: grid;
-  gap: 10px;
+  gap: 12px;
+  align-items: start;
+}
+
+.form-grid > label {
+  align-content: start;
 }
 
 .form-grid.two-columns {
@@ -978,7 +1069,7 @@ code {
 }
 
 .task-board {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
   align-items: start;
   gap: 10px;
 }
@@ -1030,8 +1121,10 @@ code {
 }
 
 .danger-button {
+  border: 1px solid transparent;
   background: var(--danger);
   color: #ffffff;
+  cursor: pointer;
 }
 
 .form-actions .danger-button,
@@ -1059,43 +1152,33 @@ code {
   font-size: var(--text-sm);
 }
 
-@media (max-width: 1180px) {
-  .summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .task-board {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 1100px) {
   .dashboard-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(280px, 0.82fr) minmax(0, 1.18fr);
     grid-template-areas:
-      "capture"
-      "attention"
-      "progress"
-      "status"
-      "delayed"
-      "recent"
-      "completed";
+      "capture attention"
+      "capture progress"
+      "status delayed"
+      "recent completed";
   }
 }
 
 @media (max-width: 980px) {
-  .task-board,
-  .project-card,
-  .form-grid.two-columns,
-  .form-grid.three-columns,
-  .report-controls {
+  .project-card {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .form-grid.three-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 760px) {
   .app-header-inner {
-    width: min(100% - 20px, 1320px);
+    width: 100%;
+    padding-inline: var(--page-gutter);
   }
 
   .app-nav {
@@ -1115,8 +1198,8 @@ code {
   }
 
   .page-shell {
-    width: min(100% - 20px, 1320px);
-    padding: 20px 0;
+    width: 100%;
+    padding: 18px var(--page-gutter) 24px;
   }
 
   .dashboard-topbar {
@@ -1130,14 +1213,9 @@ code {
   }
 
   .hero-actions > *,
-  .form-actions > *,
-  .stacked-form button[type="submit"] {
-    flex: 1;
-    width: 100%;
-  }
-
-  .summary-grid {
-    grid-template-columns: 1fr;
+  .form-actions > * {
+    flex: 1 1 120px;
+    width: auto;
   }
 
   .progress-row {
@@ -1146,6 +1224,56 @@ code {
 
   .progress-row b {
     text-align: left;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "capture"
+      "attention"
+      "progress"
+      "status"
+      "delayed"
+      "recent"
+      "completed";
+  }
+
+  .report-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .app-logo-text {
+    display: none;
+  }
+
+  .app-nav {
+    flex: 1;
+  }
+
+  .app-nav a {
+    flex: 1;
+    padding-inline: 5px;
+    text-align: center;
+  }
+
+  .form-grid.two-columns,
+  .form-grid.three-columns,
+  .report-controls,
+  .quick-ai-draft,
+  .list-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .stacked-form button[type="submit"],
+  .quick-ai-draft button {
+    width: 100%;
+  }
+
+  .data-load-alert {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 
@@ -1213,7 +1341,7 @@ code {
 }
 
 .view-switcher button {
-  min-height: 32px;
+  min-height: var(--compact-control-height);
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -1269,7 +1397,7 @@ code {
 .quick-capture-form input,
 .quick-capture-form select,
 .quick-capture-form textarea {
-  min-height: 36px;
+  min-height: var(--control-height);
   border-radius: var(--radius-sm);
 }
 
@@ -1412,7 +1540,7 @@ code {
   margin: 0;
   color: var(--foreground);
   white-space: pre-wrap;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Noto Sans KR", Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
   font-size: var(--text-md);
   line-height: 1.5;
 }
@@ -1968,7 +2096,7 @@ code {
   color: #e8eef7;
   padding: 12px;
   white-space: pre-wrap;
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
   font-size: var(--text-md);
   line-height: 1.55;
 }
@@ -2015,6 +2143,7 @@ code {
 
 /* Ralph UI QA cleanup */
 .truncate-cell {
+  width: 220px;
   max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2056,7 +2185,7 @@ code {
 
 .overview-dashboard {
   display: grid;
-  grid-template-columns: minmax(320px, 0.9fr) repeat(2, minmax(260px, 0.7fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   gap: 14px;
   align-items: start;
 }
@@ -2082,13 +2211,12 @@ code {
 }
 
 .board-layout {
-  grid-template-columns: minmax(320px, 0.34fr) minmax(0, 1.66fr);
+  grid-template-columns: 1fr;
   align-items: start;
 }
 
 .board-layout > .panel:first-child {
-  position: sticky;
-  top: 16px;
+  position: static;
 }
 
 .task-form-panel {
@@ -2104,14 +2232,11 @@ code {
   .overview-dashboard {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
 
-  .project-management-grid,
-  .board-layout {
+@media (max-width: 980px) {
+  .project-management-grid {
     grid-template-columns: 1fr;
-  }
-
-  .board-layout > .panel:first-child {
-    position: static;
   }
 }
 

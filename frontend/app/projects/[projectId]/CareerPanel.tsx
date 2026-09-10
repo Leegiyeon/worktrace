@@ -134,12 +134,12 @@ export function CareerPanel({
               {careerTargetRoles.map((role) => <option key={role} value={role}>{role}</option>)}
             </select>
           </label>
-          <button type="button" onClick={() => void onGenerate(targetRole)} disabled={isGeneratingCareer}>
+          <button className="primary-button" type="button" onClick={() => void onGenerate(targetRole)} disabled={isGeneratingCareer}>
             {isGeneratingCareer ? "생성 중" : "새 초안 생성"}
           </button>
         </div>
-        {careerMessage ? <div className="alert success">{careerMessage}</div> : null}
-        {statusMessage ? <div className="alert success" role="status">{statusMessage}</div> : null}
+        {careerMessage ? <div aria-live="polite" className="alert success" role="status">{careerMessage}</div> : null}
+        {statusMessage ? <div aria-live="polite" className="alert success" role="status">{statusMessage}</div> : null}
         {errorMessage ? <div className="alert error" role="alert">{errorMessage}</div> : null}
       </section>
 
@@ -164,7 +164,7 @@ export function CareerPanel({
                 <div className="table-actions">
                   {isEditing ? <button className="secondary-button" type="button" onClick={cancelEdit}>취소</button> : null}
                   {isEditing ? (
-                    <button type="button" onClick={() => void handleSave(asset)} disabled={isSaving}>{isSaving ? "저장 중" : "수정 저장"}</button>
+                    <button className="primary-button" type="button" onClick={() => void handleSave(asset)} disabled={isSaving}>{isSaving ? "저장 중" : "수정 저장"}</button>
                   ) : (
                     <button className="secondary-button" type="button" onClick={() => startEdit(asset)}>편집</button>
                   )}

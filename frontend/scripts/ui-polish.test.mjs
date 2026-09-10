@@ -105,6 +105,57 @@ test("UI polish styles preserve accessible alignment and focus affordances", () 
   assert.match(globals, /\.quick-advanced-fields/);
 });
 
+test("shared typography and control tokens keep form surfaces consistent", () => {
+  for (const token of ["--font-sans", "--font-mono", "--control-height", "--compact-control-height", "--page-gutter"]) {
+    assert.match(globals, new RegExp(token));
+  }
+  assert.match(globals, /input::placeholder/);
+  assert.match(globals, /input:disabled/);
+  assert.match(globals, /select\[multiple\]/);
+  assert.match(globals, /\.data-table select/);
+  assert.doesNotMatch(globals, /font-family:\s*Arial/);
+});
+
+test("responsive grids preserve useful intermediate layouts before stacking", () => {
+  assert.match(globals, /\.summary-grid\s*\{[\s\S]*?repeat\(auto-fit,\s*minmax\(min\(100%,\s*190px\),\s*1fr\)\)/);
+  assert.match(globals, /\.task-board\s*\{[\s\S]*?repeat\(auto-fit,\s*minmax\(min\(100%,\s*230px\),\s*1fr\)\)/);
+  assert.match(globals, /@media \(max-width:\s*1100px\)[\s\S]*?\.dashboard-grid[\s\S]*?"capture attention"/);
+  assert.match(globals, /@media \(max-width:\s*900px\)[\s\S]*?\.form-grid\.three-columns[\s\S]*?repeat\(2/);
+  assert.match(globals, /@media \(max-width:\s*640px\)[\s\S]*?\.form-grid\.two-columns[\s\S]*?grid-template-columns:\s*1fr/);
+  assert.match(globals, /\.board-layout\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
+  assert.match(detailPage, /className="panel task-form-panel"/);
+  assert.match(detailPage, /className="primary-button"[^>]*>업무 추가/);
+  assert.match(careerPanel, /className="primary-button"/);
+});
+
+test("partial data failures stay distinct from valid empty states and can be retried", () => {
+  for (const source of [dashboardPage, detailPage]) {
+    assert.match(source, /loadFailures/);
+    assert.match(source, /className="alert error data-load-alert" role="alert"/);
+    assert.match(source, /다시 시도/);
+  }
+  assert.match(dashboardPage, /tasksUnavailable \? "-"/);
+  assert.match(detailPage, /loadFailures\.includes\("logs"\) \? "-"/);
+  assert.match(globals, /\.data-load-alert/);
+});
+
+test("mutations and copy actions expose accessible success status", () => {
+  for (const source of [dashboardPage, projectsPage, detailPage, careerPanel, reportsPage]) {
+    assert.match(source, /role="status"/);
+    assert.match(source, /aria-live="polite"/);
+  }
+  for (const source of [dashboardPage, projectsPage, detailPage, careerPanel, reportsPage]) {
+    assert.match(source, /role="alert"/);
+  }
+});
+
+test("project tabs and inline task status controls have accessible names", () => {
+  assert.match(detailPage, /aria-controls={`panel-\$\{tab\.id\}`}/);
+  assert.match(detailPage, /role="tabpanel"/);
+  assert.match(detailPage, /aria-labelledby="tab-overview"/);
+  assert.match(detailPage, /aria-label={`\$\{task\.title\} 상태 변경`}/);
+});
+
 test("Apple-inspired frontend polish keeps shared tokens and documented route rhythm", () => {
   for (const token of ["--radius-lg", "--radius-md", "--control-height", "--shadow-soft"]) {
     assert.match(globals, new RegExp(token));

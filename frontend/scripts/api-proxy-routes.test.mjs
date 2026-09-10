@@ -4,6 +4,23 @@ import test from "node:test";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
+test("backend proxy converts connection failures into a stable service error", () => {
+  const backendProxy = read("app/api/backend.ts");
+
+  assert.match(backendProxy, /try\s*\{/);
+  assert.match(backendProxy, /catch\s*\{/);
+  assert.match(backendProxy, /code: "BACKEND_UNAVAILABLE"/);
+  assert.match(backendProxy, /\{ status: 502 \}/);
+});
+
+test("backend proxy preserves bodyless responses for delete and head requests", () => {
+  const backendProxy = read("app/api/backend.ts");
+
+  assert.match(backendProxy, /request\.method === "GET" \|\| request\.method === "HEAD" \? undefined/);
+  assert.match(backendProxy, /request\.method === "HEAD" \|\| response\.status === 204 \? null/);
+  assert.match(backendProxy, /new NextResponse\(body/);
+});
+
 test("work log detail proxy supports backend mutation methods", () => {
   const route = read("app/api/work-logs/[workLogId]/route.ts");
 

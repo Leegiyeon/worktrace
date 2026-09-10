@@ -12,18 +12,32 @@ export async function proxyBackend(request: NextRequest, path: string) {
   const url = new URL(`${BACKEND_URL}${path}`);
   request.nextUrl.searchParams.forEach((value, key) => url.searchParams.set(key, value));
 
-  const response = await fetch(url, {
-    method: request.method,
-    headers: {
-      "Content-Type": request.headers.get("Content-Type") ?? "application/json",
-      "X-Work-Support-Owner-Id": OWNER_ID,
-      "X-Work-Support-Report-Token": REPORT_ACCESS_TOKEN
-    },
-    body: request.method === "GET" ? undefined : await request.text(),
-    cache: "no-store"
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: request.method,
+      headers: {
+        "Content-Type": request.headers.get("Content-Type") ?? "application/json",
+        "X-Work-Support-Owner-Id": OWNER_ID,
+        "X-Work-Support-Report-Token": REPORT_ACCESS_TOKEN
+      },
+      body: request.method === "GET" || request.method === "HEAD" ? undefined : await request.text(),
+      cache: "no-store"
+    });
+  } catch {
+    return NextResponse.json(
+      {
+        detail: {
+          code: "BACKEND_UNAVAILABLE",
+          message: "백엔드에 연결할 수 없습니다. 잠시 후 다시 시도하세요."
+        }
+      },
+      { status: 502 }
+    );
+  }
 
-  return new NextResponse(await response.text(), {
+  const body = request.method === "HEAD" || response.status === 204 ? null : await response.text();
+  return new NextResponse(body, {
     status: response.status,
     headers: {
       "Content-Type": response.headers.get("Content-Type") ?? "application/json"

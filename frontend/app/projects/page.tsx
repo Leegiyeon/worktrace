@@ -20,6 +20,7 @@ export default function ProjectsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
   const dashboard = useMemo(() => {
     const activeProjects = projects.filter((project) => project.status !== "done" && project.status !== "on_hold");
@@ -76,6 +77,7 @@ export default function ProjectsPage() {
 
   async function handleCreateProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setSuccessMessage("");
     if (!form.title.trim()) {
       setErrorMessage("프로젝트명을 입력하세요.");
       return;
@@ -95,6 +97,7 @@ export default function ProjectsPage() {
       }
       setForm(initialForm);
       await loadProjects();
+      setSuccessMessage("프로젝트 생성 완료");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "프로젝트를 저장하지 못했습니다.");
     } finally {
@@ -123,7 +126,8 @@ export default function ProjectsPage() {
         <div className="metric-card"><span>평균 진척</span><strong>{dashboard.averageProgress}%</strong></div>
       </section>
 
-      {errorMessage ? <div className="alert error">{errorMessage}</div> : null}
+      {errorMessage ? <div className="alert error" role="alert">{errorMessage}</div> : null}
+      {successMessage ? <div aria-live="polite" className="alert success" role="status">{successMessage}</div> : null}
 
       <section className="project-management-grid">
         <section className="panel project-create-panel">
@@ -140,7 +144,7 @@ export default function ProjectsPage() {
         <section className="panel project-table-panel">
           <div className="panel-title-row"><h2>프로젝트 목록</h2><span className="count-badge">{projects.length}개</span></div>
           {isLoading ? <div className="empty-state">로딩 중</div> : null}
-          {!isLoading && projects.length === 0 ? <div className="empty-state">프로젝트 없음</div> : null}
+          {!isLoading && !errorMessage && projects.length === 0 ? <div className="empty-state">프로젝트 없음</div> : null}
           {projects.length > 0 ? (
             <div className="data-table-wrap">
               <table className="data-table dense-task-table">

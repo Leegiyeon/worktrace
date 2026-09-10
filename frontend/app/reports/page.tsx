@@ -166,7 +166,7 @@ export default function WeeklyReportPage() {
         <button type="button" onClick={handleGenerateReport} disabled={isLoading}>{isLoading ? "생성 중" : "리포트 생성"}</button>
       </section>
 
-      {errorMessage ? <div className="alert error">{errorMessage}</div> : null}
+      {errorMessage ? <div className="alert error" role="alert">{errorMessage}</div> : null}
 
       {report ? (
         <>
@@ -252,7 +252,7 @@ export default function WeeklyReportPage() {
           </section>
           <section className="panel report-result" aria-label={`${reportPeriodLabel} 자동 리포트 결과`}>
             <div className="report-result-header"><h2>{reportPeriodLabel}</h2><button type="button" className="secondary-button" onClick={handleCopy}>Markdown 복사</button></div>
-            {copyMessage ? <div className="alert success">{copyMessage}</div> : null}
+            {copyMessage ? <div aria-live="polite" className="alert success" role="status">{copyMessage}</div> : null}
             <pre className="markdown-output">{report.markdown}</pre>
           </section>
         </>

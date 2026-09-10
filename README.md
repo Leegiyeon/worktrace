@@ -293,6 +293,41 @@ docker compose down -v
 docker compose up --build
 ```
 
+## 로컬 PostgreSQL 백업 / 복원
+
+백업과 복원은 Docker Compose의 `db` 서비스만 대상으로 합니다. 스크립트는
+컨테이너 안의 `POSTGRES_DB` / `POSTGRES_USER` 환경변수를 사용하므로 DB
+비밀번호를 명령 출력이나 인자로 노출하지 않습니다.
+
+### 백업 생성
+
+```bash
+docker compose up -d db
+scripts/backup_local.sh
+```
+
+백업 파일은 기본적으로 `backups/postgres/work_support_YYYYMMDDTHHMMSSZ.dump`
+형식으로 생성됩니다. `backups/`는 git 추적에서 제외되며, 디렉토리는 `700`,
+백업 파일은 `600` 권한으로 저장됩니다.
+
+다른 위치에 저장해야 할 때만 `BACKUP_DIR`을 지정합니다.
+
+```bash
+BACKUP_DIR=/path/to/private/backups scripts/backup_local.sh
+```
+
+### 백업 복원
+
+복원은 현재 로컬 DB 객체를 백업 내용으로 교체할 수 있으므로 명시적인
+확인 플래그가 필요합니다. 파일이 없거나 읽을 수 없거나 비어 있으면 복원을
+시작하지 않습니다.
+
+```bash
+scripts/restore_local.sh --confirm backups/postgres/work_support_YYYYMMDDTHHMMSSZ.dump
+```
+
+현재 데이터를 보존해야 한다면 복원 전에 새 백업을 먼저 만듭니다.
+
 ## 로컬 테스트용 샘플 데이터 생성
 
 처음 실행 후 실제 사용 흐름을 빠르게 확인하려면 로컬 seed 스크립트를 실행합니다.

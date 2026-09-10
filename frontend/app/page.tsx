@@ -82,12 +82,15 @@ type ProjectTaskBundle = {
   tasks: ProjectTask[];
 };
 
+type DashboardLoadFailure = "tasks" | "logs";
+
 export default function HomePage() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [projectTasks, setProjectTasks] = useState<Record<string, ProjectTask[]>>({});
   const [recentWorkLogs, setRecentWorkLogs] = useState<WorkLogItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [loadFailures, setLoadFailures] = useState<DashboardLoadFailure[]>([]);
   const [quickCaptureForm, setQuickCaptureForm] = useState<QuickCaptureForm>(() => createInitialQuickCaptureForm());
   const [isSavingQuickCapture, setIsSavingQuickCapture] = useState(false);
   const [isDraftingQuickCapture, setIsDraftingQuickCapture] = useState(false);
@@ -109,22 +112,33 @@ export default function HomePage() {
       }
       const nextProjects = (await projectResponse.json()) as ProjectSummary[];
       setProjects(nextProjects);
-      setRecentWorkLogs(logsResponse.ok ? ((await logsResponse.json()) as WorkLogItem[]) : []);
+      const failures: DashboardLoadFailure[] = [];
+      if (logsResponse.ok) {
+        setRecentWorkLogs((await logsResponse.json()) as WorkLogItem[]);
+      } else {
+        failures.push("logs");
+      }
 
       const taskEntries = await Promise.all(
         nextProjects.map(async (project) => {
           const response = await fetch(`/api/projects/${project.id}/tasks`, { cache: "no-store" });
-          if (!response.ok) return [project.id, []] as const;
-          return [project.id, (await response.json()) as ProjectTask[]] as const;
+          if (!response.ok) return { projectId: project.id, tasks: [] as ProjectTask[], failed: true };
+          return { projectId: project.id, tasks: (await response.json()) as ProjectTask[], failed: false };
         })
       );
-      setProjectTasks(Object.fromEntries(taskEntries));
+      if (taskEntries.some((entry) => entry.failed)) failures.push("tasks");
+      setProjectTasks(Object.fromEntries(taskEntries.map((entry) => [entry.projectId, entry.tasks])));
+      setLoadFailures(failures);
     } catch (error) {
+      setLoadFailures([]);
       setErrorMessage(error instanceof Error ? error.message : "대시보드 데이터를 불러오지 못했습니다.");
     } finally {
       setIsLoading(false);
     }
   }, []);
+
+  const tasksUnavailable = loadFailures.includes("tasks");
+  const logsUnavailable = loadFailures.includes("logs");
 
   const dashboard = useMemo(() => {
     const taskBundles: ProjectTaskBundle[] = projects.map((project) => ({
@@ -289,14 +303,27 @@ export default function HomePage() {
         </nav>
       </header>
 
-      {errorMessage ? <div className="alert error">{errorMessage}</div> : null}
-      {quickCaptureMessage ? <div className="alert success">{quickCaptureMessage}</div> : null}
+      {errorMessage ? <div className="alert error" role="alert">{errorMessage}</div> : null}
+      {loadFailures.length > 0 ? (
+        <div className="alert error data-load-alert" role="alert">
+          <span>
+            일부 데이터를 불러오지 못했습니다: {[
+              tasksUnavailable ? "프로젝트 업무" : "",
+              logsUnavailable ? "업무 로그" : ""
+            ].filter(Boolean).join(", ")}.
+          </span>
+          <button className="secondary-button" disabled={isLoading} type="button" onClick={() => void loadDashboard()}>
+            다시 시도
+          </button>
+        </div>
+      ) : null}
+      {quickCaptureMessage ? <div aria-live="polite" className="alert success" role="status">{quickCaptureMessage}</div> : null}
 
       <section className="summary-grid dashboard-metrics" aria-label="핵심 지표">
         <div className="metric-card"><span>진행 프로젝트</span><strong>{dashboard.activeProjects.length}</strong></div>
         <div className="metric-card"><span>잔여 업무</span><strong>{dashboard.remainingTasks}</strong></div>
-        <div className="metric-card"><span>지연 업무</span><strong>{dashboard.delayedTasks.length}</strong></div>
-        <div className="metric-card"><span>이번 주 로그</span><strong>{dashboard.weeklyLogs.length}</strong></div>
+        <div className="metric-card"><span>지연 업무</span><strong>{tasksUnavailable ? "-" : dashboard.delayedTasks.length}</strong></div>
+        <div className="metric-card"><span>이번 주 로그</span><strong>{logsUnavailable ? "-" : dashboard.weeklyLogs.length}</strong></div>
       </section>
 
       <section className="dashboard-grid" aria-label="프로젝트 관리 대시보드">
@@ -442,11 +469,12 @@ export default function HomePage() {
         <section className="panel attention-panel">
           <div className="panel-title-row">
             <h2>지금 할 일</h2>
-            <span className="count-badge">{dashboard.attentionTasks.length}개</span>
+            <span className="count-badge">{tasksUnavailable ? "-" : `${dashboard.attentionTasks.length}개`}</span>
           </div>
-          {dashboard.attentionTasks.length === 0 ? <div className="empty-state">긴급 업무 없음</div> : null}
+          {tasksUnavailable ? <div className="empty-state">업무를 불러오지 못했습니다.</div> : null}
+          {!tasksUnavailable && dashboard.attentionTasks.length === 0 ? <div className="empty-state">긴급 업무 없음</div> : null}
           <div className="attention-queue">
-            {dashboard.attentionTasks.slice(0, 8).map((task) => (
+            {!tasksUnavailable ? dashboard.attentionTasks.slice(0, 8).map((task) => (
               <Link className="attention-row" href={`/projects/${task.project_id}`} key={task.id}>
                 <span>
                   <strong>{task.title}</strong>
@@ -455,16 +483,17 @@ export default function HomePage() {
                 <span className={`meta-pill priority-${task.priority}`}>{isDelayed(task) ? "지연" : taskStatusLabels[task.status]}</span>
                 <time>{task.due_date ?? "마감 없음"}</time>
               </Link>
-            ))}
+            )) : null}
           </div>
         </section>
 
         <section className="panel status-graph-panel">
           <div className="panel-title-row">
             <h2>상태별 업무</h2>
-            <span className="count-badge">{dashboard.totalTasks}개</span>
+            <span className="count-badge">{tasksUnavailable ? "-" : `${dashboard.totalTasks}개`}</span>
           </div>
-          <div className="status-bars">
+          {tasksUnavailable ? <div className="empty-state">업무 상태를 불러오지 못했습니다.</div> : null}
+          {!tasksUnavailable ? <div className="status-bars">
             {dashboard.taskStatusCounts.map((item) => (
               <div className="status-bar-row" key={item.status}>
                 <span>{item.label}</span>
@@ -472,51 +501,54 @@ export default function HomePage() {
                 <strong>{item.count}</strong>
               </div>
             ))}
-          </div>
+          </div> : null}
         </section>
 
         <section className="panel recent-panel">
           <div className="panel-title-row">
             <h2>최근 로그</h2>
-            <span className="count-badge">{recentWorkLogs.length}개</span>
+            <span className="count-badge">{logsUnavailable ? "-" : `${recentWorkLogs.length}개`}</span>
           </div>
-          {recentWorkLogs.length === 0 ? <div className="empty-state">로그 없음</div> : null}
+          {logsUnavailable ? <div className="empty-state">업무 로그를 불러오지 못했습니다.</div> : null}
+          {!logsUnavailable && recentWorkLogs.length === 0 ? <div className="empty-state">로그 없음</div> : null}
           <div className="dense-list">
-            {recentWorkLogs.slice(0, 7).map((log) => (
+            {!logsUnavailable ? recentWorkLogs.slice(0, 7).map((log) => (
               <Link className="dense-list-row" href={log.project_id ? `/projects/${log.project_id}` : "/projects"} key={log.id}>
                 <span>{log.title}</span>
                 <small>{log.project_title || "미지정"} · {workTypeLabels[log.work_type]}</small>
                 <b>{log.log_date}</b>
               </Link>
-            ))}
+            )) : null}
           </div>
         </section>
 
         <section className="panel delayed-panel">
           <div className="panel-title-row">
             <h2>지연 업무</h2>
-            <span className="count-badge danger-count">{dashboard.delayedTasks.length}개</span>
+            <span className="count-badge danger-count">{tasksUnavailable ? "-" : `${dashboard.delayedTasks.length}개`}</span>
           </div>
-          {dashboard.delayedTasks.length === 0 ? <div className="empty-state">지연 없음</div> : null}
+          {tasksUnavailable ? <div className="empty-state">지연 업무를 확인하지 못했습니다.</div> : null}
+          {!tasksUnavailable && dashboard.delayedTasks.length === 0 ? <div className="empty-state">지연 없음</div> : null}
           <div className="dense-list">
-            {dashboard.delayedTasks.slice(0, 6).map((task) => (
+            {!tasksUnavailable ? dashboard.delayedTasks.slice(0, 6).map((task) => (
               <Link className="dense-list-row" href={`/projects/${task.project_id}`} key={task.id}>
                 <span>{task.title}</span>
                 <small>{task.project_title}</small>
                 <b>{task.due_date}</b>
               </Link>
-            ))}
+            )) : null}
           </div>
         </section>
 
         <section className="panel completed-panel">
           <div className="panel-title-row">
             <h2>이번 주 완료</h2>
-            <span className="count-badge">{dashboard.completedThisWeek.length}개</span>
+            <span className="count-badge">{tasksUnavailable ? "-" : `${dashboard.completedThisWeek.length}개`}</span>
           </div>
-          {dashboard.completedThisWeek.length === 0 ? <div className="empty-state">완료 업무 없음</div> : null}
+          {tasksUnavailable ? <div className="empty-state">완료 업무를 확인하지 못했습니다.</div> : null}
+          {!tasksUnavailable && dashboard.completedThisWeek.length === 0 ? <div className="empty-state">완료 업무 없음</div> : null}
           <div className="data-table-wrap">
-            {dashboard.completedThisWeek.length > 0 ? (
+            {!tasksUnavailable && dashboard.completedThisWeek.length > 0 ? (
               <table className="data-table">
                 <thead>
                   <tr>

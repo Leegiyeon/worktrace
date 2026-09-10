@@ -33,6 +33,7 @@ type PageProps = {
 
 type DetailTab = "overview" | "tasks" | "logs" | "outcomes" | "career";
 type TaskViewMode = "board" | "list" | "calendar";
+type DetailLoadFailure = "logs" | "outcomes" | "career";
 
 type TaskForm = {
   title: string;
@@ -300,6 +301,8 @@ export default function ProjectDetailPage({ params }: PageProps) {
   const [isSavingOutcome, setIsSavingOutcome] = useState(false);
   const [isGeneratingCareer, setIsGeneratingCareer] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const [loadFailures, setLoadFailures] = useState<DetailLoadFailure[]>([]);
   const [careerMessage, setCareerMessage] = useState("");
 
   const groupedTasks = useMemo(() => {
@@ -355,10 +358,16 @@ export default function ProjectDetailPage({ params }: PageProps) {
         status: nextProject.status
       });
       setTasks((await tasksResponse.json()) as ProjectTask[]);
-      setWorkLogs(logsResponse.ok ? ((await logsResponse.json()) as WorkLogItem[]) : []);
-      setOutcomes(outcomesResponse.ok ? ((await outcomesResponse.json()) as ProjectOutcome[]) : []);
-      setCareerAssets(careerResponse.ok ? ((await careerResponse.json()) as CareerAsset[]) : []);
+      const failures: DetailLoadFailure[] = [];
+      if (logsResponse.ok) setWorkLogs((await logsResponse.json()) as WorkLogItem[]);
+      else failures.push("logs");
+      if (outcomesResponse.ok) setOutcomes((await outcomesResponse.json()) as ProjectOutcome[]);
+      else failures.push("outcomes");
+      if (careerResponse.ok) setCareerAssets((await careerResponse.json()) as CareerAsset[]);
+      else failures.push("career");
+      setLoadFailures(failures);
     } catch (error) {
+      setLoadFailures([]);
       setErrorMessage(error instanceof Error ? error.message : "프로젝트 상세를 불러오지 못했습니다.");
     } finally {
       setIsLoading(false);
@@ -374,6 +383,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
 
   async function handleSaveProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setSuccessMessage("");
     if (!projectForm.title.trim()) {
       setErrorMessage("프로젝트명을 입력하세요.");
       return;
@@ -381,6 +391,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
 
     setIsSavingProject(true);
     setErrorMessage("");
+    setSuccessMessage("");
     try {
       const response = await fetch(`/api/projects/${projectId}`, {
         method: "PATCH",
@@ -392,6 +403,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
         throw new Error(parseApiErrorMessage(detail));
       }
       await loadProject();
+      setSuccessMessage("프로젝트 수정 완료");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "프로젝트를 저장하지 못했습니다.");
     } finally {
@@ -403,25 +415,32 @@ export default function ProjectDetailPage({ params }: PageProps) {
     if (!window.confirm("프로젝트와 연결된 업무를 삭제할까요?")) return;
 
     setErrorMessage("");
-    const response = await fetch(`/api/projects/${projectId}`, { method: "DELETE" });
-    if (!response.ok) {
-      const detail = await response.json().catch(() => null);
-      setErrorMessage(parseApiErrorMessage(detail));
-      return;
+    setSuccessMessage("");
+    try {
+      const response = await fetch(`/api/projects/${projectId}`, { method: "DELETE" });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(parseApiErrorMessage(detail));
+      }
+      router.push("/projects");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "프로젝트를 삭제하지 못했습니다.");
     }
-    router.push("/projects");
   }
 
   async function handleSaveTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setSuccessMessage("");
     if (!taskForm.title.trim()) {
       setErrorMessage("업무명을 입력하세요.");
       return;
     }
 
     const payload = { ...taskForm, due_date: taskForm.due_date || null };
+    const success = editingTaskId ? "업무 수정 완료" : "업무 추가 완료";
     setIsSavingTask(true);
     setErrorMessage("");
+    setSuccessMessage("");
     try {
       const response = await fetch(
         editingTaskId ? `/api/projects/${projectId}/tasks/${editingTaskId}` : `/api/projects/${projectId}/tasks`,
@@ -438,6 +457,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
       setTaskForm(initialTaskForm);
       setEditingTaskId(null);
       await loadProject();
+      setSuccessMessage(success);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "업무를 저장하지 못했습니다.");
     } finally {
@@ -446,6 +466,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
   }
 
   function startEdit(task: ProjectTask) {
+    setSuccessMessage("");
     setEditingTaskId(task.id);
     setTaskForm({
       title: task.title,
@@ -463,37 +484,49 @@ export default function ProjectDetailPage({ params }: PageProps) {
     setTaskForm(initialTaskForm);
     setTaskViewMode("board");
     setErrorMessage("");
+    setSuccessMessage("");
     setActiveTab("tasks");
   }
 
   async function updateStatus(task: ProjectTask, status: TaskStatus) {
     setErrorMessage("");
-    const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status })
-    });
-    if (!response.ok) {
-      const detail = await response.json().catch(() => null);
-      setErrorMessage(parseApiErrorMessage(detail));
-      return;
+    setSuccessMessage("");
+    try {
+      const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status })
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(parseApiErrorMessage(detail));
+      }
+      await loadProject();
+      setSuccessMessage("업무 상태 변경 완료");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "업무 상태를 변경하지 못했습니다.");
     }
-    await loadProject();
   }
 
   async function deleteTask(task: ProjectTask) {
     setErrorMessage("");
-    const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}`, { method: "DELETE" });
-    if (!response.ok) {
-      const detail = await response.json().catch(() => null);
-      setErrorMessage(parseApiErrorMessage(detail));
-      return;
+    setSuccessMessage("");
+    try {
+      const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(parseApiErrorMessage(detail));
+      }
+      await loadProject();
+      setSuccessMessage("업무 삭제 완료");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "업무를 삭제하지 못했습니다.");
     }
-    await loadProject();
   }
 
   async function handleSaveLog(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setSuccessMessage("");
     if (!logForm.title.trim()) {
       setErrorMessage("로그 제목을 입력하세요.");
       return;
@@ -506,9 +539,11 @@ export default function ProjectDetailPage({ params }: PageProps) {
       duration_minutes: Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : 0,
       project_id: projectId
     };
+    const success = editingLogId ? "업무 로그 수정 완료" : "업무 로그 추가 완료";
 
     setIsSavingLog(true);
     setErrorMessage("");
+    setSuccessMessage("");
     try {
       const response = await fetch(editingLogId ? `/api/work-logs/${editingLogId}` : "/api/work-logs", {
         method: editingLogId ? "PATCH" : "POST",
@@ -522,6 +557,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
       setLogForm(createInitialWorkLogForm());
       setEditingLogId(null);
       await loadProject();
+      setSuccessMessage(success);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "업무 로그를 저장하지 못했습니다.");
     } finally {
@@ -530,6 +566,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
   }
 
   function startEditLog(log: WorkLogItem) {
+    setSuccessMessage("");
     setEditingLogId(log.id);
     setLogForm({
       log_date: log.log_date,
@@ -549,27 +586,34 @@ export default function ProjectDetailPage({ params }: PageProps) {
     setEditingLogId(null);
     setLogForm(createInitialWorkLogForm());
     setErrorMessage("");
+    setSuccessMessage("");
     setActiveTab("logs");
   }
 
   async function deleteLog(log: WorkLogItem) {
     if (!window.confirm("업무 로그를 삭제할까요?")) return;
     setErrorMessage("");
-    const response = await fetch(`/api/work-logs/${log.id}`, { method: "DELETE" });
-    if (!response.ok) {
-      const detail = await response.json().catch(() => null);
-      setErrorMessage(parseApiErrorMessage(detail));
-      return;
+    setSuccessMessage("");
+    try {
+      const response = await fetch(`/api/work-logs/${log.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(parseApiErrorMessage(detail));
+      }
+      if (editingLogId === log.id) {
+        setEditingLogId(null);
+        setLogForm(createInitialWorkLogForm());
+      }
+      await loadProject();
+      setSuccessMessage("업무 로그 삭제 완료");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "업무 로그를 삭제하지 못했습니다.");
     }
-    if (editingLogId === log.id) {
-      setEditingLogId(null);
-      setLogForm(createInitialWorkLogForm());
-    }
-    await loadProject();
   }
 
   async function handleSaveOutcome(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setSuccessMessage("");
     if (!outcomeForm.title.trim()) {
       setErrorMessage("개선 항목을 입력하세요.");
       return;
@@ -591,9 +635,11 @@ export default function ProjectDetailPage({ params }: PageProps) {
       evidence_document_ids: [],
       resume_ready: outcomeForm.resume_ready
     };
+    const success = editingOutcomeId ? "성과 수정 완료" : "성과 추가 완료";
 
     setIsSavingOutcome(true);
     setErrorMessage("");
+    setSuccessMessage("");
     try {
       const response = await fetch(
         editingOutcomeId ? `/api/projects/${projectId}/outcomes/${editingOutcomeId}` : `/api/projects/${projectId}/outcomes`,
@@ -610,6 +656,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
       setOutcomeForm(createInitialOutcomeForm());
       setEditingOutcomeId(null);
       await loadProject();
+      setSuccessMessage(success);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "성과를 저장하지 못했습니다.");
     } finally {
@@ -618,6 +665,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
   }
 
   function startEditOutcome(outcome: ProjectOutcome) {
+    setSuccessMessage("");
     setEditingOutcomeId(outcome.id);
     setOutcomeForm({
       title: outcome.title,
@@ -637,10 +685,12 @@ export default function ProjectDetailPage({ params }: PageProps) {
     setEditingOutcomeId(null);
     setOutcomeForm(createInitialOutcomeForm());
     setErrorMessage("");
+    setSuccessMessage("");
     setActiveTab("outcomes");
   }
 
   function applyOutcomeCandidate(candidate: OutcomeCandidate) {
+    setSuccessMessage("");
     setEditingOutcomeId(null);
     setOutcomeForm({
       title: candidate.title,
@@ -659,22 +709,28 @@ export default function ProjectDetailPage({ params }: PageProps) {
   async function deleteOutcome(outcome: ProjectOutcome) {
     if (!window.confirm("성과를 삭제할까요?")) return;
     setErrorMessage("");
-    const response = await fetch(`/api/projects/${projectId}/outcomes/${outcome.id}`, { method: "DELETE" });
-    if (!response.ok) {
-      const detail = await response.json().catch(() => null);
-      setErrorMessage(parseApiErrorMessage(detail));
-      return;
+    setSuccessMessage("");
+    try {
+      const response = await fetch(`/api/projects/${projectId}/outcomes/${outcome.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(parseApiErrorMessage(detail));
+      }
+      if (editingOutcomeId === outcome.id) {
+        setEditingOutcomeId(null);
+        setOutcomeForm(createInitialOutcomeForm());
+      }
+      await loadProject();
+      setSuccessMessage("성과 삭제 완료");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "성과를 삭제하지 못했습니다.");
     }
-    if (editingOutcomeId === outcome.id) {
-      setEditingOutcomeId(null);
-      setOutcomeForm(createInitialOutcomeForm());
-    }
-    await loadProject();
   }
 
   async function handleGenerateCareerAsset(targetRole: CareerTargetRole) {
     setIsGeneratingCareer(true);
     setErrorMessage("");
+    setSuccessMessage("");
     setCareerMessage("");
     try {
       const response = await fetch(`/api/projects/${projectId}/career-assets/generate`, {
@@ -716,20 +772,31 @@ export default function ProjectDetailPage({ params }: PageProps) {
         ) : null}
       </div>
 
-      {isLoading ? <section className="panel muted">로딩 중</section> : null}
-      {errorMessage ? <div className="alert error">{errorMessage}</div> : null}
+      {isLoading ? <section aria-live="polite" className="panel muted">로딩 중</section> : null}
+      {errorMessage ? <div className="alert error" role="alert">{errorMessage}</div> : null}
+      {loadFailures.length > 0 ? (
+        <div className="alert error data-load-alert" role="alert">
+          <span>
+            일부 데이터를 불러오지 못했습니다: {loadFailures.map((failure) => ({ logs: "업무 로그", outcomes: "성과", career: "경력 자산" })[failure]).join(", ")}.
+          </span>
+          <button className="secondary-button" disabled={isLoading} type="button" onClick={() => void loadProject()}>
+            다시 시도
+          </button>
+        </div>
+      ) : null}
+      {successMessage ? <div aria-live="polite" className="alert success" role="status">{successMessage}</div> : null}
 
       {project ? (
         <>
           <section className="summary-grid dashboard-metrics" aria-label="프로젝트 지표">
             <div className="metric-card"><span>진척도</span><strong>{project.progress_percent}%</strong></div>
             <div className="metric-card"><span>잔여 업무</span><strong>{project.remaining_tasks}</strong></div>
-            <div className="metric-card"><span>로그</span><strong>{workLogs.length}</strong></div>
-            <div className="metric-card"><span>성과</span><strong>{outcomes.length}</strong></div>
+            <div className="metric-card"><span>로그</span><strong>{loadFailures.includes("logs") ? "-" : workLogs.length}</strong></div>
+            <div className="metric-card"><span>성과</span><strong>{loadFailures.includes("outcomes") ? "-" : outcomes.length}</strong></div>
           </section>
 
           <nav className="project-quick-actions" aria-label="프로젝트 빠른 작업">
-            <button type="button" onClick={openCreateTask}>업무 추가</button>
+            <button className="primary-button" type="button" onClick={openCreateTask}>업무 추가</button>
             <button className="secondary-button" type="button" onClick={openCreateLog}>로그 기록</button>
             <button className="secondary-button" type="button" onClick={openCreateOutcome}>성과 정리</button>
             <button className="secondary-button" type="button" onClick={() => setActiveTab("career")}>경력 문장</button>
@@ -738,8 +805,10 @@ export default function ProjectDetailPage({ params }: PageProps) {
           <nav className="tab-nav" aria-label="프로젝트 상세 탭" role="tablist">
             {tabs.map((tab) => (
               <button
+                aria-controls={`panel-${tab.id}`}
                 aria-selected={activeTab === tab.id}
                 className={activeTab === tab.id ? "active" : ""}
+                id={`tab-${tab.id}`}
                 key={tab.id}
                 role="tab"
                 type="button"
@@ -751,7 +820,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
           </nav>
 
           {activeTab === "overview" ? (
-            <section className="overview-dashboard">
+            <section aria-labelledby="tab-overview" className="overview-dashboard" id="panel-overview" role="tabpanel">
               <section className="panel">
                 <div className="panel-title-row"><h2>진척</h2><span className="count-badge">{projectStatusLabels[project.status]}</span></div>
                 <div className="overview-bars">
@@ -768,12 +837,12 @@ export default function ProjectDetailPage({ params }: PageProps) {
                 <DueTaskList empty="지연 없음" tasks={dashboard.delayedTasks.slice(0, 5)} />
               </section>
               <section className="panel">
-                <div className="panel-title-row"><h2>최근 로그</h2><span className="count-badge">{dashboard.recentLogs.length}개</span></div>
-                <MiniLogList logs={dashboard.recentLogs} />
+                <div className="panel-title-row"><h2>최근 로그</h2><span className="count-badge">{loadFailures.includes("logs") ? "-" : `${dashboard.recentLogs.length}개`}</span></div>
+                {loadFailures.includes("logs") ? <div className="empty-state">업무 로그를 불러오지 못했습니다.</div> : <MiniLogList logs={dashboard.recentLogs} />}
               </section>
               <section className="panel">
-                <div className="panel-title-row"><h2>최근 성과</h2><span className="count-badge">{dashboard.latestOutcomes.length}개</span></div>
-                <MiniOutcomeList outcomes={dashboard.latestOutcomes} />
+                <div className="panel-title-row"><h2>최근 성과</h2><span className="count-badge">{loadFailures.includes("outcomes") ? "-" : `${dashboard.latestOutcomes.length}개`}</span></div>
+                {loadFailures.includes("outcomes") ? <div className="empty-state">성과를 불러오지 못했습니다.</div> : <MiniOutcomeList outcomes={dashboard.latestOutcomes} />}
               </section>
               <details className="panel project-settings-panel">
                 <summary>프로젝트 수정</summary>
@@ -788,7 +857,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
           ) : null}
 
           {activeTab === "tasks" ? (
-            <section className="task-workspace">
+            <section aria-labelledby="tab-tasks" className="task-workspace" id="panel-tasks" role="tabpanel">
               <div className="view-switcher" aria-label="업무 보기 방식">
                 {(["board", "list", "calendar"] as TaskViewMode[]).map((mode) => (
                   <button
@@ -823,11 +892,23 @@ export default function ProjectDetailPage({ params }: PageProps) {
             </section>
           ) : null}
 
-          {activeTab === "logs" ? <LogPanel deleteLog={deleteLog} editingLogId={editingLogId} isSavingLog={isSavingLog} logForm={logForm} logs={workLogs} projectTitle={project.title} setLogForm={setLogForm} startEditLog={startEditLog} tasks={tasks} onCancel={() => { setEditingLogId(null); setLogForm(createInitialWorkLogForm()); }} onSubmit={handleSaveLog} /> : null}
+          {activeTab === "logs" ? (
+            <div aria-labelledby="tab-logs" id="panel-logs" role="tabpanel">
+              {loadFailures.includes("logs") ? <section className="panel"><div className="empty-state">업무 로그를 불러오지 못했습니다.</div></section> : <LogPanel deleteLog={deleteLog} editingLogId={editingLogId} isSavingLog={isSavingLog} logForm={logForm} logs={workLogs} projectTitle={project.title} setLogForm={setLogForm} startEditLog={startEditLog} tasks={tasks} onCancel={() => { setEditingLogId(null); setLogForm(createInitialWorkLogForm()); }} onSubmit={handleSaveLog} />}
+            </div>
+          ) : null}
 
-          {activeTab === "outcomes" ? <OutcomePanel deleteOutcome={deleteOutcome} editingOutcomeId={editingOutcomeId} isSavingOutcome={isSavingOutcome} logs={workLogs} outcomeForm={outcomeForm} outcomes={outcomes} quantitativeOutcomes={dashboard.quantitativeOutcomes} resumeReadyOutcomes={dashboard.resumeReadyOutcomes} setOutcomeForm={setOutcomeForm} startEditOutcome={startEditOutcome} tasks={tasks} onApplyCandidate={applyOutcomeCandidate} onCancel={() => { setEditingOutcomeId(null); setOutcomeForm(createInitialOutcomeForm()); }} onSubmit={handleSaveOutcome} /> : null}
+          {activeTab === "outcomes" ? (
+            <div aria-labelledby="tab-outcomes" id="panel-outcomes" role="tabpanel">
+              {loadFailures.includes("outcomes") || loadFailures.includes("logs") ? <section className="panel"><div className="empty-state">성과와 근거 로그를 불러오지 못했습니다.</div></section> : <OutcomePanel deleteOutcome={deleteOutcome} editingOutcomeId={editingOutcomeId} isSavingOutcome={isSavingOutcome} logs={workLogs} outcomeForm={outcomeForm} outcomes={outcomes} quantitativeOutcomes={dashboard.quantitativeOutcomes} resumeReadyOutcomes={dashboard.resumeReadyOutcomes} setOutcomeForm={setOutcomeForm} startEditOutcome={startEditOutcome} tasks={tasks} onApplyCandidate={applyOutcomeCandidate} onCancel={() => { setEditingOutcomeId(null); setOutcomeForm(createInitialOutcomeForm()); }} onSubmit={handleSaveOutcome} />}
+            </div>
+          ) : null}
 
-          {activeTab === "career" ? <CareerPanel projectId={projectId} careerAssets={careerAssets} careerMessage={careerMessage} isGeneratingCareer={isGeneratingCareer} onAssetUpdated={handleCareerAssetUpdated} onGenerate={handleGenerateCareerAsset} /> : null}
+          {activeTab === "career" ? (
+            <div aria-labelledby="tab-career" id="panel-career" role="tabpanel">
+              {loadFailures.includes("career") ? <section className="panel"><div className="empty-state">경력 자산을 불러오지 못했습니다.</div></section> : <CareerPanel projectId={projectId} careerAssets={careerAssets} careerMessage={careerMessage} isGeneratingCareer={isGeneratingCareer} onAssetUpdated={handleCareerAssetUpdated} onGenerate={handleGenerateCareerAsset} />}
+            </div>
+          ) : null}
         </>
       ) : null}
     </main>
@@ -846,7 +927,7 @@ function MiniOutcomeList({ outcomes }: { outcomes: ProjectOutcome[] }) {
 
 function TaskFormPanel({ editingTaskId, isSavingTask, taskForm, setTaskForm, onSubmit, onCancel }: { editingTaskId: string | null; isSavingTask: boolean; taskForm: TaskForm; setTaskForm: (form: TaskForm) => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; onCancel: () => void }) {
   return (
-    <section className="panel">
+    <section className="panel task-form-panel">
       <div className="panel-title-row"><h2>{editingTaskId ? "업무 수정" : "업무 추가"}</h2>{editingTaskId ? <button className="secondary-button" type="button" onClick={onCancel}>취소</button> : <span className="meta-pill">필수: 업무명</span>}</div>
       <form className="stacked-form compact-form" onSubmit={onSubmit}>
         <div className="form-grid three-columns">
@@ -927,7 +1008,7 @@ function TaskTable({ tasks, updateStatus, startEdit }: { tasks: ProjectTask[]; u
             <tbody>{filteredTasks.map((task) => {
               const delayed = isDelayed(task);
               const progress = taskProgress(task);
-              return <tr key={task.id}><td><button className="table-link-button" type="button" onClick={() => startEdit(task)}>{task.title}</button></td><td><select value={task.status} onChange={(event) => void updateStatus(task, event.target.value as TaskStatus)}>{Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td><td><span className={`meta-pill priority-${task.priority}`}>{taskPriorityLabels[task.priority]}</span></td><td><span className="meta-pill status-navy">업무</span></td><td>{delayed ? <span className="meta-pill priority-high">기한 초과</span> : <span className="meta-pill priority-medium">정상</span>}</td><td>{task.created_at.slice(0, 10)}</td><td>{task.due_date ?? "-"}</td><td><div className="table-progress"><div className="mini-progress"><span style={{ width: `${progress}%` }} /></div><b>{progress}%</b></div></td><td>{delayed ? <span className="meta-pill priority-high">지연</span> : <span className="meta-pill priority-medium">정상</span>}</td></tr>;
+              return <tr key={task.id}><td><button className="table-link-button" type="button" onClick={() => startEdit(task)}>{task.title}</button></td><td><select aria-label={`${task.title} 상태 변경`} value={task.status} onChange={(event) => void updateStatus(task, event.target.value as TaskStatus)}>{Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td><td><span className={`meta-pill priority-${task.priority}`}>{taskPriorityLabels[task.priority]}</span></td><td><span className="meta-pill status-navy">업무</span></td><td>{delayed ? <span className="meta-pill priority-high">기한 초과</span> : <span className="meta-pill priority-medium">정상</span>}</td><td>{task.created_at.slice(0, 10)}</td><td>{task.due_date ?? "-"}</td><td><div className="table-progress"><div className="mini-progress"><span style={{ width: `${progress}%` }} /></div><b>{progress}%</b></div></td><td>{delayed ? <span className="meta-pill priority-high">지연</span> : <span className="meta-pill priority-medium">정상</span>}</td></tr>;
             })}</tbody>
           </table>
         </div>
