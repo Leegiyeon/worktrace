@@ -109,7 +109,6 @@ export default function ProjectsPage() {
     <main className="page-shell project-page">
       <header className="dashboard-topbar compact-topbar">
         <div>
-          <Link className="text-link" href="/">← 대시보드</Link>
           <h1>프로젝트</h1>
         </div>
         <div className="task-meta">

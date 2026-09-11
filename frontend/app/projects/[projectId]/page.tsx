@@ -479,15 +479,6 @@ export default function ProjectDetailPage({ params }: PageProps) {
     setActiveTab("tasks");
   }
 
-  function openCreateTask() {
-    setEditingTaskId(null);
-    setTaskForm(initialTaskForm);
-    setTaskViewMode("board");
-    setErrorMessage("");
-    setSuccessMessage("");
-    setActiveTab("tasks");
-  }
-
   async function updateStatus(task: ProjectTask, status: TaskStatus) {
     setErrorMessage("");
     setSuccessMessage("");
@@ -582,14 +573,6 @@ export default function ProjectDetailPage({ params }: PageProps) {
     setActiveTab("logs");
   }
 
-  function openCreateLog() {
-    setEditingLogId(null);
-    setLogForm(createInitialWorkLogForm());
-    setErrorMessage("");
-    setSuccessMessage("");
-    setActiveTab("logs");
-  }
-
   async function deleteLog(log: WorkLogItem) {
     if (!window.confirm("업무 로그를 삭제할까요?")) return;
     setErrorMessage("");
@@ -678,14 +661,6 @@ export default function ProjectDetailPage({ params }: PageProps) {
       evidence_work_log_ids: outcome.evidence_work_log_ids,
       resume_ready: outcome.resume_ready
     });
-    setActiveTab("outcomes");
-  }
-
-  function openCreateOutcome() {
-    setEditingOutcomeId(null);
-    setOutcomeForm(createInitialOutcomeForm());
-    setErrorMessage("");
-    setSuccessMessage("");
     setActiveTab("outcomes");
   }
 
@@ -794,13 +769,6 @@ export default function ProjectDetailPage({ params }: PageProps) {
             <div className="metric-card"><span>로그</span><strong>{loadFailures.includes("logs") ? "-" : workLogs.length}</strong></div>
             <div className="metric-card"><span>성과</span><strong>{loadFailures.includes("outcomes") ? "-" : outcomes.length}</strong></div>
           </section>
-
-          <nav className="project-quick-actions" aria-label="프로젝트 빠른 작업">
-            <button className="primary-button" type="button" onClick={openCreateTask}>업무 추가</button>
-            <button className="secondary-button" type="button" onClick={openCreateLog}>로그 기록</button>
-            <button className="secondary-button" type="button" onClick={openCreateOutcome}>성과 정리</button>
-            <button className="secondary-button" type="button" onClick={() => setActiveTab("career")}>경력 문장</button>
-          </nav>
 
           <nav className="tab-nav" aria-label="프로젝트 상세 탭" role="tablist">
             {tabs.map((tab) => (
@@ -1178,15 +1146,6 @@ function LogPanel({ deleteLog, editingLogId, isSavingLog, logForm, logs, project
         </div>
       </section>
 
-      <section className="panel log-table-panel">
-        <div className="panel-title-row"><h2>로그 표</h2><span className="count-badge">{sortedLogs.length}개</span></div>
-        <div className="data-table-wrap">
-          <table className="data-table dense-task-table">
-            <thead><tr><th>업무 유형</th><th>프로젝트</th><th>수행일</th><th>소요 시간</th><th>결정</th><th>협업자</th><th>다음 액션</th><th>블로커</th><th>관리</th></tr></thead>
-            <tbody>{sortedLogs.map((log) => <tr key={log.id}><td><span className="meta-pill status-navy">{workTypeLabels[log.work_type]}</span></td><td>{log.project_title || projectTitle}</td><td>{log.log_date}</td><td>{log.duration_minutes}분</td><td className="truncate-cell">{log.decisions || "-"}</td><td>{log.collaborators || "-"}</td><td className="truncate-cell">{log.next_actions || "-"}</td><td className="truncate-cell">{log.blockers || "-"}</td><td><div className="table-actions"><button className="table-link-button" type="button" onClick={() => startEditLog(log)}>수정</button><button className="table-link-button danger-link" type="button" onClick={() => void deleteLog(log)}>삭제</button></div></td></tr>)}</tbody>
-          </table>
-        </div>
-      </section>
     </section>
   );
 }
@@ -1325,15 +1284,6 @@ function OutcomePanel({
         ))}
       </section>
 
-      <section className="panel outcome-table-panel">
-        <div className="panel-title-row"><h2>성과 표</h2><span className="count-badge">{outcomes.length}개</span></div>
-        <div className="data-table-wrap">
-          <table className="data-table dense-task-table">
-            <thead><tr><th>개선 항목</th><th>유형</th><th>개선 전</th><th>개선 후</th><th>측정 지표</th><th>수치</th><th>단위</th><th>근거 로그</th><th>이력서</th><th>관리</th></tr></thead>
-            <tbody>{sortedOutcomes.length === 0 ? <tr><td colSpan={10}>성과 없음</td></tr> : sortedOutcomes.map((outcome) => <tr key={outcome.id}><td>{outcome.title}</td><td>{outcomeTypeLabels[outcome.outcome_type]}</td><td className="truncate-cell">{outcome.before_state || "-"}</td><td className="truncate-cell">{outcome.after_state || "-"}</td><td>{outcome.metric_name || "-"}</td><td>{outcome.metric_value ?? "-"}</td><td>{outcome.metric_unit || "-"}</td><td>{outcomeEvidence(outcome, logs)}</td><td>{outcome.resume_ready ? <span className="meta-pill priority-medium">가능</span> : <span className="meta-pill">보류</span>}</td><td><div className="table-actions"><button className="table-link-button" type="button" onClick={() => startEditOutcome(outcome)}>수정</button><button className="table-link-button danger-link" type="button" onClick={() => void deleteOutcome(outcome)}>삭제</button></div></td></tr>)}</tbody>
-          </table>
-        </div>
-      </section>
     </section>
   );
 }

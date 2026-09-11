@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { parseApiErrorMessage } from "./api-error";
@@ -149,7 +148,6 @@ export default function WeeklyReportPage() {
     <main className="page-shell report-page">
       <header className="dashboard-topbar compact-topbar">
         <div>
-          <Link className="text-link" href="/">← 대시보드</Link>
           <h1>자동 리포트</h1>
         </div>
         <div className="task-meta"><span className="meta-pill status-navy">{periodLabel}</span></div>
@@ -256,9 +254,7 @@ export default function WeeklyReportPage() {
             <pre className="markdown-output">{report.markdown}</pre>
           </section>
         </>
-      ) : (
-        <section className="panel muted"><div className="empty-state">리포트 없음</div></section>
-      )}
+      ) : null}
     </main>
   );
 }

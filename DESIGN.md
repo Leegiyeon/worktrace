@@ -26,11 +26,13 @@
 - Navigation state: the current primary route is visually selected and exposed with `aria-current`; the dashboard quick-record anchor remains a command rather than a competing route state
 - Core routes/screens: `/login`, `/`, `/projects`, `/projects/[projectId]`, `/reports`
 - Content hierarchy: urgent work and quick capture first; project status and evidence second; reports and career reuse after records exist
+- Workflow sequence: dashboard capture and attention review -> project task/log maintenance -> evidence-backed outcome confirmation -> career asset generation and editing
 
 ## Design principles
 - Action before summary: overdue, due-soon, and next-action records precede aggregate charts
 - Evidence before generation: career content follows work logs and confirmed outcomes
 - Progressive disclosure: common fields stay visible; secondary evidence fields use compact disclosure controls
+- One action, one place: global navigation owns route movement, project tabs own domain workflows, and each record exposes edit/delete controls in one canonical representation
 - Honest scope: unavailable features do not appear as active navigation or disabled promises
 - Tradeoffs: desktop keeps dense tables and boards; mobile prioritizes capture, status, and horizontal overflow over reduced data fidelity
 
@@ -59,6 +61,7 @@
 ## Responsive behavior
 - Supported breakpoints/devices: current desktop browsers and mobile widths down to 360px
 - Layout adaptations: dashboard grids move from the desktop composition to two columns and then one; forms move from three columns to two and then one; auto-fit cards preserve useful minimum widths; dense tables keep horizontal scrolling; action bars wrap without overlap
+- Variable content: repeated records grow within bounded scroll regions after a practical height, while empty states remain content-sized and board columns do not reserve artificial blank height
 - Mobile planning: the full month grid yields to the deadline list below 760px instead of forcing a 760px-wide pan surface
 - Narrow header behavior: below 760px, primary navigation occupies a dedicated second row; below 480px, actions stack to full width and long navigation remains horizontally scrollable
 - Touch/hover differences: actions remain visible and usable without hover; standard controls use a consistent 40px height and compact table controls use 32px

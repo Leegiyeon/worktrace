@@ -141,6 +141,7 @@ export function CareerPanel({
         {careerMessage ? <div aria-live="polite" className="alert success" role="status">{careerMessage}</div> : null}
         {statusMessage ? <div aria-live="polite" className="alert success" role="status">{statusMessage}</div> : null}
         {errorMessage ? <div className="alert error" role="alert">{errorMessage}</div> : null}
+        {careerAssets.length === 0 ? <div className="empty-state">저장된 경력 자산 없음</div> : null}
       </section>
 
       <section className="summary-grid inline outcome-metrics" aria-label="경력 자산 지표">
@@ -151,7 +152,6 @@ export function CareerPanel({
       </section>
 
       <section className="career-editor-list" aria-label="저장된 경력 자산">
-        {careerAssets.length === 0 ? <section className="panel"><div className="empty-state">경력 자산 없음</div></section> : null}
         {careerAssets.map((asset) => {
           const isEditing = editingId === asset.id && draft;
           return (
@@ -160,15 +160,6 @@ export function CareerPanel({
                 <div>
                   <strong>{asset.generation_method}</strong>
                   <span>{asset.updated_at.slice(0, 10)} · {asset.source_summary}</span>
-                </div>
-                <div className="table-actions">
-                  {isEditing ? <button className="secondary-button" type="button" onClick={cancelEdit}>취소</button> : null}
-                  {isEditing ? (
-                    <button className="primary-button" type="button" onClick={() => void handleSave(asset)} disabled={isSaving}>{isSaving ? "저장 중" : "수정 저장"}</button>
-                  ) : (
-                    <button className="secondary-button" type="button" onClick={() => startEdit(asset)}>편집</button>
-                  )}
-                  <button className="secondary-button" type="button" onClick={() => void handleCopy(asset)}>Markdown 복사</button>
                 </div>
               </div>
 
@@ -188,6 +179,15 @@ export function CareerPanel({
                   <details><summary>전체 결과</summary><pre className="career-copy-output">{careerCopyText(asset) || "경력 문장 없음"}</pre></details>
                 </div>
               )}
+              <div className="form-actions compact-actions career-editor-actions">
+                {isEditing ? <button className="secondary-button" type="button" onClick={cancelEdit}>취소</button> : null}
+                {isEditing ? (
+                  <button className="primary-button" type="button" onClick={() => void handleSave(asset)} disabled={isSaving}>{isSaving ? "저장 중" : "수정 저장"}</button>
+                ) : (
+                  <button className="secondary-button" type="button" onClick={() => startEdit(asset)}>편집</button>
+                )}
+                <button className="secondary-button" type="button" onClick={() => void handleCopy(asset)}>Markdown 복사</button>
+              </div>
             </article>
           );
         })}

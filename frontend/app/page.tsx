@@ -292,15 +292,8 @@ export default function HomePage() {
 
   return (
     <main className="page-shell dashboard-page">
-      <header className="dashboard-topbar">
-        <div>
-          <h1>대시보드</h1>
-        </div>
-        <nav className="hero-actions" aria-label="주요 이동">
-          <Link className="primary-link" href="#quick-capture">업무 기록</Link>
-          <Link className="secondary-button" href="/projects">프로젝트</Link>
-          <Link className="secondary-button" href="/reports">리포트 생성</Link>
-        </nav>
+      <header className="dashboard-topbar compact-page-heading">
+        <h1>대시보드</h1>
       </header>
 
       {errorMessage ? <div className="alert error" role="alert">{errorMessage}</div> : null}

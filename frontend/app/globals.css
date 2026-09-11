@@ -639,6 +639,12 @@ label {
   padding: 14px 16px;
 }
 
+.compact-page-heading {
+  min-height: 56px;
+  align-items: center;
+  padding-block: 10px;
+}
+
 .section-kicker {
   display: block;
   margin-bottom: 4px;
@@ -649,7 +655,6 @@ label {
   text-transform: uppercase;
 }
 
-.hero-actions,
 .report-result-header,
 .panel-title-row {
   display: flex;
@@ -657,10 +662,6 @@ label {
   gap: 8px;
   align-items: center;
   justify-content: space-between;
-}
-
-.hero-actions {
-  align-items: stretch;
 }
 
 .summary-grid {
@@ -1251,12 +1252,10 @@ code {
     flex-direction: column;
   }
 
-  .hero-actions,
   .form-actions {
     width: 100%;
   }
 
-  .hero-actions > *,
   .form-actions > * {
     flex: 1 1 120px;
     width: auto;
@@ -1359,16 +1358,11 @@ code {
   box-shadow: 0 6px 16px rgba(17, 24, 39, 0.07), inset 0 0 0 1px rgba(217, 224, 234, 0.72);
 }
 
-.project-quick-actions,
 .view-switcher {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
-}
-
-.project-quick-actions {
-  justify-content: flex-end;
 }
 
 .task-workspace {
@@ -1508,7 +1502,7 @@ code {
 
 .board-layout .task-column {
   min-width: 0;
-  min-height: 340px;
+  min-height: 0;
   background: linear-gradient(180deg, #fbfcfe 0%, #f5f7fa 100%);
   box-shadow: none;
 }
@@ -1821,6 +1815,13 @@ code {
   margin-top: 12px;
 }
 
+.log-timeline-panel .log-timeline {
+  max-height: 680px;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding-right: 6px;
+}
+
 .log-timeline-item {
   position: relative;
   display: grid;
@@ -1950,12 +1951,20 @@ code {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+  max-height: 760px;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding-right: 6px;
 }
 
 .outcome-candidate-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+  max-height: 560px;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding-right: 6px;
 }
 
 .outcome-candidate-card {
@@ -2172,13 +2181,6 @@ code {
     display: grid;
   }
 
-  .project-quick-actions {
-    justify-content: stretch;
-  }
-
-  .project-quick-actions > * {
-    flex: 1 1 calc(50% - 6px);
-  }
 }
 
 /* Ralph UI QA cleanup */
@@ -2221,6 +2223,8 @@ code {
 
 .project-table-panel .data-table-wrap {
   margin-top: 10px;
+  max-height: 620px;
+  overflow: auto;
 }
 
 .overview-dashboard {
@@ -2470,8 +2474,6 @@ textarea {
 }
 
 .form-actions,
-.hero-actions,
-.project-quick-actions,
 .compact-actions,
 .table-actions {
   min-width: 0;
@@ -2547,13 +2549,16 @@ textarea {
     align-self: flex-start;
   }
 
-  .hero-actions > *,
   .form-actions > *,
-  .project-quick-actions > *,
   .compact-actions > * {
     flex: 1 1 100%;
     width: 100%;
   }
+}
+
+.career-editor-actions {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
 }
 
 @media (prefers-reduced-motion: reduce) {

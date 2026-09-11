@@ -77,17 +77,25 @@ test("project outcomes tab exposes editable evidence-based outcome fields", () =
   assert.match(detailPage, /outcome_type === "quantitative" && !outcomeForm\.metric_value\.trim\(\)/);
 });
 
-test("daily workflow exposes an attention queue and project quick actions", () => {
+test("daily workflow exposes an attention queue and one tab navigation surface", () => {
   assert.match(dashboardPage, /지금 할 일/);
   assert.match(dashboardPage, /className="attention-queue"/);
-  assert.match(detailPage, /className="project-quick-actions"/);
-  for (const helper of ["openCreateTask", "openCreateLog", "openCreateOutcome"]) {
-    assert.match(detailPage, new RegExp(`function ${helper}\\(\\)`));
-  }
-  for (const setter of ["setEditingTaskId", "setEditingLogId", "setEditingOutcomeId"]) {
-    assert.match(detailPage, new RegExp(`${setter}\\(null\\)`));
-  }
+  assert.match(detailPage, /className="tab-nav"/);
   assert.doesNotMatch(detailPage, /WBS 업로드/);
+});
+
+test("page workflows avoid duplicate navigation and record management surfaces", () => {
+  assert.doesNotMatch(dashboardPage, /className="hero-actions"/);
+  assert.doesNotMatch(projectsPage, /← 대시보드/);
+  assert.doesNotMatch(reportsPage, /← 대시보드/);
+  assert.doesNotMatch(detailPage, /className="project-quick-actions"/);
+  assert.doesNotMatch(detailPage, /function openCreate(?:Task|Log|Outcome)/);
+  assert.doesNotMatch(detailPage, /className="panel log-table-panel"/);
+  assert.doesNotMatch(detailPage, /className="panel outcome-table-panel"/);
+  assert.match(detailPage, /className="panel log-timeline-panel"/);
+  assert.match(detailPage, /className="outcome-card-grid"/);
+  assert.doesNotMatch(reportsPage, /리포트 없음/);
+  assert.match(careerPanel, /저장된 경력 자산 없음/);
 });
 
 test("career assets can be reviewed, edited, saved, and copied", () => {
@@ -129,7 +137,7 @@ test("responsive grids preserve useful intermediate layouts before stacking", ()
   assert.match(globals, /@media \(max-width:\s*640px\)[\s\S]*?\.form-grid\.two-columns[\s\S]*?grid-template-columns:\s*1fr/);
   assert.match(globals, /\.board-layout\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
   assert.match(detailPage, /className="panel task-form-panel"/);
-  assert.match(detailPage, /className="primary-button"[^>]*>업무 추가/);
+  assert.match(detailPage, /editingTaskId \? "수정 저장" : "업무 추가"/);
   assert.match(careerPanel, /className="primary-button"/);
 });
 
@@ -140,13 +148,16 @@ test("shared surfaces keep controls, panels, and responsive regions aligned", ()
   assert.match(globals, /input,[\s\S]*?height:\s*var\(--control-height\)/);
   assert.match(globals, /\.summary-grid,[\s\S]*?align-items:\s*stretch/);
   assert.match(globals, /@media \(max-width:\s*760px\)[\s\S]*?\.app-header-inner[\s\S]*?grid-template-columns:\s*auto minmax\(0,\s*1fr\)/);
-  assert.match(globals, /@media \(max-width:\s*480px\)[\s\S]*?\.project-quick-actions > \*/);
+  assert.match(globals, /@media \(max-width:\s*480px\)[\s\S]*?\.compact-actions > \*/);
   assert.match(globals, /@media \(prefers-reduced-motion:\s*reduce\)/);
   assert.match(reportsPage, /className="report-evidence-grid"/);
   assert.match(globals, /\.report-evidence-grid\s*\{[\s\S]*?grid-template-areas/);
   assert.doesNotMatch(reportsPage, /className="dashboard-grid"/);
   assert.match(globals, /\.delayed-panel \.dense-list-row b/);
   assert.match(globals, /@media \(max-width:\s*760px\)[\s\S]*?\.calendar-month-panel[\s\S]*?display:\s*none/);
+  assert.match(globals, /\.log-timeline-panel \.log-timeline[\s\S]*?max-height:\s*680px/);
+  assert.match(globals, /\.outcome-card-grid[\s\S]*?max-height:\s*760px/);
+  assert.match(globals, /\.project-table-panel \.data-table-wrap[\s\S]*?max-height:\s*620px/);
 });
 
 test("partial data failures stay distinct from valid empty states and can be retried", () => {
