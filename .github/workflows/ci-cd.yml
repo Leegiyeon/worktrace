@@ -93,8 +93,13 @@ jobs:
         env:
           ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
           ORACLE_USER: ${{ secrets.ORACLE_USER }}
+          GITHUB_SYNC_TOKEN: ${{ secrets.WORKTRACE_GH_TOKEN }}
+          GITHUB_WEBHOOK_SECRET: ${{ secrets.WORKTRACE_WEBHOOK_SECRET }}
         run: |
-          ssh -i ~/.ssh/oracle "$ORACLE_USER@$ORACLE_HOST" '
+          printf "%s\n%s\n" "$GITHUB_SYNC_TOKEN" "$GITHUB_WEBHOOK_SECRET" | ssh -i ~/.ssh/oracle "$ORACLE_USER@$ORACLE_HOST" '
+            IFS= read -r GITHUB_SYNC_TOKEN
+            IFS= read -r GITHUB_WEBHOOK_SECRET
+            export GITHUB_SYNC_TOKEN GITHUB_WEBHOOK_SECRET
             if [ -d /home/ubuntu/work-support ] && [ ! -e /home/ubuntu/worktrace ]; then
               mv /home/ubuntu/work-support /home/ubuntu/worktrace
             fi

@@ -54,7 +54,7 @@ fi
 for attempt in {1..30}; do
   if curl --fail --silent --show-error http://127.0.0.1:8200/health/ready >/dev/null \
     && curl --fail --silent --show-error http://127.0.0.1:3200/login >/dev/null; then
-    "${COMPOSE[@]}" exec -T backend python scripts/sync_github_data.py --cleanup-samples
+    "${COMPOSE[@]}" exec -T -e GITHUB_SYNC_TOKEN backend python scripts/sync_github_data.py --cleanup-samples
     "${COMPOSE[@]}" ps
     echo "Deployment health checks passed."
     trap - ERR

@@ -39,6 +39,7 @@ test("production compose runs release commands without source mounts or public i
   const compose = read("../docker-compose.prod.yml");
   const frontendDockerfile = read("Dockerfile");
   const deployScript = read("../scripts/deploy_oracle.sh");
+  const workflow = read("../.github/workflows/ci-cd.yml");
 
   assert.match(compose, /APP_ENV:\s*production/);
   assert.match(compose, /WORKTRACE_PASSWORD_HASH/);
@@ -50,7 +51,9 @@ test("production compose runs release commands without source mounts or public i
   assert.match(deployScript, /stop backend frontend db/);
   assert.match(deployScript, /rm -f backend frontend db/);
   assert.match(deployScript, /up -d --build --remove-orphans db backend frontend/);
-  assert.match(deployScript, /sync_github_data\.py --cleanup-samples/);
+  assert.match(deployScript, /exec -T -e GITHUB_SYNC_TOKEN backend python scripts\/sync_github_data\.py --cleanup-samples/);
+  assert.match(workflow, /secrets\.WORKTRACE_GH_TOKEN/);
+  assert.match(workflow, /secrets\.WORKTRACE_WEBHOOK_SECRET/);
   assert.doesNotMatch(deployScript, /down -v/);
   assert.match(compose, /external: true/);
   assert.match(compose, /GITHUB_WEBHOOK_SECRET/);
