@@ -1,0 +1,96 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Test and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -e '.[dev]'
+
+      - name: Test backend
+        working-directory: backend
+        run: pytest -q
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Verify frontend
+        working-directory: frontend
+        run: |
+          npm test
+          npm run typecheck
+          npm run lint
+          npm run build
+
+      - name: Validate production Compose configuration
+        env:
+          POSTGRES_DB: work_support
+          POSTGRES_USER: work_support
+          POSTGRES_PASSWORD: validation-only
+          DEFAULT_OWNER_ID: validation-owner
+          REPORT_ACCESS_TOKEN: validation-only
+          FRONTEND_ORIGIN: https://worktrace.cloud
+          APP_DOMAIN: worktrace.cloud
+          WORK_SUPPORT_PASSWORD_HASH: scrypt$validation$validation
+          WORK_SUPPORT_SESSION_SECRET: validation-only
+          GITHUB_WEBHOOK_SECRET: validation-only
+        run: docker compose -f docker-compose.prod.yml -f docker-compose.oracle.yml config --quiet
+
+  deploy:
+    name: Deploy to Oracle Cloud
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.ORACLE_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          ORACLE_SSH_KEY: ${{ secrets.ORACLE_SSH_KEY }}
+          ORACLE_KNOWN_HOSTS: ${{ secrets.ORACLE_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$ORACLE_SSH_KEY" > ~/.ssh/oracle
+          chmod 600 ~/.ssh/oracle
+          printf '%s\n' "$ORACLE_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy verified revision
+        env:
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+          ORACLE_USER: ${{ secrets.ORACLE_USER }}
+        run: |
+          ssh -i ~/.ssh/oracle "$ORACLE_USER@$ORACLE_HOST" \
+            'cd /home/ubuntu/work-support && git pull --ff-only origin main && bash scripts/deploy_oracle.sh'
