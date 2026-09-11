@@ -49,6 +49,7 @@ test("production compose runs release commands without source mounts or public i
   assert.match(deployScript, /down --remove-orphans/);
   assert.match(deployScript, /stop caddy frontend backend db/);
   assert.match(deployScript, /rm -f caddy frontend backend db/);
+  assert.match(deployScript, /work-support-caddy-1 work-support-caddy/);
   assert.match(deployScript, /up -d --build --remove-orphans db backend frontend caddy/);
   assert.doesNotMatch(deployScript, /down -v/);
   assert.match(compose, /external: true/);
