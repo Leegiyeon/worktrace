@@ -278,9 +278,8 @@ Nginx는 일반 요청을 `http://127.0.0.1:3200`으로 reverse proxy합니다. 
 
 ### GitHub Actions CI/CD
 
-`.github/workflows/ci-cd.yml`은 pull request와 `main` push에서 backend/frontend 검증을 수행합니다. `main` 검증이 성공하면 GitHub `production` environment에 다음 설정이 있을 때 Oracle 서버를 배포합니다.
+`.github/workflows/ci-cd.yml`은 pull request와 `main` push에서 backend/frontend 검증을 수행합니다. `main` 검증이 성공하면 GitHub `production` environment의 SSH secrets를 사용해 Oracle 서버를 배포합니다.
 
-- Environment variable: `ORACLE_DEPLOY_ENABLED=true`
 - Environment secrets: `ORACLE_HOST`, `ORACLE_USER`, `ORACLE_SSH_KEY`, `ORACLE_KNOWN_HOSTS`
 
 운영 애플리케이션 비밀값은 GitHub에 중복 저장하지 않고 Oracle 서버의 `/home/ubuntu/work-support/.env.production`에만 둡니다. `ORACLE_KNOWN_HOSTS`에는 배포 전에 신뢰한 서버의 `ssh-keyscan` 결과를 등록합니다. 배포 스크립트는 원격 `main`을 fast-forward로 갱신하고 컨테이너를 재빌드한 뒤 backend readiness와 frontend login endpoint를 확인합니다.

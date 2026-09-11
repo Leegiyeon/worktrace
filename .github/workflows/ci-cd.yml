@@ -72,7 +72,7 @@ jobs:
   deploy:
     name: Deploy to Oracle Cloud
     needs: test
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.ORACLE_DEPLOY_ENABLED == 'true'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment: production
     steps:
