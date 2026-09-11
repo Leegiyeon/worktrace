@@ -46,8 +46,10 @@ test("production compose runs release commands without source mounts or public i
   assert.match(deployScript, /WORK_SUPPORT_PASSWORD_HASH=.*WORKTRACE_PASSWORD_HASH/);
   assert.match(deployScript, /WORK_SUPPORT_SESSION_SECRET=.*WORKTRACE_SESSION_SECRET/);
   assert.match(deployScript, /LEGACY_COMPOSE/);
-  assert.match(deployScript, /stop backend frontend db/);
-  assert.match(deployScript, /rm -f backend frontend db/);
+  assert.match(deployScript, /down --remove-orphans/);
+  assert.match(deployScript, /stop caddy frontend backend db/);
+  assert.match(deployScript, /rm -f caddy frontend backend db/);
+  assert.match(deployScript, /up -d --build --remove-orphans db backend frontend caddy/);
   assert.doesNotMatch(deployScript, /down -v/);
   assert.match(compose, /external: true/);
   assert.match(compose, /GITHUB_WEBHOOK_SECRET/);
