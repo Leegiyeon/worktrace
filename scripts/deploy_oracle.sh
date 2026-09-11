@@ -23,6 +23,18 @@ test -f .env.production || {
   exit 1
 }
 
+deployment_diagnostics() {
+  local exit_code="$?"
+  trap - ERR
+  set +e
+  echo "Deployment command failed with exit code $exit_code. Collecting diagnostics..." >&2
+  "${COMPOSE[@]}" ps -a
+  "${COMPOSE[@]}" logs --tail=150 db backend frontend
+  exit "$exit_code"
+}
+
+trap deployment_diagnostics ERR
+
 sed -i 's/^WORK_SUPPORT_PASSWORD_HASH=/WORKTRACE_PASSWORD_HASH=/' .env.production
 sed -i 's/^WORK_SUPPORT_SESSION_SECRET=/WORKTRACE_SESSION_SECRET=/' .env.production
 
@@ -42,6 +54,7 @@ for attempt in {1..30}; do
     && curl --fail --silent --show-error http://127.0.0.1:3200/login >/dev/null; then
     "${COMPOSE[@]}" ps
     echo "Deployment health checks passed."
+    trap - ERR
     exit 0
   fi
   sleep 2
