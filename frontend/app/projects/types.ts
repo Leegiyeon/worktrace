@@ -79,6 +79,24 @@ export type CareerAsset = {
   updated_at: string;
 };
 
+export type RepositorySource = {
+  id: string;
+  project_id: string;
+  repository_id: number;
+  full_name: string;
+  default_branch: string;
+  updated_at: string;
+};
+
+export type GitHubCommit = {
+  id: string;
+  sha: string;
+  message: string;
+  author_name: string;
+  committed_at: string | null;
+  url: string;
+};
+
 export const projectStatusLabels: Record<ProjectStatus, string> = {
   idea: "아이디어",
   review: "검토",

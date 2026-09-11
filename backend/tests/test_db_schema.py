@@ -60,3 +60,12 @@ def test_canonical_schema_contains_career_assets() -> None:
     assert "star_answer TEXT NOT NULL DEFAULT ''" in schema
     assert "generation_method TEXT NOT NULL DEFAULT 'template'" in schema
     assert "idx_career_assets_owner_project_updated" in schema
+
+
+def test_canonical_schema_contains_github_evidence_tables() -> None:
+    schema = CANONICAL_SCHEMA.read_text(encoding="utf-8")
+
+    for table in ["repository_sources", "github_deliveries", "github_commits"]:
+        assert f"CREATE TABLE IF NOT EXISTS {table}" in schema
+    assert "delivery_id TEXT NOT NULL UNIQUE" in schema
+    assert "UNIQUE (owner_id, repository_source_id, sha)" in schema

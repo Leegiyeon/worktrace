@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Response, status
 from app.api.errors import http_error
 from app.api.security import require_report_access
 from app.core.config import Settings, get_settings
-from app.schemas.projects import ProjectCreate, ProjectSummary, ProjectTask, ProjectTaskCreate, ProjectTaskUpdate, ProjectUpdate
+from app.schemas.projects import GitHubCommit, ProjectCreate, ProjectSummary, ProjectTask, ProjectTaskCreate, ProjectTaskUpdate, ProjectUpdate, RepositorySource, RepositorySourceCreate
 from app.services.projects import (
     ProjectNotFoundError,
     ProjectTaskNotFoundError,
@@ -17,6 +17,9 @@ from app.services.projects import (
     get_project,
     list_project_tasks,
     list_projects,
+    list_project_commits,
+    get_repository_source,
+    upsert_repository_source,
     update_project,
     update_project_task,
 )
@@ -158,5 +161,48 @@ def delete_task(
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     except ProjectTaskNotFoundError as exc:
         raise _task_not_found() from exc
+    except psycopg.Error as exc:
+        raise http_error(status.HTTP_503_SERVICE_UNAVAILABLE, "DATABASE_UNAVAILABLE", "Database is unavailable.") from exc
+
+
+@router.put("/{project_id}/repository", response_model=RepositorySource)
+def put_repository_source(
+    project_id: UUID,
+    payload: RepositorySourceCreate,
+    owner_id: str = Depends(require_report_access),
+    settings: Settings = Depends(get_settings),
+) -> RepositorySource:
+    try:
+        return upsert_repository_source(settings, owner_id, project_id, payload)
+    except ProjectNotFoundError as exc:
+        raise _project_not_found() from exc
+    except psycopg.Error as exc:
+        raise http_error(status.HTTP_503_SERVICE_UNAVAILABLE, "DATABASE_UNAVAILABLE", "Database is unavailable.") from exc
+
+
+@router.get("/{project_id}/repository", response_model=RepositorySource | None)
+def get_project_repository(
+    project_id: UUID,
+    owner_id: str = Depends(require_report_access),
+    settings: Settings = Depends(get_settings),
+) -> RepositorySource | None:
+    try:
+        return get_repository_source(settings, owner_id, project_id)
+    except ProjectNotFoundError as exc:
+        raise _project_not_found() from exc
+    except psycopg.Error as exc:
+        raise http_error(status.HTTP_503_SERVICE_UNAVAILABLE, "DATABASE_UNAVAILABLE", "Database is unavailable.") from exc
+
+
+@router.get("/{project_id}/commits", response_model=list[GitHubCommit])
+def get_project_commits(
+    project_id: UUID,
+    owner_id: str = Depends(require_report_access),
+    settings: Settings = Depends(get_settings),
+) -> list[GitHubCommit]:
+    try:
+        return list_project_commits(settings, owner_id, project_id)
+    except ProjectNotFoundError as exc:
+        raise _project_not_found() from exc
     except psycopg.Error as exc:
         raise http_error(status.HTTP_503_SERVICE_UNAVAILABLE, "DATABASE_UNAVAILABLE", "Database is unavailable.") from exc

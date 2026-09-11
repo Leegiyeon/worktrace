@@ -72,6 +72,17 @@ function isDelayed(task: ProjectTask) {
   return new Date(`${task.due_date}T23:59:59`) < new Date();
 }
 
+function isManagementIssue(task: ProjectTask) {
+  return task.status !== "done" && (isDelayed(task) || task.status === "on_hold" || task.priority === "high");
+}
+
+function managementIssueLabel(task: ProjectTask) {
+  if (isDelayed(task)) return "기한 초과";
+  if (task.status === "on_hold") return "보류";
+  if (task.priority === "high") return "우선 확인";
+  return "정상";
+}
+
 function isCompletedThisWeek(task: ProjectTask, weekStart: Date) {
   if (task.status !== "done") return false;
   return new Date(task.updated_at) >= weekStart;
@@ -157,7 +168,7 @@ export default function HomePage() {
       .filter((task) => isCompletedThisWeek(task, weekStart))
       .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
     const attentionTasks = allTasks
-      .filter((task) => task.status !== "done" && (isDelayed(task) || task.status === "in_progress" || task.priority === "high"))
+      .filter(isManagementIssue)
       .sort((a, b) => {
         const delayedDifference = Number(isDelayed(b)) - Number(isDelayed(a));
         if (delayedDifference) return delayedDifference;
@@ -314,15 +325,15 @@ export default function HomePage() {
 
       <section className="summary-grid dashboard-metrics" aria-label="핵심 지표">
         <div className="metric-card"><span>진행 프로젝트</span><strong>{dashboard.activeProjects.length}</strong></div>
-        <div className="metric-card"><span>잔여 업무</span><strong>{dashboard.remainingTasks}</strong></div>
-        <div className="metric-card"><span>지연 업무</span><strong>{tasksUnavailable ? "-" : dashboard.delayedTasks.length}</strong></div>
+        <div className="metric-card"><span>잔여 WBS</span><strong>{dashboard.remainingTasks}</strong></div>
+        <div className="metric-card"><span>관리 이슈</span><strong>{tasksUnavailable ? "-" : dashboard.attentionTasks.length}</strong></div>
         <div className="metric-card"><span>이번 주 로그</span><strong>{logsUnavailable ? "-" : dashboard.weeklyLogs.length}</strong></div>
       </section>
 
       <section className="dashboard-grid" aria-label="프로젝트 관리 대시보드">
         <section className="panel dashboard-main-panel">
           <div className="panel-title-row">
-            <h2>프로젝트 진행률</h2>
+            <h2>프로젝트별 WBS 현황</h2>
             <span className="count-badge">{projects.length}개</span>
           </div>
           {isLoading ? <div className="empty-state">로딩 중</div> : null}
@@ -330,28 +341,29 @@ export default function HomePage() {
             <div className="empty-state"><span>프로젝트 없음</span><Link className="primary-link" href="/projects">추가</Link></div>
           ) : null}
           <div className="progress-chart-list">
-            {projects.slice(0, 5).map((project) => (
-              <Link className="progress-row" href={`/projects/${project.id}`} key={project.id}>
+            {projects.slice(0, 5).map((project) => {
+              const issueCount = (projectTasks[project.id] ?? []).filter(isManagementIssue).length;
+              return <Link className="progress-row" href={`/projects/${project.id}`} key={project.id}>
                 <div className="progress-row-head">
                   <strong>{project.title}</strong>
                   <span className="meta-pill status-navy">{projectStatusLabels[project.status]}</span>
                   <span className="meta-pill">잔여 {project.remaining_tasks}</span>
-                  <span className="meta-pill">{project.completed_tasks}/{project.total_tasks}</span>
+                  <span className={`meta-pill ${issueCount > 0 ? "priority-high" : "priority-medium"}`}>이슈 {issueCount}</span>
                 </div>
                 <div className="progress-row-bar" aria-label={`${project.title} 진행률 ${project.progress_percent}%`}>
                   <span style={{ width: `${project.progress_percent}%` }} />
                 </div>
                 <b>{project.progress_percent}%</b>
-              </Link>
-            ))}
+              </Link>;
+            })}
           </div>
         </section>
 
-        <section className="panel quick-capture-panel" id="quick-capture">
-          <div className="panel-title-row">
-            <h2>빠른 기록</h2>
+        <details className="panel quick-capture-panel" id="quick-capture">
+          <summary className="panel-title-row quick-capture-summary">
+            <h2>업무 기록</h2>
             <span className="meta-pill">{draftConfidence === null ? "업무 로그" : `신뢰도 ${Math.round(draftConfidence * 100)}%`}</span>
-          </div>
+          </summary>
           <div className="quick-ai-draft">
             <label>메모
               <textarea
@@ -457,15 +469,15 @@ export default function HomePage() {
               <button type="submit" disabled={isSavingQuickCapture}>{isSavingQuickCapture ? "저장 중" : "기록 저장"}</button>
             </div>
           </form>
-        </section>
+        </details>
 
         <section className="panel attention-panel">
           <div className="panel-title-row">
-            <h2>지금 할 일</h2>
+            <h2>이슈 현황</h2>
             <span className="count-badge">{tasksUnavailable ? "-" : `${dashboard.attentionTasks.length}개`}</span>
           </div>
           {tasksUnavailable ? <div className="empty-state">업무를 불러오지 못했습니다.</div> : null}
-          {!tasksUnavailable && dashboard.attentionTasks.length === 0 ? <div className="empty-state">긴급 업무 없음</div> : null}
+          {!tasksUnavailable && dashboard.attentionTasks.length === 0 ? <div className="empty-state">관리 이슈 없음</div> : null}
           <div className="attention-queue">
             {!tasksUnavailable ? dashboard.attentionTasks.slice(0, 8).map((task) => (
               <Link className="attention-row" href={`/projects/${task.project_id}`} key={task.id}>
@@ -473,7 +485,7 @@ export default function HomePage() {
                   <strong>{task.title}</strong>
                   <small>{task.project_title}</small>
                 </span>
-                <span className={`meta-pill priority-${task.priority}`}>{isDelayed(task) ? "지연" : taskStatusLabels[task.status]}</span>
+                <span className={`meta-pill priority-${task.priority}`}>{managementIssueLabel(task)}</span>
                 <time>{task.due_date ?? "마감 없음"}</time>
               </Link>
             )) : null}
@@ -482,7 +494,7 @@ export default function HomePage() {
 
         <section className="panel status-graph-panel">
           <div className="panel-title-row">
-            <h2>상태별 업무</h2>
+            <h2>WBS 상태 분포</h2>
             <span className="count-badge">{tasksUnavailable ? "-" : `${dashboard.totalTasks}개`}</span>
           </div>
           {tasksUnavailable ? <div className="empty-state">업무 상태를 불러오지 못했습니다.</div> : null}

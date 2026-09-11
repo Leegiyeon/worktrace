@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 CareerTargetRole = Literal["IT기획", "PM", "AI서비스기획", "Backend", "DevOps"]
@@ -34,3 +34,12 @@ class CareerAsset(BaseModel):
     generation_method: str = "template"
     created_at: str
     updated_at: str
+
+
+class CareerAssetAiContent(BaseModel):
+    work_summary: str = Field(..., min_length=1)
+    outcome_summary: str = Field(..., min_length=1)
+    resume_bullets: str = Field(..., min_length=1)
+    career_description: str = Field(..., min_length=1)
+    portfolio_description: str = Field(..., min_length=1)
+    star_answer: str = Field(..., min_length=1)

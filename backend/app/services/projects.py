@@ -9,6 +9,9 @@ from app.schemas.projects import (
     ProjectTaskCreate,
     ProjectTaskUpdate,
     ProjectUpdate,
+    RepositorySource,
+    RepositorySourceCreate,
+    GitHubCommit,
 )
 
 
@@ -18,6 +21,55 @@ class ProjectNotFoundError(Exception):
 
 class ProjectTaskNotFoundError(Exception):
     pass
+
+
+def upsert_repository_source(settings: Settings, owner_id: str, project_id: UUID, payload: RepositorySourceCreate) -> RepositorySource:
+    _ensure_project_exists(settings, owner_id, project_id)
+    with connect(settings) as connection:
+        row = connection.execute(
+            """
+            INSERT INTO repository_sources (owner_id, project_id, repository_id, full_name, default_branch)
+            VALUES (%(owner_id)s, %(project_id)s, %(repository_id)s, %(full_name)s, %(default_branch)s)
+            ON CONFLICT (owner_id, provider, repository_id) DO UPDATE
+            SET project_id = EXCLUDED.project_id,
+                full_name = EXCLUDED.full_name,
+                default_branch = EXCLUDED.default_branch,
+                updated_at = now()
+            RETURNING id::text, project_id::text, repository_id, full_name, default_branch, updated_at::text
+            """,
+            {"owner_id": owner_id, "project_id": project_id, **payload.model_dump()},
+        ).fetchone()
+    return RepositorySource(**row)
+
+
+def get_repository_source(settings: Settings, owner_id: str, project_id: UUID) -> RepositorySource | None:
+    _ensure_project_exists(settings, owner_id, project_id)
+    with connect(settings) as connection:
+        row = connection.execute(
+            """
+            SELECT id::text, project_id::text, repository_id, full_name, default_branch, updated_at::text
+            FROM repository_sources
+            WHERE owner_id = %(owner_id)s AND project_id = %(project_id)s AND provider = 'github'
+            """,
+            {"owner_id": owner_id, "project_id": project_id},
+        ).fetchone()
+    return RepositorySource(**row) if row else None
+
+
+def list_project_commits(settings: Settings, owner_id: str, project_id: UUID) -> list[GitHubCommit]:
+    _ensure_project_exists(settings, owner_id, project_id)
+    with connect(settings) as connection:
+        rows = connection.execute(
+            """
+            SELECT id::text, sha, message, author_name, committed_at::text, url
+            FROM github_commits
+            WHERE owner_id = %(owner_id)s AND project_id = %(project_id)s
+            ORDER BY committed_at DESC NULLS LAST, created_at DESC
+            LIMIT 200
+            """,
+            {"owner_id": owner_id, "project_id": project_id},
+        ).fetchall()
+    return [GitHubCommit(**row) for row in rows]
 
 
 def list_projects(settings: Settings, owner_id: str) -> list[ProjectSummary]:

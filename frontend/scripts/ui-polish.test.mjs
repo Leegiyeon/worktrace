@@ -27,9 +27,12 @@ test("global header exposes compact product navigation", () => {
   assert.match(layoutPage, /<AppHeader/);
   assert.match(headerComponent, /className="app-header-inner"/);
   assert.match(headerComponent, /className="app-nav"/);
-  for (const label of ["대시보드", "프로젝트", "리포트"]) {
+  for (const label of ["프로젝트", "리포트"]) {
     assert.match(headerComponent, new RegExp(label));
   }
+  assert.doesNotMatch(headerComponent, />대시보드<\/Link>/);
+  assert.doesNotMatch(headerComponent, />기록<\/Link>/);
+  assert.match(headerComponent, /className="app-header-actions"/);
   assert.match(globals, /\.app-nav/);
   assert.match(headerComponent, /aria-current/);
   assert.match(globals, /\.app-nav a\[aria-current="page"\]/);
@@ -45,7 +48,7 @@ test("top-level work surfaces prioritize commands and data over explanatory chro
 test("create and edit flows use explicit action labels", () => {
   assert.match(projectsPage, /프로젝트 생성/);
   assert.match(projectsPage, /프로젝트 추가/);
-  assert.match(detailPage, /업무 추가/);
+  assert.match(detailPage, /WBS 항목 추가/);
   assert.match(detailPage, /로그 추가/);
   assert.match(detailPage, /로그 수정/);
   assert.match(detailPage, /성과 추가/);
@@ -78,10 +81,14 @@ test("project outcomes tab exposes editable evidence-based outcome fields", () =
 });
 
 test("daily workflow exposes an attention queue and one tab navigation surface", () => {
-  assert.match(dashboardPage, /지금 할 일/);
+  assert.match(dashboardPage, /이슈 현황/);
+  assert.match(dashboardPage, /프로젝트별 WBS 현황/);
   assert.match(dashboardPage, /className="attention-queue"/);
   assert.match(detailPage, /className="tab-nav"/);
   assert.doesNotMatch(detailPage, /WBS 업로드/);
+  assert.match(detailPage, /WBS · 이슈/);
+  assert.doesNotMatch(detailPage, /<th>분류<\/th>/);
+  assert.doesNotMatch(detailPage, /<th>지연 여부<\/th>/);
 });
 
 test("page workflows avoid duplicate navigation and record management surfaces", () => {
@@ -132,12 +139,12 @@ test("shared typography and control tokens keep form surfaces consistent", () =>
 test("responsive grids preserve useful intermediate layouts before stacking", () => {
   assert.match(globals, /\.summary-grid\s*\{[\s\S]*?repeat\(auto-fit,\s*minmax\(min\(100%,\s*190px\),\s*1fr\)\)/);
   assert.match(globals, /\.task-board\s*\{[\s\S]*?repeat\(auto-fit,\s*minmax\(min\(100%,\s*230px\),\s*1fr\)\)/);
-  assert.match(globals, /@media \(max-width:\s*1100px\)[\s\S]*?\.dashboard-grid[\s\S]*?"capture attention"/);
+  assert.match(globals, /@media \(max-width:\s*1100px\)[\s\S]*?\.dashboard-grid[\s\S]*?"progress attention"/);
   assert.match(globals, /@media \(max-width:\s*900px\)[\s\S]*?\.form-grid\.three-columns[\s\S]*?repeat\(2/);
   assert.match(globals, /@media \(max-width:\s*640px\)[\s\S]*?\.form-grid\.two-columns[\s\S]*?grid-template-columns:\s*1fr/);
   assert.match(globals, /\.board-layout\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
   assert.match(detailPage, /className="panel task-form-panel"/);
-  assert.match(detailPage, /editingTaskId \? "수정 저장" : "업무 추가"/);
+  assert.match(detailPage, /editingTaskId \? "수정 저장" : "WBS 항목 추가"/);
   assert.match(careerPanel, /className="primary-button"/);
 });
 
@@ -147,7 +154,7 @@ test("shared surfaces keep controls, panels, and responsive regions aligned", ()
   assert.match(globals, /button,[\s\S]*?height:\s*var\(--control-height\)/);
   assert.match(globals, /input,[\s\S]*?height:\s*var\(--control-height\)/);
   assert.match(globals, /\.summary-grid,[\s\S]*?align-items:\s*stretch/);
-  assert.match(globals, /@media \(max-width:\s*760px\)[\s\S]*?\.app-header-inner[\s\S]*?grid-template-columns:\s*auto minmax\(0,\s*1fr\)/);
+  assert.match(globals, /@media \(max-width:\s*760px\)[\s\S]*?\.app-header-inner[\s\S]*?display:\s*flex/);
   assert.match(globals, /@media \(max-width:\s*480px\)[\s\S]*?\.compact-actions > \*/);
   assert.match(globals, /@media \(prefers-reduced-motion:\s*reduce\)/);
   assert.match(reportsPage, /className="report-evidence-grid"/);

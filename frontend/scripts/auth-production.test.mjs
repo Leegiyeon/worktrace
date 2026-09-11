@@ -42,6 +42,7 @@ test("production compose runs release commands without source mounts or public i
   assert.match(compose, /APP_ENV:\s*production/);
   assert.match(compose, /WORK_SUPPORT_PASSWORD_HASH/);
   assert.match(compose, /WORK_SUPPORT_SESSION_SECRET/);
+  assert.match(compose, /GITHUB_WEBHOOK_SECRET/);
   assert.doesNotMatch(compose, /--reload|npm run dev|\.\/frontend\/app:\/app\/app/);
   assert.doesNotMatch(compose, /5432:5432|8000:8000|127\.0\.0\.1:\$\{FRONTEND_PORT/);
   assert.match(compose, /APP_DOMAIN:\s*\$\{APP_DOMAIN:\?Set APP_DOMAIN\}/);
@@ -59,6 +60,7 @@ test("Caddy terminates HTTPS and applies baseline response controls", () => {
 
   assert.match(caddyfile, /\{\$APP_DOMAIN\}/);
   assert.match(caddyfile, /reverse_proxy frontend:3000/);
+  assert.match(caddyfile, /handle \/webhooks\/github[\s\S]*reverse_proxy backend:8000/);
   assert.match(caddyfile, /Strict-Transport-Security/);
   assert.match(caddyfile, /X-Content-Type-Options "nosniff"/);
   assert.match(caddyfile, /max_size 10MB/);

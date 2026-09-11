@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     work_support_schema_sql_path: Optional[str] = None
     openai_api_key: Optional[str] = None
     openai_model: str = "gpt-4o-mini"
+    github_webhook_secret: Optional[str] = None
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -68,5 +69,7 @@ def validate_runtime_settings(settings: Settings) -> None:
         errors.append("DEFAULT_OWNER_ID")
     if not settings.frontend_origin.startswith("https://"):
         errors.append("FRONTEND_ORIGIN must use https")
+    if not settings.github_webhook_secret:
+        errors.append("GITHUB_WEBHOOK_SECRET")
     if errors:
         raise RuntimeError("Invalid production settings: " + ", ".join(errors))

@@ -91,6 +91,14 @@ body {
   padding: 8px var(--page-gutter);
 }
 
+.app-header-actions {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin-left: auto;
+  gap: 8px;
+}
+
 .app-logo {
   display: inline-flex;
   align-items: center;
@@ -710,10 +718,10 @@ label {
   display: grid;
   grid-template-columns: minmax(0, 1.12fr) minmax(260px, 0.78fr) minmax(300px, 0.88fr);
   grid-template-areas:
-    "capture attention attention"
-    "capture progress progress"
+    "progress progress attention"
     "status delayed recent"
-    "completed completed recent";
+    "completed completed recent"
+    "capture capture capture";
   gap: 12px;
   align-items: stretch;
 }
@@ -736,6 +744,18 @@ label {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 251, 255, 0.88)),
     var(--surface);
+}
+
+.quick-capture-summary {
+  cursor: pointer;
+}
+
+.quick-capture-panel:not([open]) {
+  align-self: start;
+}
+
+.quick-capture-panel[open] .quick-capture-summary {
+  margin-bottom: 14px;
 }
 
 .attention-panel {
@@ -1201,10 +1221,10 @@ code {
   .dashboard-grid {
     grid-template-columns: minmax(280px, 0.82fr) minmax(0, 1.18fr);
     grid-template-areas:
-      "capture attention"
-      "capture progress"
+      "progress attention"
       "status delayed"
-      "recent completed";
+      "recent completed"
+      "capture capture";
   }
 }
 
@@ -1272,13 +1292,13 @@ code {
   .dashboard-grid {
     grid-template-columns: 1fr;
     grid-template-areas:
-      "capture"
-      "attention"
       "progress"
+      "attention"
       "status"
       "delayed"
       "recent"
-      "completed";
+      "completed"
+      "capture";
   }
 
   .report-controls {
@@ -1291,14 +1311,8 @@ code {
     display: none;
   }
 
-  .app-nav {
-    flex: 1;
-  }
-
   .app-nav a {
-    flex: 1;
-    padding-inline: 5px;
-    text-align: center;
+    padding-inline: 8px;
   }
 
   .form-grid.two-columns,
@@ -2481,21 +2495,22 @@ textarea {
 
 @media (max-width: 760px) {
   .app-header-inner {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 8px 12px;
+    display: flex;
+    gap: 10px;
+  }
+
+  .app-header-actions {
+    gap: 4px;
   }
 
   .app-nav {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    width: 100%;
-    justify-content: stretch;
+    width: auto;
+    justify-content: flex-end;
   }
 
   .app-nav a,
   .header-logout {
-    flex: 1 1 0;
+    flex: 0 0 auto;
     min-width: max-content;
     text-align: center;
   }
@@ -2526,7 +2541,7 @@ textarea {
   }
 
   .app-nav {
-    justify-content: flex-start;
+    justify-content: flex-end;
     overflow-x: auto;
     scrollbar-width: thin;
   }

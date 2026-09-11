@@ -21,6 +21,7 @@ def test_production_accepts_explicit_secure_settings() -> None:
         default_owner_id="personal-owner-42",
         report_access_token="internal-token-42",
         frontend_origin="https://work.example.com",
+        github_webhook_secret="github-secret-42",
     )
 
     validate_runtime_settings(settings)

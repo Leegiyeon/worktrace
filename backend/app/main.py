@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.ai import router as ai_router
 from app.api.career_assets import router as career_assets_router
 from app.api.health import router as health_router
+from app.api.github_webhooks import router as github_webhooks_router
 from app.api.outcomes import router as outcomes_router
 from app.api.projects import router as projects_router
 from app.api.reports import router as reports_router
@@ -27,11 +28,12 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.frontend_origin],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
 app.include_router(health_router)
+app.include_router(github_webhooks_router)
 app.include_router(ai_router)
 app.include_router(projects_router)
 app.include_router(career_assets_router)

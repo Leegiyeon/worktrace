@@ -12,9 +12,9 @@
 - Avoid: marketing copy, decorative hero layouts, disabled feature promises, and card-only composition
 
 ## Product goals
-- Goals: capture daily work quickly, expose the next action, preserve project evidence, and turn confirmed outcomes into reusable career material
+- Goals: automatically capture main-branch repository activity, expose project WBS and issues, preserve supporting evidence, and turn confirmed outcomes into reusable career material
 - Non-goals: multi-user SaaS, public sharing, OCR, document RAG, and advanced WBS import in the first usable service
-- Success signals: a user can record work, update tasks, confirm outcomes, edit career text, and generate a weekly report without leaving the core workflow
+- Success signals: a main-branch push becomes traceable project evidence, the user can manage derived WBS/issues, and AI can generate an editable career record from commits, logs, tasks, and confirmed outcomes
 
 ## Personas and jobs
 - Primary personas: one knowledge worker managing personal project evidence and career history
@@ -22,11 +22,11 @@
 - Key contexts of use: daily desktop review, quick mobile capture, weekly reporting, and periodic resume preparation
 
 ## Information architecture
-- Primary navigation: dashboard, projects, reports
-- Navigation state: the current primary route is visually selected and exposed with `aria-current`; the dashboard quick-record anchor remains a command rather than a competing route state
+- Primary navigation: the logo owns dashboard navigation; the header exposes only projects and reports
+- Navigation state: project and report routes expose `aria-current`; work recording stays as a collapsed dashboard utility instead of a competing global route
 - Core routes/screens: `/login`, `/`, `/projects`, `/projects/[projectId]`, `/reports`
-- Content hierarchy: urgent work and quick capture first; project status and evidence second; reports and career reuse after records exist
-- Workflow sequence: dashboard capture and attention review -> project task/log maintenance -> evidence-backed outcome confirmation -> career asset generation and editing
+- Content hierarchy: project-level WBS progress and management issues first; evidence activity and manual capture second; reports and career reuse after records exist
+- Workflow sequence: GitHub main push -> verified commit evidence ingestion -> project/WBS and issue review -> evidence-backed outcome confirmation -> AI career asset generation and editing
 
 ## Design principles
 - Action before summary: overdue, due-soon, and next-action records precede aggregate charts
@@ -46,7 +46,7 @@
 
 ## Components
 - Existing components to reuse: metric rows, dense lists, data tables, progress bars, badges, forms, tab navigation, and alerts
-- New/changed components: single-user login, authenticated app header, attention queue, project quick actions, editable career asset workspace
+- New/changed components: single-user login, compact authenticated header, project WBS/issue overview, commit evidence activity, and editable career asset workspace
 - Variants and states: normal, overdue, due-soon, loading, empty, error, success, editing, saving, and copied
 - Token/component ownership: CSS tokens and shared primitives remain in `frontend/app/globals.css`; domain interactions stay with their route/component
 - Alignment contract: standard inputs and command buttons are 40px high, table and navigation controls are 32px high, panel headers reserve one 40px row, and repeated items in the same grid row stretch to equal height
@@ -63,7 +63,7 @@
 - Layout adaptations: dashboard grids move from the desktop composition to two columns and then one; forms move from three columns to two and then one; auto-fit cards preserve useful minimum widths; dense tables keep horizontal scrolling; action bars wrap without overlap
 - Variable content: repeated records grow within bounded scroll regions after a practical height, while empty states remain content-sized and board columns do not reserve artificial blank height
 - Mobile planning: the full month grid yields to the deadline list below 760px instead of forcing a 760px-wide pan surface
-- Narrow header behavior: below 760px, primary navigation occupies a dedicated second row; below 480px, actions stack to full width and long navigation remains horizontally scrollable
+- Narrow header behavior: the logo and two primary routes remain on one compact row; product text hides before route controls need to wrap
 - Touch/hover differences: actions remain visible and usable without hover; standard controls use a consistent 40px height and compact table controls use 32px
 
 ## Interaction states
@@ -76,7 +76,7 @@
 
 ## Content voice
 - Tone: concise Korean operational language
-- Terminology: use 프로젝트, 업무, 업무 로그, 성과, 근거, 경력 자산 consistently
+- Terminology: use 프로젝트, WBS, 이슈, 커밋 근거, 업무 로그, 성과, 경력 자산 consistently
 - Microcopy rules: command labels describe the result; omit English kickers, repeated subtitles, and explanatory filler
 
 ## Implementation constraints

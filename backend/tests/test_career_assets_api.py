@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from app.api import career_assets
 from app.core.config import Settings
 from app.main import app
-from app.schemas.career_assets import CareerAsset, CareerAssetUpdateRequest
+from app.schemas.career_assets import CareerAsset, CareerAssetAiContent, CareerAssetUpdateRequest
 from app.services import career_assets as career_asset_service
 from app.services.career_assets import CareerAssetNotFoundError, CareerAssetProjectNotFoundError
 
@@ -285,3 +285,45 @@ def test_template_generation_does_not_fabricate_metric_values():
     assert "%" not in content["resume_bullets"]
     assert "사용자가 확인한 성과만 저장" in content["markdown"]
     assert content["generation_method"] == "template:PM"
+
+
+def test_ai_generation_receives_all_evidence_without_real_api(monkeypatch):
+    calls = []
+
+    class FakeResponses:
+        def parse(self, **kwargs):
+            calls.append(kwargs)
+            return type("Response", (), {"output_parsed": CareerAssetAiContent(
+                work_summary="커밋과 업무 로그를 함께 검토했다.",
+                outcome_summary="확정 성과만 반영했다.",
+                resume_bullets="- main 커밋 근거와 WBS 이력을 연결해 업무 추적 체계를 구축",
+                career_description="경력기술서",
+                portfolio_description="포트폴리오",
+                star_answer="Situation: 근거 분산\nTask: 통합\nAction: 연결\nResult: 확인 필요",
+            )})()
+
+    class FakeOpenAI:
+        def __init__(self, api_key):
+            assert api_key == "test-key"
+            self.responses = FakeResponses()
+
+    monkeypatch.setattr(career_asset_service, "OpenAI", FakeOpenAI)
+    fallback = career_asset_service._build_career_asset_content(
+        {"title": "work-support", "status": "in_progress", "role": "PM"}, [], [], [], "PM", []
+    )
+    result = career_asset_service._build_ai_career_asset_content(
+        Settings(openai_api_key="test-key", openai_model="test-model"),
+        {"title": "work-support", "status": "in_progress", "role": "PM"},
+        [{"title": "Webhook", "status": "done"}],
+        [{"title": "설계 기록"}],
+        [{"title": "자동 수집", "resume_ready": True}],
+        [{"sha": "abc", "message": "Add webhook"}],
+        "PM",
+        fallback,
+    )
+
+    assert result["generation_method"] == "openai:PM"
+    assert "커밋 근거" in result["resume_bullets"]
+    assert calls[0]["model"] == "test-model"
+    assert calls[0]["text_format"] is CareerAssetAiContent
+    assert "Add webhook" in calls[0]["input"][1]["content"]

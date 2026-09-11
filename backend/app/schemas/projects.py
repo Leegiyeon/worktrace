@@ -73,3 +73,27 @@ class ProjectTask(ProjectBaseModel):
     due_date: str | None = None
     created_at: str
     updated_at: str
+
+
+class RepositorySourceCreate(BaseModel):
+    repository_id: int = Field(..., gt=0)
+    full_name: str = Field(..., min_length=3, max_length=255, pattern=r"^[^/\s]+/[^/\s]+$")
+    default_branch: str = Field(default="main", min_length=1, max_length=255)
+
+
+class RepositorySource(BaseModel):
+    id: str
+    project_id: str
+    repository_id: int
+    full_name: str
+    default_branch: str
+    updated_at: str
+
+
+class GitHubCommit(BaseModel):
+    id: str
+    sha: str
+    message: str
+    author_name: str
+    committed_at: str | None = None
+    url: str

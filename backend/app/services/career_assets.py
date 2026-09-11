@@ -1,8 +1,22 @@
+import json
 from uuid import UUID
+
+from openai import OpenAI
 
 from app.core.config import Settings
 from app.db.connection import connect
-from app.schemas.career_assets import CareerAsset, CareerAssetUpdateRequest, CareerTargetRole
+from app.schemas.career_assets import CareerAsset, CareerAssetAiContent, CareerAssetUpdateRequest, CareerTargetRole
+
+
+CAREER_SYSTEM_PROMPT = """프로젝트의 전산화된 근거를 읽고 한국어 경력 자료를 작성한다.
+규칙:
+- 커밋, WBS, 업무 로그, 사용자가 확정한 성과를 함께 검토한다.
+- 근거에 없는 수치, 성과, 역할, 기술은 만들지 않는다.
+- 커밋 메시지는 활동 근거이지 성과 확정으로 간주하지 않는다.
+- 미확정 내용은 초안 또는 확인 필요로 명시한다.
+- 이력서 bullet은 간결한 행동-결과 구조로 작성한다.
+- 지정된 JSON 스키마만 반환한다.
+"""
 
 
 class CareerAssetProjectNotFoundError(Exception):
@@ -96,8 +110,20 @@ def generate_project_career_asset(
             """,
             {"owner_id": owner_id, "project_id": project_id},
         ).fetchall()
+        commits = connection.execute(
+            """
+            SELECT sha, message, author_name, committed_at::text, url
+            FROM github_commits
+            WHERE owner_id = %(owner_id)s AND project_id = %(project_id)s
+            ORDER BY committed_at DESC NULLS LAST, created_at DESC
+            LIMIT 200
+            """,
+            {"owner_id": owner_id, "project_id": project_id},
+        ).fetchall()
 
-        generated = _build_career_asset_content(project, tasks, work_logs, outcomes, target_role)
+        generated = _build_career_asset_content(project, tasks, work_logs, outcomes, target_role, commits)
+        if settings.openai_api_key:
+            generated = _build_ai_career_asset_content(settings, project, tasks, work_logs, outcomes, commits, target_role, generated)
         row = connection.execute(
             """
             INSERT INTO career_assets (
@@ -222,14 +248,15 @@ def _career_asset_from_row(row) -> CareerAsset:
     )
 
 
-def _build_career_asset_content(project, tasks, work_logs, outcomes, target_role: CareerTargetRole) -> dict[str, str]:
+def _build_career_asset_content(project, tasks, work_logs, outcomes, target_role: CareerTargetRole, commits=None) -> dict[str, str]:
+    commits = commits or []
     preferred_outcomes = _preferred_outcomes(outcomes)
     weak_evidence = _has_weak_evidence(work_logs, outcomes, preferred_outcomes)
     prefix = "[초안] " if weak_evidence else ""
     generation_method = f"template_draft:{target_role}" if weak_evidence else f"template:{target_role}"
 
-    source_summary = _source_summary(project, tasks, work_logs, outcomes, target_role, weak_evidence)
-    work_summary = _work_summary(project, tasks, work_logs, prefix)
+    source_summary = _source_summary(project, tasks, work_logs, outcomes, target_role, weak_evidence, commits)
+    work_summary = _work_summary(project, tasks, work_logs, prefix, commits)
     outcome_summary = _outcome_summary(preferred_outcomes, prefix)
     resume_bullets = _resume_bullets(project, target_role, preferred_outcomes, tasks, work_logs, prefix)
     career_description = _career_description(project, target_role, work_summary, outcome_summary, prefix)
@@ -260,6 +287,46 @@ def _build_career_asset_content(project, tasks, work_logs, outcomes, target_role
     }
 
 
+def _build_ai_career_asset_content(settings, project, tasks, work_logs, outcomes, commits, target_role, fallback):
+    evidence = {
+        "project": dict(project),
+        "wbs": [dict(row) for row in tasks],
+        "work_logs": [dict(row) for row in work_logs],
+        "confirmed_outcomes": [dict(row) for row in outcomes if row.get("resume_ready")],
+        "other_outcomes": [dict(row) for row in outcomes if not row.get("resume_ready")],
+        "commits": [dict(row) for row in commits],
+        "target_role": target_role,
+    }
+    try:
+        response = OpenAI(api_key=settings.openai_api_key).responses.parse(
+            model=settings.openai_model or "gpt-4o-mini",
+            input=[
+                {"role": "system", "content": CAREER_SYSTEM_PROMPT},
+                {"role": "user", "content": json.dumps(evidence, ensure_ascii=False, default=str)},
+            ],
+            text_format=CareerAssetAiContent,
+        )
+        content = response.output_parsed
+        if not isinstance(content, CareerAssetAiContent):
+            return fallback
+    except Exception:
+        return fallback
+
+    generated = {**fallback, **content.model_dump(), "generation_method": f"openai:{target_role}"}
+    generated["markdown"] = _markdown(
+        project,
+        target_role,
+        generated["source_summary"],
+        generated["work_summary"],
+        generated["outcome_summary"],
+        generated["resume_bullets"],
+        generated["career_description"],
+        generated["portfolio_description"],
+        generated["star_answer"],
+    )
+    return generated
+
+
 def _preferred_outcomes(outcomes) -> list:
     resume_ready = [outcome for outcome in outcomes if outcome.get("resume_ready")]
     return resume_ready if resume_ready else list(outcomes)
@@ -273,15 +340,15 @@ def _has_weak_evidence(work_logs, outcomes, preferred_outcomes) -> bool:
     return not any(outcome.get("evidence_work_log_ids") for outcome in preferred_outcomes)
 
 
-def _source_summary(project, tasks, work_logs, outcomes, target_role: CareerTargetRole, weak_evidence: bool) -> str:
+def _source_summary(project, tasks, work_logs, outcomes, target_role: CareerTargetRole, weak_evidence: bool, commits) -> str:
     status = "초안" if weak_evidence else "확정 근거 기반"
     return (
         f"{project['title']} · 목표 역할 {target_role} · 프로젝트 상태 {project.get('status') or '-'} · "
-        f"업무 {len(tasks)}건 · 업무 로그 {len(work_logs)}건 · 성과 {len(outcomes)}건 · {status}"
+        f"WBS {len(tasks)}건 · 커밋 근거 {len(commits)}건 · 업무 로그 {len(work_logs)}건 · 성과 {len(outcomes)}건 · {status}"
     )
 
 
-def _work_summary(project, tasks, work_logs, prefix: str) -> str:
+def _work_summary(project, tasks, work_logs, prefix: str, commits) -> str:
     done_tasks = [task["title"] for task in tasks if task.get("status") == "done"][:3]
     recent_logs = [log["title"] for log in work_logs[:3]]
     parts = []
@@ -289,6 +356,9 @@ def _work_summary(project, tasks, work_logs, prefix: str) -> str:
         parts.append(f"완료 업무: {', '.join(done_tasks)}")
     if recent_logs:
         parts.append(f"주요 로그: {', '.join(recent_logs)}")
+    commit_messages = [commit["message"].splitlines()[0] for commit in commits[:3] if commit.get("message")]
+    if commit_messages:
+        parts.append(f"주요 커밋: {', '.join(commit_messages)}")
     if not parts:
         parts.append(f"{project['title']}의 저장된 업무 근거가 부족합니다.")
     return prefix + " / ".join(parts)

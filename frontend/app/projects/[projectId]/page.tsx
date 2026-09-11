@@ -9,10 +9,12 @@ import { CareerPanel } from "./CareerPanel";
 import type {
   CareerAsset,
   CareerTargetRole,
+  GitHubCommit,
   ProjectOutcome,
   ProjectStatus,
   ProjectSummary,
   ProjectTask,
+  RepositorySource,
   TaskPriority,
   TaskStatus,
   OutcomeType,
@@ -33,7 +35,7 @@ type PageProps = {
 
 type DetailTab = "overview" | "tasks" | "logs" | "outcomes" | "career";
 type TaskViewMode = "board" | "list" | "calendar";
-type DetailLoadFailure = "logs" | "outcomes" | "career";
+type DetailLoadFailure = "logs" | "outcomes" | "career" | "commits";
 
 type TaskForm = {
   title: string;
@@ -82,7 +84,7 @@ type OutcomeCandidate = OutcomeForm & {
 
 const tabs: { id: DetailTab; label: string }[] = [
   { id: "overview", label: "현황" },
-  { id: "tasks", label: "업무" },
+  { id: "tasks", label: "WBS · 이슈" },
   { id: "logs", label: "업무 로그" },
   { id: "outcomes", label: "성과" },
   { id: "career", label: "경력 자산" }
@@ -287,6 +289,9 @@ export default function ProjectDetailPage({ params }: PageProps) {
   const [workLogs, setWorkLogs] = useState<WorkLogItem[]>([]);
   const [outcomes, setOutcomes] = useState<ProjectOutcome[]>([]);
   const [careerAssets, setCareerAssets] = useState<CareerAsset[]>([]);
+  const [repository, setRepository] = useState<RepositorySource | null>(null);
+  const [commits, setCommits] = useState<GitHubCommit[]>([]);
+  const [repositoryForm, setRepositoryForm] = useState({ repository_id: "", full_name: "", default_branch: "main" });
   const [projectForm, setProjectForm] = useState<ProjectForm>(initialProjectForm);
   const [taskForm, setTaskForm] = useState<TaskForm>(initialTaskForm);
   const [logForm, setLogForm] = useState<WorkLogForm>(() => createInitialWorkLogForm());
@@ -300,6 +305,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
   const [isSavingLog, setIsSavingLog] = useState(false);
   const [isSavingOutcome, setIsSavingOutcome] = useState(false);
   const [isGeneratingCareer, setIsGeneratingCareer] = useState(false);
+  const [isSavingRepository, setIsSavingRepository] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [loadFailures, setLoadFailures] = useState<DetailLoadFailure[]>([]);
@@ -334,12 +340,14 @@ export default function ProjectDetailPage({ params }: PageProps) {
     setIsLoading(true);
     setErrorMessage("");
     try {
-      const [projectResponse, tasksResponse, logsResponse, outcomesResponse, careerResponse] = await Promise.all([
+      const [projectResponse, tasksResponse, logsResponse, outcomesResponse, careerResponse, repositoryResponse, commitsResponse] = await Promise.all([
         fetch(`/api/projects/${projectId}`, { cache: "no-store" }),
         fetch(`/api/projects/${projectId}/tasks`, { cache: "no-store" }),
         fetch(`/api/work-logs?project_id=${projectId}`, { cache: "no-store" }),
         fetch(`/api/projects/${projectId}/outcomes`, { cache: "no-store" }),
-        fetch(`/api/projects/${projectId}/career-assets`, { cache: "no-store" })
+        fetch(`/api/projects/${projectId}/career-assets`, { cache: "no-store" }),
+        fetch(`/api/projects/${projectId}/repository`, { cache: "no-store" }),
+        fetch(`/api/projects/${projectId}/commits`, { cache: "no-store" })
       ]);
       if (!projectResponse.ok) {
         const detail = await projectResponse.json().catch(() => null);
@@ -365,6 +373,13 @@ export default function ProjectDetailPage({ params }: PageProps) {
       else failures.push("outcomes");
       if (careerResponse.ok) setCareerAssets((await careerResponse.json()) as CareerAsset[]);
       else failures.push("career");
+      if (repositoryResponse.ok) {
+        const nextRepository = (await repositoryResponse.json()) as RepositorySource | null;
+        setRepository(nextRepository);
+        if (nextRepository) setRepositoryForm({ repository_id: String(nextRepository.repository_id), full_name: nextRepository.full_name, default_branch: nextRepository.default_branch });
+      }
+      if (commitsResponse.ok) setCommits((await commitsResponse.json()) as GitHubCommit[]);
+      else failures.push("commits");
       setLoadFailures(failures);
     } catch (error) {
       setLoadFailures([]);
@@ -373,6 +388,35 @@ export default function ProjectDetailPage({ params }: PageProps) {
       setIsLoading(false);
     }
   }, [projectId]);
+
+  async function handleSaveRepository(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const repositoryId = Number(repositoryForm.repository_id);
+    if (!Number.isSafeInteger(repositoryId) || repositoryId <= 0 || !repositoryForm.full_name.includes("/")) {
+      setErrorMessage("GitHub 저장소 ID와 owner/repository 이름을 확인하세요.");
+      return;
+    }
+    setIsSavingRepository(true);
+    setErrorMessage("");
+    setSuccessMessage("");
+    try {
+      const response = await fetch(`/api/projects/${projectId}/repository`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...repositoryForm, repository_id: repositoryId })
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(parseApiErrorMessage(detail, "저장소를 연결하지 못했습니다."));
+      }
+      setRepository((await response.json()) as RepositorySource);
+      setSuccessMessage("GitHub 저장소 연결 완료");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "저장소를 연결하지 못했습니다.");
+    } finally {
+      setIsSavingRepository(false);
+    }
+  }
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -752,7 +796,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
       {loadFailures.length > 0 ? (
         <div className="alert error data-load-alert" role="alert">
           <span>
-            일부 데이터를 불러오지 못했습니다: {loadFailures.map((failure) => ({ logs: "업무 로그", outcomes: "성과", career: "경력 자산" })[failure]).join(", ")}.
+            일부 데이터를 불러오지 못했습니다: {loadFailures.map((failure) => ({ logs: "업무 로그", outcomes: "성과", career: "경력 자산", commits: "커밋 근거" })[failure]).join(", ")}.
           </span>
           <button className="secondary-button" disabled={isLoading} type="button" onClick={() => void loadProject()}>
             다시 시도
@@ -765,8 +809,8 @@ export default function ProjectDetailPage({ params }: PageProps) {
         <>
           <section className="summary-grid dashboard-metrics" aria-label="프로젝트 지표">
             <div className="metric-card"><span>진척도</span><strong>{project.progress_percent}%</strong></div>
-            <div className="metric-card"><span>잔여 업무</span><strong>{project.remaining_tasks}</strong></div>
-            <div className="metric-card"><span>로그</span><strong>{loadFailures.includes("logs") ? "-" : workLogs.length}</strong></div>
+            <div className="metric-card"><span>잔여 WBS</span><strong>{project.remaining_tasks}</strong></div>
+            <div className="metric-card"><span>커밋 근거</span><strong>{loadFailures.includes("commits") ? "-" : commits.length}</strong></div>
             <div className="metric-card"><span>성과</span><strong>{loadFailures.includes("outcomes") ? "-" : outcomes.length}</strong></div>
           </section>
 
@@ -812,6 +856,25 @@ export default function ProjectDetailPage({ params }: PageProps) {
                 <div className="panel-title-row"><h2>최근 성과</h2><span className="count-badge">{loadFailures.includes("outcomes") ? "-" : `${dashboard.latestOutcomes.length}개`}</span></div>
                 {loadFailures.includes("outcomes") ? <div className="empty-state">성과를 불러오지 못했습니다.</div> : <MiniOutcomeList outcomes={dashboard.latestOutcomes} />}
               </section>
+              <section className="panel commit-evidence-panel">
+                <div className="panel-title-row"><h2>최근 커밋 근거</h2><span className="count-badge">{loadFailures.includes("commits") ? "-" : `${commits.length}개`}</span></div>
+                {repository ? <span className="meta-pill status-navy">{repository.full_name} · {repository.default_branch}</span> : null}
+                {!loadFailures.includes("commits") && commits.length === 0 ? <div className="empty-state">수집된 main 커밋 없음</div> : null}
+                <div className="dense-list">
+                  {commits.slice(0, 6).map((commit) => <a className="dense-list-row" href={commit.url} key={commit.id} rel="noreferrer" target="_blank"><span>{commit.message.split("\n")[0]}</span><small>{commit.author_name || "작성자 미상"}</small><b>{commit.committed_at?.slice(0, 10) ?? commit.sha.slice(0, 7)}</b></a>)}
+                </div>
+              </section>
+              <details className="panel project-settings-panel">
+                <summary>GitHub 저장소 연결</summary>
+                <form className="stacked-form compact-form" onSubmit={handleSaveRepository}>
+                  <div className="form-grid three-columns">
+                    <label>저장소 ID<input inputMode="numeric" placeholder="GitHub repository ID" value={repositoryForm.repository_id} onChange={(event) => setRepositoryForm({ ...repositoryForm, repository_id: event.target.value })} /></label>
+                    <label>저장소 이름<input placeholder="owner/repository" value={repositoryForm.full_name} onChange={(event) => setRepositoryForm({ ...repositoryForm, full_name: event.target.value })} /></label>
+                    <label>수집 브랜치<input disabled value={repositoryForm.default_branch} /></label>
+                  </div>
+                  <div className="form-actions"><button type="submit" disabled={isSavingRepository}>{isSavingRepository ? "연결 중" : repository ? "연결 수정" : "저장소 연결"}</button></div>
+                </form>
+              </details>
               <details className="panel project-settings-panel">
                 <summary>프로젝트 수정</summary>
                 <form className="stacked-form compact-form" onSubmit={handleSaveProject}>
@@ -896,10 +959,10 @@ function MiniOutcomeList({ outcomes }: { outcomes: ProjectOutcome[] }) {
 function TaskFormPanel({ editingTaskId, isSavingTask, taskForm, setTaskForm, onSubmit, onCancel }: { editingTaskId: string | null; isSavingTask: boolean; taskForm: TaskForm; setTaskForm: (form: TaskForm) => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; onCancel: () => void }) {
   return (
     <section className="panel task-form-panel">
-      <div className="panel-title-row"><h2>{editingTaskId ? "업무 수정" : "업무 추가"}</h2>{editingTaskId ? <button className="secondary-button" type="button" onClick={onCancel}>취소</button> : <span className="meta-pill">필수: 업무명</span>}</div>
+      <div className="panel-title-row"><h2>{editingTaskId ? "WBS 항목 수정" : "WBS 항목 추가"}</h2>{editingTaskId ? <button className="secondary-button" type="button" onClick={onCancel}>취소</button> : <span className="meta-pill">필수: 항목명</span>}</div>
       <form className="stacked-form compact-form" onSubmit={onSubmit}>
         <div className="form-grid three-columns">
-          <label>업무명<input placeholder="예: API 응답 시간 개선" value={taskForm.title} onChange={(event) => setTaskForm({ ...taskForm, title: event.target.value })} /></label>
+          <label>항목명<input placeholder="예: API 응답 시간 개선" value={taskForm.title} onChange={(event) => setTaskForm({ ...taskForm, title: event.target.value })} /></label>
           <label>상태<select value={taskForm.status} onChange={(event) => setTaskForm({ ...taskForm, status: event.target.value as TaskStatus })}>{Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>우선순위<select value={taskForm.priority} onChange={(event) => setTaskForm({ ...taskForm, priority: event.target.value as TaskPriority })}>{Object.entries(taskPriorityLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         </div>
@@ -907,7 +970,7 @@ function TaskFormPanel({ editingTaskId, isSavingTask, taskForm, setTaskForm, onS
           <label>마감일<input type="date" value={taskForm.due_date} onChange={(event) => setTaskForm({ ...taskForm, due_date: event.target.value })} /></label>
           <label>설명<textarea placeholder="완료 기준 또는 참고 메모" value={taskForm.description} onChange={(event) => setTaskForm({ ...taskForm, description: event.target.value })} /></label>
         </div>
-        <div className="form-actions"><button type="submit" disabled={isSavingTask}>{isSavingTask ? "저장 중" : editingTaskId ? "수정 저장" : "업무 추가"}</button></div>
+        <div className="form-actions"><button type="submit" disabled={isSavingTask}>{isSavingTask ? "저장 중" : editingTaskId ? "수정 저장" : "WBS 항목 추가"}</button></div>
       </form>
     </section>
   );
@@ -938,7 +1001,7 @@ function TaskCard({ task, updateStatus, startEdit, deleteTask }: { task: Project
 function TaskTable({ tasks, updateStatus, startEdit }: { tasks: ProjectTask[]; updateStatus: (task: ProjectTask, status: TaskStatus) => Promise<void>; startEdit: (task: ProjectTask) => void }) {
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "all">("all");
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | "all">("all");
-  const [delayFilter, setDelayFilter] = useState<"all" | "delayed" | "on_track">("all");
+  const [issueFilter, setIssueFilter] = useState<"all" | "issue" | "normal">("all");
   const [sortKey, setSortKey] = useState<"due_date" | "priority" | "progress" | "created_at" | "status">("due_date");
 
   const filteredTasks = useMemo(() => {
@@ -946,8 +1009,9 @@ function TaskTable({ tasks, updateStatus, startEdit }: { tasks: ProjectTask[]; u
       .filter((task) => statusFilter === "all" || task.status === statusFilter)
       .filter((task) => priorityFilter === "all" || task.priority === priorityFilter)
       .filter((task) => {
-        if (delayFilter === "all") return true;
-        return delayFilter === "delayed" ? isDelayed(task) : !isDelayed(task);
+        if (issueFilter === "all") return true;
+        const hasIssue = task.status !== "done" && (isDelayed(task) || task.status === "on_hold" || task.priority === "high");
+        return issueFilter === "issue" ? hasIssue : !hasIssue;
       })
       .sort((a, b) => {
         if (sortKey === "priority") return priorityOrder[a.priority] - priorityOrder[b.priority];
@@ -956,27 +1020,29 @@ function TaskTable({ tasks, updateStatus, startEdit }: { tasks: ProjectTask[]; u
         if (sortKey === "status") return taskStatusOrder.indexOf(a.status) - taskStatusOrder.indexOf(b.status);
         return (a.due_date ?? "9999-12-31").localeCompare(b.due_date ?? "9999-12-31");
       });
-  }, [delayFilter, priorityFilter, sortKey, statusFilter, tasks]);
+  }, [issueFilter, priorityFilter, sortKey, statusFilter, tasks]);
 
   return (
     <>
-      <div className="panel-title-row table-section-title"><h2>업무 목록</h2><span className="meta-pill">필터 · 정렬 · 상태 변경</span></div>
-      <div className="list-toolbar" aria-label="업무 필터와 정렬">
+      <div className="panel-title-row table-section-title"><h2>WBS 목록</h2><span className="meta-pill">필터 · 정렬 · 상태 변경</span></div>
+      <div className="list-toolbar" aria-label="WBS 필터와 정렬">
         <label>상태<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as TaskStatus | "all")}><option value="all">전체</option>{Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label>우선순위<select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value as TaskPriority | "all")}><option value="all">전체</option>{Object.entries(taskPriorityLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        <label>지연<select value={delayFilter} onChange={(event) => setDelayFilter(event.target.value as "all" | "delayed" | "on_track")}><option value="all">전체</option><option value="delayed">지연</option><option value="on_track">정상</option></select></label>
+        <label>이슈<select value={issueFilter} onChange={(event) => setIssueFilter(event.target.value as "all" | "issue" | "normal")}><option value="all">전체</option><option value="issue">관리 필요</option><option value="normal">정상</option></select></label>
         <label>정렬<select value={sortKey} onChange={(event) => setSortKey(event.target.value as "due_date" | "priority" | "progress" | "created_at" | "status")}><option value="due_date">마감일</option><option value="priority">우선순위</option><option value="progress">진행률</option><option value="created_at">시작일</option><option value="status">상태</option></select></label>
         <span className="count-badge">{filteredTasks.length}개</span>
       </div>
-      {filteredTasks.length === 0 ? <div className="empty-state">업무 없음</div> : null}
+      {filteredTasks.length === 0 ? <div className="empty-state">WBS 항목 없음</div> : null}
       {filteredTasks.length > 0 ? (
         <div className="data-table-wrap">
           <table className="data-table dense-task-table">
-            <thead><tr><th>업무명</th><th>상태</th><th>우선순위</th><th>분류</th><th>마감 상태</th><th>시작일</th><th>마감일</th><th>진행률</th><th>지연 여부</th></tr></thead>
+            <thead><tr><th>WBS 항목</th><th>상태</th><th>우선순위</th><th>이슈</th><th>시작일</th><th>마감일</th><th>진행률</th></tr></thead>
             <tbody>{filteredTasks.map((task) => {
               const delayed = isDelayed(task);
               const progress = taskProgress(task);
-              return <tr key={task.id}><td><button className="table-link-button" type="button" onClick={() => startEdit(task)}>{task.title}</button></td><td><select aria-label={`${task.title} 상태 변경`} value={task.status} onChange={(event) => void updateStatus(task, event.target.value as TaskStatus)}>{Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td><td><span className={`meta-pill priority-${task.priority}`}>{taskPriorityLabels[task.priority]}</span></td><td><span className="meta-pill status-navy">업무</span></td><td>{delayed ? <span className="meta-pill priority-high">기한 초과</span> : <span className="meta-pill priority-medium">정상</span>}</td><td>{task.created_at.slice(0, 10)}</td><td>{task.due_date ?? "-"}</td><td><div className="table-progress"><div className="mini-progress"><span style={{ width: `${progress}%` }} /></div><b>{progress}%</b></div></td><td>{delayed ? <span className="meta-pill priority-high">지연</span> : <span className="meta-pill priority-medium">정상</span>}</td></tr>;
+              const issueLabel = delayed ? "기한 초과" : task.status === "on_hold" ? "보류" : task.status !== "done" && task.priority === "high" ? "우선 확인" : "정상";
+              const hasIssue = issueLabel !== "정상";
+              return <tr key={task.id}><td><button className="table-link-button" type="button" onClick={() => startEdit(task)}>{task.title}</button></td><td><select aria-label={`${task.title} 상태 변경`} value={task.status} onChange={(event) => void updateStatus(task, event.target.value as TaskStatus)}>{Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td><td><span className={`meta-pill priority-${task.priority}`}>{taskPriorityLabels[task.priority]}</span></td><td><span className={`meta-pill ${hasIssue ? "priority-high" : "priority-medium"}`}>{issueLabel}</span></td><td>{task.created_at.slice(0, 10)}</td><td>{task.due_date ?? "-"}</td><td><div className="table-progress"><div className="mini-progress"><span style={{ width: `${progress}%` }} /></div><b>{progress}%</b></div></td></tr>;
             })}</tbody>
           </table>
         </div>

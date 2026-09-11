@@ -20,6 +20,7 @@
 - 대시보드에서 진행 중 프로젝트와 잔여 업무 표시
 - 문서 메타데이터/추출 항목/업무 로그 기반 주간 리포트 생성 API와 화면
 - 대시보드 빠른 업무 기록과 지연·진행·고우선순위 실행 대기열
+- GitHub `main` push webhook 수집, 프로젝트별 커밋 근거 조회, WBS/이슈 관리
 - 업무 로그 생성/조회/수정/삭제와 OpenAI 기반 검토용 초안 생성
 - 프로젝트 성과 생성/조회/수정/삭제와 근거 업무 로그 연결
 - 근거 기반 경력 자산 생성, 사용자 편집·저장, Markdown 복사
@@ -38,7 +39,7 @@
 - Database: PostgreSQL + pgvector
 - File Storage: 로컬 저장소 우선(`storage/uploads`), 추후 S3/Supabase Storage 확장 가능
 - Container: Docker Compose
-- AI: OpenAI Responses API 기반 업무 로그 초안, API key가 없으면 나머지 기능은 계속 사용 가능
+- AI: OpenAI Responses API 기반 업무 로그 초안과 통합 경력 자료 생성, API key가 없거나 생성이 실패하면 경력 자료는 근거 기반 템플릿으로 폴백
 
 ## 디렉토리 구조
 
@@ -249,6 +250,16 @@ cp .env.example .env
 - `REPORT_TIMEZONE`: `Asia/Seoul` — 리포트 기간 경계 해석 기준
 - `NEXT_PUBLIC_WORK_SUPPORT_OWNER_ID`: `local-owner` — 과거 호환용 공개 owner
 - `OPENAI_API_KEY` / `OPENAI_MODEL`: 빈 placeholder — 필요 시 루트 `.env`에만 입력
+- `GITHUB_WEBHOOK_SECRET`: GitHub 저장소 webhook과 동일한 임의의 긴 비밀값
+
+### GitHub main push 자동 수집
+
+1. 프로젝트 상세의 `GitHub 저장소 연결`에서 GitHub repository ID와 `owner/repository`를 저장합니다.
+2. GitHub 저장소의 Webhooks 설정에 `https://<APP_DOMAIN>/webhooks/github`를 추가합니다.
+3. Content type은 `application/json`, 이벤트는 `Just the push event`, Secret은 `GITHUB_WEBHOOK_SECRET`과 같은 값으로 설정합니다.
+4. `main`에 push하면 delivery와 커밋 근거가 중복 없이 저장되고 프로젝트 상세의 `최근 커밋 근거`에 표시됩니다.
+
+커밋은 수행 활동의 근거로만 취급합니다. WBS 완료나 성과 확정은 자동으로 단정하지 않으며, 경력 자산 생성 시 커밋·WBS·업무 로그·확정 성과를 함께 분석합니다.
 
 ### Backend 로컬 `.env`
 
