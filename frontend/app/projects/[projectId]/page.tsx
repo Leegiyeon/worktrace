@@ -10,7 +10,9 @@ import type {
   CareerAsset,
   CareerTargetRole,
   GitHubCommit,
+  GitHubDelivery,
   ProjectOutcome,
+  ProjectGitHubStatus,
   ProjectStatus,
   ProjectSummary,
   ProjectTask,
@@ -35,7 +37,7 @@ type PageProps = {
 
 type DetailTab = "overview" | "tasks" | "logs" | "outcomes" | "career";
 type TaskViewMode = "board" | "list" | "calendar";
-type DetailLoadFailure = "logs" | "outcomes" | "career" | "commits";
+type DetailLoadFailure = "logs" | "outcomes" | "career" | "commits" | "githubStatus";
 
 type TaskForm = {
   title: string;
@@ -153,6 +155,25 @@ function formatDateKey(date: Date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function formatDeliveryTime(value: string | null) {
+  if (!value) return "성공 기록 없음";
+  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+}
+
+function deliveryStatusLabel(status: GitHubDelivery["status"]) {
+  return { processed: "성공", ignored: "무시", failed: "실패" }[status];
+}
+
+function deliveryReasonLabel(delivery: GitHubDelivery) {
+  if (!delivery.reason) return `${delivery.processing_attempts}회 처리`;
+  return {
+    unsupported_event: "지원하지 않는 이벤트",
+    non_main_ref: "main 이외 브랜치",
+    repository_not_linked: "연결되지 않은 저장소",
+    duplicate_delivery: "중복 전달"
+  }[delivery.reason] ?? delivery.reason;
 }
 
 function parseDueDate(date: string) {
@@ -291,6 +312,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
   const [careerAssets, setCareerAssets] = useState<CareerAsset[]>([]);
   const [repository, setRepository] = useState<RepositorySource | null>(null);
   const [commits, setCommits] = useState<GitHubCommit[]>([]);
+  const [githubStatus, setGitHubStatus] = useState<ProjectGitHubStatus | null>(null);
   const [repositoryForm, setRepositoryForm] = useState({ repository_id: "", full_name: "", default_branch: "main" });
   const [projectForm, setProjectForm] = useState<ProjectForm>(initialProjectForm);
   const [taskForm, setTaskForm] = useState<TaskForm>(initialTaskForm);
@@ -306,6 +328,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
   const [isSavingOutcome, setIsSavingOutcome] = useState(false);
   const [isGeneratingCareer, setIsGeneratingCareer] = useState(false);
   const [isSavingRepository, setIsSavingRepository] = useState(false);
+  const [reprocessingDeliveryId, setReprocessingDeliveryId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [loadFailures, setLoadFailures] = useState<DetailLoadFailure[]>([]);
@@ -340,14 +363,15 @@ export default function ProjectDetailPage({ params }: PageProps) {
     setIsLoading(true);
     setErrorMessage("");
     try {
-      const [projectResponse, tasksResponse, logsResponse, outcomesResponse, careerResponse, repositoryResponse, commitsResponse] = await Promise.all([
+      const [projectResponse, tasksResponse, logsResponse, outcomesResponse, careerResponse, repositoryResponse, commitsResponse, githubStatusResponse] = await Promise.all([
         fetch(`/api/projects/${projectId}`, { cache: "no-store" }),
         fetch(`/api/projects/${projectId}/tasks`, { cache: "no-store" }),
         fetch(`/api/work-logs?project_id=${projectId}`, { cache: "no-store" }),
         fetch(`/api/projects/${projectId}/outcomes`, { cache: "no-store" }),
         fetch(`/api/projects/${projectId}/career-assets`, { cache: "no-store" }),
         fetch(`/api/projects/${projectId}/repository`, { cache: "no-store" }),
-        fetch(`/api/projects/${projectId}/commits`, { cache: "no-store" })
+        fetch(`/api/projects/${projectId}/commits`, { cache: "no-store" }),
+        fetch(`/api/projects/${projectId}/github-status`, { cache: "no-store" })
       ]);
       if (!projectResponse.ok) {
         const detail = await projectResponse.json().catch(() => null);
@@ -380,6 +404,8 @@ export default function ProjectDetailPage({ params }: PageProps) {
       }
       if (commitsResponse.ok) setCommits((await commitsResponse.json()) as GitHubCommit[]);
       else failures.push("commits");
+      if (githubStatusResponse.ok) setGitHubStatus((await githubStatusResponse.json()) as ProjectGitHubStatus);
+      else failures.push("githubStatus");
       setLoadFailures(failures);
     } catch (error) {
       setLoadFailures([]);
@@ -415,6 +441,28 @@ export default function ProjectDetailPage({ params }: PageProps) {
       setErrorMessage(error instanceof Error ? error.message : "저장소를 연결하지 못했습니다.");
     } finally {
       setIsSavingRepository(false);
+    }
+  }
+
+  async function handleReprocessDelivery(delivery: GitHubDelivery) {
+    setReprocessingDeliveryId(delivery.delivery_id);
+    setErrorMessage("");
+    setSuccessMessage("");
+    try {
+      const response = await fetch(
+        `/api/projects/${projectId}/github-deliveries/${encodeURIComponent(delivery.delivery_id)}/reprocess`,
+        { method: "POST" }
+      );
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(parseApiErrorMessage(detail, "전달을 재처리하지 못했습니다."));
+      }
+      await loadProject();
+      setSuccessMessage("GitHub 전달 재처리 완료");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "전달을 재처리하지 못했습니다.");
+    } finally {
+      setReprocessingDeliveryId(null);
     }
   }
 
@@ -796,7 +844,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
       {loadFailures.length > 0 ? (
         <div className="alert error data-load-alert" role="alert">
           <span>
-            일부 데이터를 불러오지 못했습니다: {loadFailures.map((failure) => ({ logs: "업무 로그", outcomes: "성과", career: "경력 자산", commits: "커밋 근거" })[failure]).join(", ")}.
+            일부 데이터를 불러오지 못했습니다: {loadFailures.map((failure) => ({ logs: "업무 로그", outcomes: "성과", career: "경력 자산", commits: "커밋 근거", githubStatus: "GitHub 수집 상태" })[failure]).join(", ")}.
           </span>
           <button className="secondary-button" disabled={isLoading} type="button" onClick={() => void loadProject()}>
             다시 시도
@@ -863,6 +911,40 @@ export default function ProjectDetailPage({ params }: PageProps) {
                 <div className="dense-list">
                   {commits.slice(0, 6).map((commit) => <a className="dense-list-row" href={commit.url} key={commit.id} rel="noreferrer" target="_blank"><span>{commit.message.split("\n")[0]}</span><small>{commit.author_name || "작성자 미상"}</small><b>{commit.committed_at?.slice(0, 10) ?? commit.sha.slice(0, 7)}</b></a>)}
                 </div>
+              </section>
+              <section className="panel github-operations-panel">
+                <div className="panel-title-row">
+                  <h2>GitHub 수집 상태</h2>
+                  <span className="count-badge">{githubStatus?.deliveries.length ?? 0}건</span>
+                </div>
+                {loadFailures.includes("githubStatus") ? <div className="empty-state">수집 상태를 불러오지 못했습니다.</div> : null}
+                {!loadFailures.includes("githubStatus") && !githubStatus?.repository ? <div className="empty-state">연결된 저장소 없음</div> : null}
+                {githubStatus?.repository ? (
+                  <>
+                    <div className="github-status-summary">
+                      <div><span>저장 커밋</span><strong>{githubStatus.stored_commit_count.toLocaleString()}개</strong></div>
+                      <div><span>마지막 성공</span><strong>{formatDeliveryTime(githubStatus.last_success_at)}</strong></div>
+                    </div>
+                    {githubStatus.deliveries.length === 0 ? <div className="empty-state">수신된 webhook 없음</div> : (
+                      <div className="delivery-list">
+                        {githubStatus.deliveries.slice(0, 8).map((delivery) => (
+                          <article className="delivery-row" key={delivery.id}>
+                            <div>
+                              <strong>{delivery.event_name} · {delivery.ref.replace("refs/heads/", "") || "ref 없음"}</strong>
+                              <small>{formatDeliveryTime(delivery.received_at)} · {deliveryReasonLabel(delivery)}</small>
+                            </div>
+                            <span className={`meta-pill delivery-${delivery.status}`}>{deliveryStatusLabel(delivery.status)}</span>
+                            {delivery.status !== "processed" ? (
+                              <button className="secondary-button" disabled={reprocessingDeliveryId === delivery.delivery_id} type="button" onClick={() => void handleReprocessDelivery(delivery)}>
+                                {reprocessingDeliveryId === delivery.delivery_id ? "처리 중" : "재처리"}
+                              </button>
+                            ) : <span className="delivery-attempts">{delivery.processing_attempts}회</span>}
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : null}
               </section>
               <details className="panel project-settings-panel">
                 <summary>GitHub 저장소 연결</summary>

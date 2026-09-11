@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export function AppLogo() {
   return (
-    <Link className="app-logo" href="/" aria-label="work-support 대시보드로 이동">
+    <Link className="app-logo" href="/" aria-label="worktrace 대시보드로 이동">
       <span className="app-logo-mark" aria-hidden="true">
         <svg viewBox="0 0 44 44" role="img" focusable="false">
           <rect className="mark-bg" x="3" y="3" width="38" height="38" rx="12" />
@@ -11,7 +11,7 @@ export function AppLogo() {
         </svg>
       </span>
       <span className="app-logo-text">
-        <strong>work-support</strong>
+        <strong>worktrace</strong>
         <small>WORK OS</small>
       </span>
     </Link>

@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, Response, status
 from app.api.errors import http_error
 from app.api.security import require_report_access
 from app.core.config import Settings, get_settings
-from app.schemas.projects import GitHubCommit, ProjectCreate, ProjectSummary, ProjectTask, ProjectTaskCreate, ProjectTaskUpdate, ProjectUpdate, RepositorySource, RepositorySourceCreate
+from app.schemas.projects import GitHubCommit, ProjectCreate, ProjectGitHubStatus, ProjectSummary, ProjectTask, ProjectTaskCreate, ProjectTaskUpdate, ProjectUpdate, RepositorySource, RepositorySourceCreate
+from app.services.github_webhooks import GitHubDeliveryNotFoundError, get_project_github_status, reprocess_github_delivery
 from app.services.projects import (
     ProjectNotFoundError,
     ProjectTaskNotFoundError,
@@ -204,5 +205,36 @@ def get_project_commits(
         return list_project_commits(settings, owner_id, project_id)
     except ProjectNotFoundError as exc:
         raise _project_not_found() from exc
+    except psycopg.Error as exc:
+        raise http_error(status.HTTP_503_SERVICE_UNAVAILABLE, "DATABASE_UNAVAILABLE", "Database is unavailable.") from exc
+
+
+@router.get("/{project_id}/github-status", response_model=ProjectGitHubStatus)
+def get_github_status(
+    project_id: UUID,
+    owner_id: str = Depends(require_report_access),
+    settings: Settings = Depends(get_settings),
+) -> ProjectGitHubStatus:
+    try:
+        get_project(settings, owner_id, project_id)
+        return get_project_github_status(settings, owner_id, str(project_id))
+    except ProjectNotFoundError as exc:
+        raise _project_not_found() from exc
+    except psycopg.Error as exc:
+        raise http_error(status.HTTP_503_SERVICE_UNAVAILABLE, "DATABASE_UNAVAILABLE", "Database is unavailable.") from exc
+
+
+@router.post("/{project_id}/github-deliveries/{delivery_id}/reprocess")
+def post_reprocess_github_delivery(
+    project_id: UUID,
+    delivery_id: str,
+    owner_id: str = Depends(require_report_access),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, str | int]:
+    try:
+        result = reprocess_github_delivery(settings, owner_id, str(project_id), delivery_id)
+        return {"status": result.status, "reason": result.reason, "commits_stored": result.commits_stored}
+    except GitHubDeliveryNotFoundError as exc:
+        raise http_error(status.HTTP_404_NOT_FOUND, "GITHUB_DELIVERY_NOT_FOUND", "GitHub delivery was not found.") from exc
     except psycopg.Error as exc:
         raise http_error(status.HTTP_503_SERVICE_UNAVAILABLE, "DATABASE_UNAVAILABLE", "Database is unavailable.") from exc

@@ -55,15 +55,15 @@ jobs:
 
       - name: Validate production containers
         env:
-          POSTGRES_DB: work_support
-          POSTGRES_USER: work_support
+          POSTGRES_DB: worktrace
+          POSTGRES_USER: worktrace
           POSTGRES_PASSWORD: validation-only
           DEFAULT_OWNER_ID: validation-owner
           REPORT_ACCESS_TOKEN: validation-only
           FRONTEND_ORIGIN: https://worktrace.cloud
           APP_DOMAIN: worktrace.cloud
-          WORK_SUPPORT_PASSWORD_HASH: scrypt$validation$validation
-          WORK_SUPPORT_SESSION_SECRET: validation-only
+          WORKTRACE_PASSWORD_HASH: scrypt$validation$validation
+          WORKTRACE_SESSION_SECRET: validation-only
           GITHUB_WEBHOOK_SECRET: validation-only
         run: |
           docker compose -f docker-compose.prod.yml -f docker-compose.oracle.yml config --quiet
@@ -94,5 +94,11 @@ jobs:
           ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
           ORACLE_USER: ${{ secrets.ORACLE_USER }}
         run: |
-          ssh -i ~/.ssh/oracle "$ORACLE_USER@$ORACLE_HOST" \
-            'cd /home/ubuntu/work-support && git pull --ff-only origin main && bash scripts/deploy_oracle.sh'
+          ssh -i ~/.ssh/oracle "$ORACLE_USER@$ORACLE_HOST" '
+            if [ -d /home/ubuntu/work-support ] && [ ! -e /home/ubuntu/worktrace ]; then
+              mv /home/ubuntu/work-support /home/ubuntu/worktrace
+            fi
+            cd /home/ubuntu/worktrace
+            git pull --ff-only origin main
+            bash scripts/deploy_oracle.sh
+          '

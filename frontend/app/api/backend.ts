@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const BACKEND_URL = process.env.WORK_SUPPORT_BACKEND_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-const OWNER_ID = process.env.WORK_SUPPORT_OWNER_ID ?? process.env.NEXT_PUBLIC_WORK_SUPPORT_OWNER_ID ?? "local-owner";
-const REPORT_ACCESS_TOKEN = process.env.WORK_SUPPORT_REPORT_TOKEN ?? process.env.REPORT_ACCESS_TOKEN ?? "dev-only-report-token";
+const BACKEND_URL = process.env.WORKTRACE_BACKEND_URL ?? process.env.WORK_SUPPORT_BACKEND_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const OWNER_ID = process.env.WORKTRACE_OWNER_ID ?? process.env.WORK_SUPPORT_OWNER_ID ?? process.env.NEXT_PUBLIC_WORKTRACE_OWNER_ID ?? process.env.NEXT_PUBLIC_WORK_SUPPORT_OWNER_ID ?? "local-owner";
+const REPORT_ACCESS_TOKEN = process.env.WORKTRACE_REPORT_TOKEN ?? process.env.WORK_SUPPORT_REPORT_TOKEN ?? process.env.REPORT_ACCESS_TOKEN ?? "dev-only-report-token";
 
 export function encodePathSegment(segment: string) {
   return encodeURIComponent(segment);
@@ -18,8 +18,8 @@ export async function proxyBackend(request: NextRequest, path: string) {
       method: request.method,
       headers: {
         "Content-Type": request.headers.get("Content-Type") ?? "application/json",
-        "X-Work-Support-Owner-Id": OWNER_ID,
-        "X-Work-Support-Report-Token": REPORT_ACCESS_TOKEN
+        "X-Worktrace-Owner-Id": OWNER_ID,
+        "X-Worktrace-Report-Token": REPORT_ACCESS_TOKEN
       },
       body: request.method === "GET" || request.method === "HEAD" ? undefined : await request.text(),
       cache: "no-store"

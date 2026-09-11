@@ -97,3 +97,22 @@ class GitHubCommit(BaseModel):
     author_name: str
     committed_at: str | None = None
     url: str
+
+
+class GitHubDelivery(BaseModel):
+    id: str
+    delivery_id: str
+    event_name: str
+    ref: str
+    status: Literal["processed", "ignored", "failed"]
+    reason: str
+    processing_attempts: int
+    received_at: str
+    last_processed_at: str
+
+
+class ProjectGitHubStatus(BaseModel):
+    repository: RepositorySource | None = None
+    stored_commit_count: int = 0
+    last_success_at: str | None = None
+    deliveries: list[GitHubDelivery] = Field(default_factory=list)

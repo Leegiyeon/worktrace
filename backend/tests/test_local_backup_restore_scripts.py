@@ -44,6 +44,9 @@ def test_backup_script_uses_compose_db_and_owner_only_permissions() -> None:
     assert 'container_id="$(docker compose ps -q' in script
     assert "pg_restore --list" in script
     assert "POSTGRES_PASSWORD" not in script
+    assert 'APP_ENV:-local' in script
+    assert "BACKUP_ENCRYPTION_KEY_FILE is required in production" in script
+    assert "openssl enc -aes-256-cbc -pbkdf2 -salt" in script
 
 
 def test_restore_script_requires_confirm_and_validates_input_before_restore() -> None:
@@ -63,6 +66,9 @@ def test_restore_script_requires_confirm_and_validates_input_before_restore() ->
     assert "--exit-on-error" in script
     assert "--if-exists" in script
     assert "POSTGRES_PASSWORD" not in script
+    assert '"${backup_file}" == *.enc' in script
+    assert "openssl enc -d -aes-256-cbc -pbkdf2" in script
+    assert "trap cleanup EXIT" in script
 
 
 def test_restore_without_confirm_exits_before_docker_or_database_access() -> None:
@@ -86,3 +92,4 @@ def test_scheduled_backup_has_lock_and_retention_guard() -> None:
     assert "BACKUP_RETENTION_DAYS" in script
     assert "backup_local.sh" in script
     assert "-mtime" in script
+    assert "worktrace_*.dump.enc" in script

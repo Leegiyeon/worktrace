@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const SESSION_COOKIE = "work_support_session";
+const SESSION_COOKIE = "worktrace_session";
 
 function base64UrlToBytes(value: string) {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
@@ -9,7 +9,7 @@ function base64UrlToBytes(value: string) {
 }
 
 async function hasValidSession(request: NextRequest) {
-  const secret = process.env.WORK_SUPPORT_SESSION_SECRET ?? "";
+  const secret = process.env.WORKTRACE_SESSION_SECRET ?? process.env.WORK_SUPPORT_SESSION_SECRET ?? "";
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   if (secret.length < 32 || !token) return false;
 
@@ -40,7 +40,9 @@ async function hasValidSession(request: NextRequest) {
 
 export async function proxy(request: NextRequest) {
   const isProduction = process.env.NODE_ENV === "production";
-  const authConfigured = Boolean(process.env.WORK_SUPPORT_PASSWORD_HASH && (process.env.WORK_SUPPORT_SESSION_SECRET?.length ?? 0) >= 32);
+  const passwordHash = process.env.WORKTRACE_PASSWORD_HASH ?? process.env.WORK_SUPPORT_PASSWORD_HASH;
+  const sessionSecret = process.env.WORKTRACE_SESSION_SECRET ?? process.env.WORK_SUPPORT_SESSION_SECRET;
+  const authConfigured = Boolean(passwordHash && (sessionSecret?.length ?? 0) >= 32);
   if (!isProduction && !authConfigured) return NextResponse.next();
 
   if (await hasValidSession(request)) return NextResponse.next();

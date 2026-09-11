@@ -32,7 +32,7 @@ export default function LoginPage() {
       <section className="panel login-panel" aria-labelledby="login-title">
         <div>
           <span className="status-pill">개인 업무공간</span>
-          <h1 id="login-title">work-support</h1>
+          <h1 id="login-title">worktrace</h1>
         </div>
         <form className="stacked-form" onSubmit={handleSubmit}>
           <label>

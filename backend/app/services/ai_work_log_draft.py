@@ -20,7 +20,7 @@ class AiDraftProjectNotFoundError(Exception):
     pass
 
 
-SYSTEM_PROMPT = """한국어 업무 메모를 work-support 업무 로그 초안 JSON으로 정리한다.
+SYSTEM_PROMPT = """한국어 업무 메모를 worktrace 업무 로그 초안 JSON으로 정리한다.
 규칙:
 - 출력은 지정된 스키마만 따른다.
 - 저장하지 않는다. 사용자가 검토 후 별도 저장한다.

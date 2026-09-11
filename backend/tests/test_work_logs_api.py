@@ -9,8 +9,8 @@ from app.schemas.reports import WorkLogItem
 from app.services.work_logs import WorkLogNotFoundError, WorkLogProjectNotFoundError
 
 HEADERS = {
-    "X-Work-Support-Owner-Id": "local-owner",
-    "X-Work-Support-Report-Token": "dev-only-report-token",
+    "X-Worktrace-Owner-Id": "local-owner",
+    "X-Worktrace-Report-Token": "dev-only-report-token",
 }
 PROJECT_ID = "00000000-0000-0000-0000-000000000001"
 WORK_LOG_ID = "00000000-0000-0000-0000-000000000201"

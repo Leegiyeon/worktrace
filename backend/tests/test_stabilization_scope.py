@@ -26,16 +26,16 @@ def test_readme_documents_stabilization_runtime_contracts() -> None:
         "REPORT_ACCESS_TOKEN",
         "DEFAULT_OWNER_ID",
         "REPORT_TIMEZONE",
-        "NEXT_PUBLIC_WORK_SUPPORT_OWNER_ID",
-        "WORK_SUPPORT_OWNER_ID",
-        "WORK_SUPPORT_REPORT_TOKEN",
+        "NEXT_PUBLIC_WORKTRACE_OWNER_ID",
+        "WORKTRACE_OWNER_ID",
+        "WORKTRACE_REPORT_TOKEN",
     ]:
         assert key in readme
         assert key in root_env or key in backend_env or key in frontend_env
         assert key in compose or key in root_env
 
-    assert "NEXT_PUBLIC_WORK_SUPPORT_REPORT_TOKEN" not in root_env
-    assert "NEXT_PUBLIC_WORK_SUPPORT_REPORT_TOKEN" not in frontend_env
-    assert "NEXT_PUBLIC_WORK_SUPPORT_REPORT_TOKEN" not in compose
+    assert "NEXT_PUBLIC_WORKTRACE_REPORT_TOKEN" not in root_env
+    assert "NEXT_PUBLIC_WORKTRACE_REPORT_TOKEN" not in frontend_env
+    assert "NEXT_PUBLIC_WORKTRACE_REPORT_TOKEN" not in compose
     assert "canonical SQL" in readme
     assert "{code, message}" in readme

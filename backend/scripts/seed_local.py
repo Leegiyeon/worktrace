@@ -244,7 +244,7 @@ def _user_project_seed_data(today: date) -> list[dict]:
     evidence_note = "추정 입력 필요"
     return [
         {
-            "title": f"{USER_PROJECT_PREFIX} work-support",
+            "title": f"{USER_PROJECT_PREFIX} worktrace",
             "description": "local/dev seed · 유형: 개인 업무 자동화 플랫폼 · 태그: AI, Project Management, CareerOps, WBS · 목표: 프로젝트 진척도, 업무 로그, 성과 수치화, 경력관리",
             "status": "in_progress",
             "role": "PM/기획/개발",
@@ -345,12 +345,12 @@ def _user_project_seed_data(today: date) -> list[dict]:
                 },
             ],
             "career_asset": {
-                "source_summary": "user_project_seed · work-support 업무 로그와 성과 후보 기반",
+                "source_summary": "user_project_seed · worktrace 업무 로그와 성과 후보 기반",
                 "work_summary": "개인 업무 관리용 MVP의 사용자 흐름, 데이터 구조, UI 밀도 개선 기준을 정리했다.",
                 "outcome_summary": "잔여 업무와 진척도, 업무 로그, 성과 후보, 경력 문장을 한 프로젝트 흐름에서 확인할 수 있게 구성했다. 수치 성과는 추후 근거 입력이 필요하다.",
-                "resume_bullets": "- 개인 업무 관리와 경력 자산화를 연결하는 work-support MVP 흐름을 기획하고 데이터 구조를 정리\n- 업무 상태, 완료율, 업무 로그, 성과 후보, 경력 문장을 프로젝트 단위로 확인할 수 있는 구조를 설계",
-                "career_description": "work-support 프로젝트에서 개인 업무 관리와 경력 자산화를 목표로 프로젝트/업무/업무 로그/성과/경력 자산 흐름을 정리했다. 수치가 확정되지 않은 성과는 후보로 분리해 과장 없이 관리하는 기준을 적용했다.",
-                "portfolio_description": "work-support는 프로젝트 진척도, 잔여 업무, 업무 로그, 개선 성과, 경력 문장을 한 흐름에서 관리하는 개인 업무 자동화 플랫폼입니다.",
+                "resume_bullets": "- 개인 업무 관리와 경력 자산화를 연결하는 worktrace MVP 흐름을 기획하고 데이터 구조를 정리\n- 업무 상태, 완료율, 업무 로그, 성과 후보, 경력 문장을 프로젝트 단위로 확인할 수 있는 구조를 설계",
+                "career_description": "worktrace 프로젝트에서 개인 업무 관리와 경력 자산화를 목표로 프로젝트/업무/업무 로그/성과/경력 자산 흐름을 정리했다. 수치가 확정되지 않은 성과는 후보로 분리해 과장 없이 관리하는 기준을 적용했다.",
+                "portfolio_description": "worktrace는 프로젝트 진척도, 잔여 업무, 업무 로그, 개선 성과, 경력 문장을 한 흐름에서 관리하는 개인 업무 자동화 플랫폼입니다.",
                 "star_answer": "Situation: 개인 업무 기록과 경력 정리 자료가 분산되어 있었다.\nTask: 실제 수행 업무를 프로젝트 단위로 남기고 경력 자산으로 연결해야 했다.\nAction: 프로젝트, 업무, 로그, 성과, 경력 자산 구조를 나누고 v0.1 사용자 흐름을 정리했다.\nResult: 잔여 업무와 진척도, 업무 로그, 성과 후보, 경력 문장을 한 프로젝트에서 확인하는 기반을 만들었다.",
             },
         },
@@ -948,7 +948,7 @@ def _insert_career_asset_if_missing(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Seed local-only sample work-support data.")
+    parser = argparse.ArgumentParser(description="Seed local-only sample worktrace data.")
     parser.add_argument("--owner-id", default=None, help="Owner id for the sample data. Defaults to DEFAULT_OWNER_ID.")
     parser.add_argument("--no-reset", action="store_true", help="Append another sample set instead of replacing existing [샘플] data.")
     parser.add_argument(
@@ -961,11 +961,11 @@ def main() -> None:
 
     if args.user_projects:
         result = seed_user_projects(get_settings(), owner_id=args.owner_id, force=args.force)
-        print("work-support user project seed data created")
+        print("worktrace user project seed data created")
         marker = f"{USER_PROJECT_PREFIX} / {USER_PROJECT_GENERATION_METHOD} (local/dev seed data)"
     else:
         result = seed(get_settings(), owner_id=args.owner_id, reset=not args.no_reset, force=args.force)
-        print("work-support local sample data seeded")
+        print("worktrace local sample data seeded")
         marker = f"{SAMPLE_PREFIX} (local/dev sample data)"
     print(f"- projects: {result.projects}")
     print(f"- tasks: {result.tasks}")

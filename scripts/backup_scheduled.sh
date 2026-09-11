@@ -20,6 +20,6 @@ fi
 trap 'rmdir "${LOCK_DIR}" 2>/dev/null || true' EXIT
 
 BACKUP_DIR="${BACKUP_DIR}" "${SCRIPT_DIR}/backup_local.sh"
-find "${BACKUP_DIR}" -type f -name 'work_support_*.dump' -mtime "+${BACKUP_RETENTION_DAYS}" -delete
+find "${BACKUP_DIR}" -type f \( -name 'worktrace_*.dump' -o -name 'worktrace_*.dump.enc' \) -mtime "+${BACKUP_RETENTION_DAYS}" -delete
 
 echo "Backup retention applied: ${BACKUP_RETENTION_DAYS} days"

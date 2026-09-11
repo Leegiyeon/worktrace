@@ -1,6 +1,6 @@
-# work-support
+# worktrace
 
-`work-support`는 개인 업무 기록을 프로젝트 단위로 관리하고,
+`worktrace`는 개인 업무 기록을 프로젝트 단위로 관리하고,
 진행률·잔여 업무·주간 리포트·경력 자산화까지 연결하기 위한
 업무 자동화 플랫폼입니다.
 
@@ -44,7 +44,7 @@
 ## 디렉토리 구조
 
 ```text
-work-support/
+worktrace/
 ├─ frontend/                    # Next.js 앱과 프론트 API proxy
 ├─ backend/                     # FastAPI 앱, DB 초기화 스크립트, 테스트
 ├─ infrastructure/postgres/init/ # PostgreSQL 초기화 SQL, pgvector extension
@@ -76,7 +76,7 @@ node scripts/generate_password_hash.mjs
 openssl rand -base64 48
 ```
 
-각 출력값을 `WORK_SUPPORT_PASSWORD_HASH`, `WORK_SUPPORT_SESSION_SECRET`에
+각 출력값을 `WORKTRACE_PASSWORD_HASH`, `WORKTRACE_SESSION_SECRET`에
 저장합니다. 원문 비밀번호는 환경변수나 저장소에 보관하지 않습니다.
 
 ## 운영 컨테이너 사전 검증
@@ -95,7 +95,7 @@ docker compose --env-file .env.production -f docker-compose.prod.yml up -d --bui
 
 운영 필수값은 `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`,
 `DEFAULT_OWNER_ID`, `REPORT_ACCESS_TOKEN`, `FRONTEND_ORIGIN`, `APP_DOMAIN`,
-`WORK_SUPPORT_PASSWORD_HASH`, `WORK_SUPPORT_SESSION_SECRET`입니다.
+`WORKTRACE_PASSWORD_HASH`, `WORKTRACE_SESSION_SECRET`입니다.
 `FRONTEND_ORIGIN`은 `https://APP_DOMAIN`과 동일한 실제 HTTPS 주소여야 하며
 기본 owner/token은 거부됩니다. Oracle Cloud VCN security list 또는 NSG에는
 80/TCP, 443/TCP, 443/UDP만 공개하고 PostgreSQL 5432와 backend 8000은 열지
@@ -123,7 +123,7 @@ backend는 기동 전에 `backend/scripts/migrate_db.py`를 실행합니다. 적
 Docker Compose는 기본적으로 host port를 `127.0.0.1`에만
 바인딩합니다. 개인 로컬 개발 외부로 노출하지 않는 전제입니다.
 `docker-compose.yml`과 `.env.example`은 Compose project name을
-`work-support`로 고정합니다. Docker Desktop에서는 `work-support`
+`worktrace`로 고정합니다. Docker Desktop에서는 `worktrace`
 프로젝트 아래 `db`, `backend`, `frontend` 컨테이너만 관리되도록
 실행하세요.
 프론트엔드 컨테이너는 `app/`, `public/`, 설정 파일만 bind mount하고
@@ -134,7 +134,7 @@ Docker Compose는 기본적으로 host port를 `127.0.0.1`에만
 
 ```bash
 docker compose ps
-docker ps --filter label=com.docker.compose.project=work-support
+docker ps --filter label=com.docker.compose.project=worktrace
 ```
 
 중지/재시작:
@@ -207,7 +207,7 @@ Frontend 확인:
 - <http://localhost:3000/reports>
 
 프론트엔드의 `/api/*` 라우트는 `frontend/.env.local`의
-`WORK_SUPPORT_BACKEND_URL=http://localhost:8000` 값을 사용해
+`WORKTRACE_BACKEND_URL=http://localhost:8000` 값을 사용해
 백엔드와 통신합니다.
 
 ### Frontend UI polish conventions
@@ -237,18 +237,18 @@ cp .env.example .env
 
 주요 값:
 
-- `POSTGRES_DB`: `work_support` — 로컬 DB 이름
+- `POSTGRES_DB`: `worktrace` — 신규 로컬 DB 이름. 기존 운영 DB의 `work_support` 이름은 데이터 이전 전까지 유지할 수 있습니다.
 - `POSTGRES_USER`: `leegiyeon` — 로컬 DB 사용자
 - `POSTGRES_PASSWORD`: 빈 placeholder — 루트 `.env`에만 실제 로컬 비밀번호 입력
 - `POSTGRES_HOST`: `db` — Docker backend가 DB 컨테이너에 접속할 때 사용
 - `BACKEND_PORT`: `8000` — host에 노출할 backend port
 - `FRONTEND_PORT`: `3000` — host에 노출할 frontend port
 - `NEXT_PUBLIC_API_BASE_URL`: `http://localhost:8000` — 브라우저 안내용
-- `WORK_SUPPORT_BACKEND_URL`: `http://backend:8000` — Docker frontend용
+- `WORKTRACE_BACKEND_URL`: `http://backend:8000` — Docker frontend용
 - `DEFAULT_OWNER_ID`: `local-owner` — 개인 로컬 데이터 owner 기본값
 - `REPORT_ACCESS_TOKEN`: 빈 placeholder — 루트 `.env`에만 실제 로컬 토큰 입력
 - `REPORT_TIMEZONE`: `Asia/Seoul` — 리포트 기간 경계 해석 기준
-- `NEXT_PUBLIC_WORK_SUPPORT_OWNER_ID`: `local-owner` — 과거 호환용 공개 owner
+- `NEXT_PUBLIC_WORKTRACE_OWNER_ID`: `local-owner` — 과거 호환용 공개 owner
 - `OPENAI_API_KEY` / `OPENAI_MODEL`: 빈 placeholder — 필요 시 루트 `.env`에만 입력
 - `GITHUB_WEBHOOK_SECRET`: GitHub 저장소 webhook과 동일한 임의의 긴 비밀값
 
@@ -282,7 +282,7 @@ Nginx는 일반 요청을 `http://127.0.0.1:3200`으로 reverse proxy합니다. 
 
 - Environment secrets: `ORACLE_HOST`, `ORACLE_USER`, `ORACLE_SSH_KEY`, `ORACLE_KNOWN_HOSTS`
 
-운영 애플리케이션 비밀값은 GitHub에 중복 저장하지 않고 Oracle 서버의 `/home/ubuntu/work-support/.env.production`에만 둡니다. `ORACLE_KNOWN_HOSTS`에는 배포 전에 신뢰한 서버의 `ssh-keyscan` 결과를 등록합니다. 배포 스크립트는 원격 `main`을 fast-forward로 갱신하고 컨테이너를 재빌드한 뒤 backend readiness와 frontend login endpoint를 확인합니다.
+운영 애플리케이션 비밀값은 GitHub에 중복 저장하지 않고 Oracle 서버의 `/home/ubuntu/worktrace/.env.production`에만 둡니다. `ORACLE_KNOWN_HOSTS`에는 배포 전에 신뢰한 서버의 `ssh-keyscan` 결과를 등록합니다. 배포 스크립트는 원격 `main`을 fast-forward로 갱신하고 컨테이너를 재빌드한 뒤 backend readiness와 frontend login endpoint를 확인합니다.
 
 ### Backend 로컬 `.env`
 
@@ -309,8 +309,8 @@ cd frontend
 cp .env.example .env.local
 ```
 
-이 파일의 `WORK_SUPPORT_BACKEND_URL`은 `http://localhost:8000`을
-바라봅니다. `WORK_SUPPORT_OWNER_ID`와 `WORK_SUPPORT_REPORT_TOKEN`은
+이 파일의 `WORKTRACE_BACKEND_URL`은 `http://localhost:8000`을
+바라봅니다. `WORKTRACE_OWNER_ID`와 `WORKTRACE_REPORT_TOKEN`은
 프론트 서버 라우트가 백엔드 호출 시 주입하는 server-only 값입니다.
 
 ## API 오류 형식
@@ -334,7 +334,7 @@ FastAPI/Pydantic 요청 검증 실패는 기본 422 응답을 유지합니다.
 ## DB 초기화 / migration 방법
 
 현재 별도 migration 도구는 없고, canonical SQL source는
-`infrastructure/postgres/init/002_work_support_schema.sql`입니다.
+`infrastructure/postgres/init/002_work_support_schema.sql`입니다. 이 파일명은 이미 적용된 migration 식별자 호환을 위해 유지합니다.
 
 ### 새 DB 첫 실행
 
@@ -385,7 +385,7 @@ docker compose up -d db
 scripts/backup_local.sh
 ```
 
-백업 파일은 기본적으로 `backups/postgres/work_support_YYYYMMDDTHHMMSSZ.dump`
+백업 파일은 기본적으로 `backups/postgres/worktrace_YYYYMMDDTHHMMSSZ.dump`
 형식으로 생성됩니다. `backups/`는 git 추적에서 제외되며, 디렉토리는 `700`,
 백업 파일은 `600` 권한으로 저장됩니다.
 
@@ -402,7 +402,7 @@ BACKUP_DIR=/path/to/private/backups scripts/backup_local.sh
 시작하지 않습니다.
 
 ```bash
-scripts/restore_local.sh --confirm backups/postgres/work_support_YYYYMMDDTHHMMSSZ.dump
+scripts/restore_local.sh --confirm backups/postgres/worktrace_YYYYMMDDTHHMMSSZ.dump
 ```
 
 현재 데이터를 보존해야 한다면 복원 전에 새 백업을 먼저 만듭니다.
@@ -420,6 +420,25 @@ BACKUP_RETENTION_DAYS=14 scripts/backup_scheduled.sh
 실패 종료 코드를 모니터링 대상으로 연결합니다. Oracle Cloud 배포 단계에서는
 생성된 dump를 별도 Object Storage bucket으로 복제한 후 복원 리허설을 수행해야
 합니다.
+
+운영 환경에서는 암호화 키 파일이 필수입니다. 키 파일은 repository 밖에 `600`
+권한으로 만들고 환경변수에는 파일 경로만 지정합니다. 키 자체를 `.env`나 GitHub에
+저장하지 않습니다.
+
+```bash
+APP_ENV=production \
+BACKUP_ENCRYPTION_KEY_FILE=/home/ubuntu/.config/worktrace/backup.key \
+BACKUP_RETENTION_DAYS=14 \
+scripts/backup_scheduled.sh
+```
+
+암호화 백업은 `.dump.enc`로 생성됩니다. 복원 시 같은 키 파일 경로를 지정하면
+임시 평문 dump를 자동으로 정리합니다.
+
+```bash
+BACKUP_ENCRYPTION_KEY_FILE=/home/ubuntu/.config/worktrace/backup.key \
+scripts/restore_local.sh --confirm backups/postgres/worktrace_YYYYMMDDTHHMMSSZ.dump.enc
+```
 
 ## 로컬 테스트용 샘플 데이터 생성
 
@@ -472,7 +491,7 @@ python scripts/seed_local.py --user-projects
 
 생성되는 데이터:
 
-- `[user_project_seed] work-support`
+- `[user_project_seed] worktrace`
 - `[user_project_seed] OCC AI 민원 플랫폼`
 - `[user_project_seed] E-manual RAG Chatbot`
 - 프로젝트별 업무 3~5개, 업무 로그 2~3개, 성과 후보 1~2개, 경력 자산 1개
@@ -505,8 +524,8 @@ curl http://localhost:8000/health
 ### Projects API
 
 ```bash
-curl -H "X-Work-Support-Owner-Id: local-owner" \
-  -H "X-Work-Support-Report-Token: dev-only-report-token" \
+curl -H "X-Worktrace-Owner-Id: local-owner" \
+  -H "X-Worktrace-Report-Token: dev-only-report-token" \
   http://localhost:8000/projects
 ```
 
@@ -515,20 +534,20 @@ curl -H "X-Work-Support-Owner-Id: local-owner" \
 ```bash
 PROJECT_ID=$(curl -sS -X POST http://localhost:8000/projects \
   -H "Content-Type: application/json" \
-  -H "X-Work-Support-Owner-Id: local-owner" \
-  -H "X-Work-Support-Report-Token: dev-only-report-token" \
+  -H "X-Worktrace-Owner-Id: local-owner" \
+  -H "X-Worktrace-Report-Token: dev-only-report-token" \
   -d '{"title":"v0.1 실행 점검","status":"in_progress","description":"로컬 사용 흐름 확인"}' \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
 
 curl -sS -X POST "http://localhost:8000/projects/${PROJECT_ID}/tasks" \
   -H "Content-Type: application/json" \
-  -H "X-Work-Support-Owner-Id: local-owner" \
-  -H "X-Work-Support-Report-Token: dev-only-report-token" \
+  -H "X-Worktrace-Owner-Id: local-owner" \
+  -H "X-Worktrace-Report-Token: dev-only-report-token" \
   -d '{"title":"첫 업무 등록","status":"planned","priority":"high","due_date":"2026-06-07"}'
 
 curl -sS http://localhost:8000/projects/${PROJECT_ID} \
-  -H "X-Work-Support-Owner-Id: local-owner" \
-  -H "X-Work-Support-Report-Token: dev-only-report-token"
+  -H "X-Worktrace-Owner-Id: local-owner" \
+  -H "X-Worktrace-Report-Token: dev-only-report-token"
 ```
 
 ### Weekly report API
@@ -536,8 +555,8 @@ curl -sS http://localhost:8000/projects/${PROJECT_ID} \
 ```bash
 curl -X POST http://localhost:8000/reports/weekly \
   -H "Content-Type: application/json" \
-  -H "X-Work-Support-Owner-Id: local-owner" \
-  -H "X-Work-Support-Report-Token: dev-only-report-token" \
+  -H "X-Worktrace-Owner-Id: local-owner" \
+  -H "X-Worktrace-Report-Token: dev-only-report-token" \
   -d '{"start_date":"2026-06-01","end_date":"2026-06-07"}'
 ```
 
@@ -547,8 +566,8 @@ curl -X POST http://localhost:8000/reports/weekly \
 열어 프로젝트 목록이 로딩되는지 확인합니다. 문제가 있으면 다음을
 확인하세요.
 
-- Docker 전체 실행: 루트 `.env`의 `WORK_SUPPORT_BACKEND_URL=http://backend:8000`
-- 로컬 frontend 실행: `frontend/.env.local`의 `WORK_SUPPORT_BACKEND_URL=http://localhost:8000`
+- Docker 전체 실행: 루트 `.env`의 `WORKTRACE_BACKEND_URL=http://backend:8000`
+- 로컬 frontend 실행: `frontend/.env.local`의 `WORKTRACE_BACKEND_URL=http://localhost:8000`
 - Backend CORS origin: `FRONTEND_ORIGIN=http://localhost:3000`
 - Backend health: <http://localhost:8000/health>
 
@@ -588,14 +607,14 @@ docker compose up --build
 
 ### 3000 또는 8000 포트 충돌
 
-Docker Desktop에서 `work-support` 프로젝트 밖의 컨테이너나 로컬
+Docker Desktop에서 `worktrace` 프로젝트 밖의 컨테이너나 로컬
 `node`/`uvicorn` 프로세스가 같은 포트를 잡고 있으면 하나로 통일합니다.
 
 ```bash
 # 3000 포트를 잡고 있는 로컬 프로세스 확인
 lsof -nP -iTCP:3000 -sTCP:LISTEN
 
-# work-support Compose 컨테이너만 다시 실행
+# worktrace Compose 컨테이너만 다시 실행
 docker compose down
 docker compose up -d --build
 docker compose ps
@@ -603,15 +622,15 @@ docker compose ps
 
 다른 로컬 프론트엔드를 동시에 띄워야 할 때만 루트 `.env`에서
 `FRONTEND_PORT`를 바꾸고 Compose를 재실행합니다. 기본 운영은
-`work-support` Compose 프로젝트 하나로 `db`, `backend`, `frontend`를
+`worktrace` Compose 프로젝트 하나로 `db`, `backend`, `frontend`를
 함께 관리하는 방식입니다.
 
 ### 프론트에서 API 오류가 표시됨
 
 1. `curl http://localhost:8000/health`로 백엔드가 떠 있는지 확인합니다.
 2. Docker 실행이면 루트 `.env`, 로컬 실행이면
-   `frontend/.env.local`의 `WORK_SUPPORT_BACKEND_URL`을 확인합니다.
-3. 리포트 API는 `WORK_SUPPORT_REPORT_TOKEN` /
+   `frontend/.env.local`의 `WORKTRACE_BACKEND_URL`을 확인합니다.
+3. 리포트 API는 `WORKTRACE_REPORT_TOKEN` /
    `REPORT_ACCESS_TOKEN` 값이 일치해야 합니다.
 
 ## 현재 아키텍처 tradeoff

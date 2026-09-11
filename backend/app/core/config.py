@@ -12,10 +12,10 @@ class Settings(BaseSettings):
     document analysis, RAG, and authentication remain outside this slice.
     """
 
-    app_name: str = "work-support API"
+    app_name: str = "worktrace API"
     app_env: str = "local"
     database_url: Optional[str] = None
-    postgres_db: str = "work_support"
+    postgres_db: str = "worktrace"
     postgres_user: str = "leegiyeon"
     postgres_password: Optional[str] = None
     postgres_host: str = "localhost"

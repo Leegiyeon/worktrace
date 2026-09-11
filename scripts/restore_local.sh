@@ -62,6 +62,25 @@ fi
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 COMPOSE_SERVICE="${COMPOSE_DB_SERVICE:-db}"
+restore_file="${backup_file}"
+decrypted_file=""
+
+cleanup() {
+  [[ -z "${decrypted_file}" ]] || rm -f -- "${decrypted_file}"
+}
+trap cleanup EXIT
+
+if [[ "${backup_file}" == *.enc ]]; then
+  encryption_key_file="${BACKUP_ENCRYPTION_KEY_FILE:-}"
+  if [[ -z "${encryption_key_file}" || ! -f "${encryption_key_file}" || ! -r "${encryption_key_file}" ]]; then
+    echo "BACKUP_ENCRYPTION_KEY_FILE must reference a readable file for encrypted backups." >&2
+    exit 1
+  fi
+  decrypted_file="$(mktemp "${TMPDIR:-/tmp}/worktrace_restore.XXXXXX.dump")"
+  chmod 600 "${decrypted_file}"
+  openssl enc -d -aes-256-cbc -pbkdf2 -pass "file:${encryption_key_file}" -in "${backup_file}" -out "${decrypted_file}"
+  restore_file="${decrypted_file}"
+fi
 
 cd "${REPO_ROOT}"
 
@@ -71,7 +90,7 @@ if [[ -z "${container_id}" ]]; then
   exit 1
 fi
 
-docker compose exec -T "${COMPOSE_SERVICE}" pg_restore --list < "${backup_file}" >/dev/null
+docker compose exec -T "${COMPOSE_SERVICE}" pg_restore --list < "${restore_file}" >/dev/null
 
 docker compose exec -T "${COMPOSE_SERVICE}" sh -eu -c '
   pg_restore \
@@ -82,6 +101,6 @@ docker compose exec -T "${COMPOSE_SERVICE}" sh -eu -c '
     --no-privileges \
     --dbname="${POSTGRES_DB}" \
     --username="${POSTGRES_USER}"
-' < "${backup_file}"
+' < "${restore_file}"
 
 echo "Restore completed from: ${backup_file}"

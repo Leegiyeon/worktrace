@@ -1,7 +1,7 @@
 [project]
-name = "work-support-backend"
+name = "worktrace-backend"
 version = "0.1.0"
-description = "FastAPI skeleton for the work-support MVP."
+description = "FastAPI skeleton for the worktrace MVP."
 requires-python = ">=3.10"
 dependencies = [
   "fastapi==0.136.3",

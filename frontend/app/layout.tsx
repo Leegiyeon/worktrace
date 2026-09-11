@@ -3,7 +3,7 @@ import { AppHeader } from "./components/AppHeader";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "work-support",
+  title: "worktrace",
   description: "Personal work automation and career assetization platform"
 };
 
@@ -12,7 +12,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="ko">
       <body>
         <div className="app-frame">
-          <AppHeader authEnabled={Boolean(process.env.WORK_SUPPORT_PASSWORD_HASH && process.env.WORK_SUPPORT_SESSION_SECRET)} />
+          <AppHeader authEnabled={Boolean(
+            (process.env.WORKTRACE_PASSWORD_HASH ?? process.env.WORK_SUPPORT_PASSWORD_HASH)
+            && (process.env.WORKTRACE_SESSION_SECRET ?? process.env.WORK_SUPPORT_SESSION_SECRET)
+          )} />
           {children}
         </div>
       </body>

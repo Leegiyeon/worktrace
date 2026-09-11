@@ -1,6 +1,6 @@
-# work-support Design System
+# worktrace Design System
 
-work-support UI는 실무형 개인 프로젝트 관리 도구를 기준으로 한다. 화면은 설명보다 데이터, 장식보다 판단, 카드 나열보다 넓은 대시보드 그리드를 우선한다.
+worktrace UI는 실무형 개인 프로젝트 관리 도구를 기준으로 한다. 화면은 설명보다 데이터, 장식보다 판단, 카드 나열보다 넓은 대시보드 그리드를 우선한다.
 
 ## 1. UI 원칙
 

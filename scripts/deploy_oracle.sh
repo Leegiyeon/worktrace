@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly APP_DIR="${APP_DIR:-/home/ubuntu/work-support}"
+readonly APP_DIR="${APP_DIR:-/home/ubuntu/worktrace}"
 readonly COMPOSE=(
   docker compose
   --env-file .env.production

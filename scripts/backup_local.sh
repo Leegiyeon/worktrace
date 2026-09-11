@@ -30,8 +30,18 @@ mkdir -p -- "${BACKUP_DIR}"
 chmod 700 "${BACKUP_DIR}"
 
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
-backup_file="${BACKUP_DIR}/work_support_${timestamp}.dump"
+backup_file="${BACKUP_DIR}/worktrace_${timestamp}.dump"
 tmp_file="${backup_file}.tmp.$$"
+encryption_key_file="${BACKUP_ENCRYPTION_KEY_FILE:-}"
+
+if [[ "${APP_ENV:-local}" == "production" && -z "${encryption_key_file}" ]]; then
+  echo "BACKUP_ENCRYPTION_KEY_FILE is required in production." >&2
+  exit 1
+fi
+if [[ -n "${encryption_key_file}" && ( ! -f "${encryption_key_file}" || ! -r "${encryption_key_file}" ) ]]; then
+  echo "Backup encryption key file is not readable: ${encryption_key_file}" >&2
+  exit 1
+fi
 
 cleanup() {
   rm -f -- "${tmp_file}"
@@ -57,7 +67,15 @@ docker compose exec -T "${COMPOSE_SERVICE}" sh -eu -c '
 
 docker compose exec -T "${COMPOSE_SERVICE}" pg_restore --list < "${tmp_file}" >/dev/null
 chmod 600 "${tmp_file}"
-mv -- "${tmp_file}" "${backup_file}"
+if [[ -n "${encryption_key_file}" ]]; then
+  encrypted_file="${backup_file}.enc"
+  openssl enc -aes-256-cbc -pbkdf2 -salt -pass "file:${encryption_key_file}" -in "${tmp_file}" -out "${encrypted_file}"
+  chmod 600 "${encrypted_file}"
+  rm -f -- "${tmp_file}"
+  backup_file="${encrypted_file}"
+else
+  mv -- "${tmp_file}" "${backup_file}"
+fi
 trap - EXIT
 
 echo "Backup written: ${backup_file}"

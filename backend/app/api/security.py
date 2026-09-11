@@ -20,8 +20,8 @@ class OwnerContext:
 
 
 def require_owner_context(
-    x_work_support_owner_id: str | None = Header(default=None),
-    x_work_support_report_token: str | None = Header(default=None),
+    x_worktrace_owner_id: str | None = Header(default=None),
+    x_worktrace_report_token: str | None = Header(default=None),
     settings: Settings = Depends(get_settings),
 ) -> OwnerContext:
     """Validate the local personal-MVP owner guard and return owner context.
@@ -44,35 +44,35 @@ def require_owner_context(
             "Default report access token cannot be used outside local development.",
         )
 
-    if not x_work_support_owner_id or not x_work_support_report_token:
+    if not x_worktrace_owner_id or not x_worktrace_report_token:
         raise http_error(
             status.HTTP_401_UNAUTHORIZED,
             REPORT_ACCESS_HEADERS_REQUIRED,
             "Report access headers are required.",
         )
 
-    if x_work_support_owner_id != settings.default_owner_id:
+    if x_worktrace_owner_id != settings.default_owner_id:
         raise http_error(
             status.HTTP_403_FORBIDDEN,
             REPORT_OWNER_FORBIDDEN,
             "Report owner is not allowed.",
         )
 
-    if not compare_digest(x_work_support_report_token, settings.report_access_token):
+    if not compare_digest(x_worktrace_report_token, settings.report_access_token):
         raise http_error(
             status.HTTP_401_UNAUTHORIZED,
             REPORT_TOKEN_INVALID,
             "Report access token is invalid.",
         )
 
-    return OwnerContext(owner_id=x_work_support_owner_id)
+    return OwnerContext(owner_id=x_worktrace_owner_id)
 
 
 def require_report_access(
-    x_work_support_owner_id: str | None = Header(default=None),
-    x_work_support_report_token: str | None = Header(default=None),
+    x_worktrace_owner_id: str | None = Header(default=None),
+    x_worktrace_report_token: str | None = Header(default=None),
     settings: Settings = Depends(get_settings),
 ) -> str:
     """Backward-compatible report dependency returning the validated owner id."""
 
-    return require_owner_context(x_work_support_owner_id, x_work_support_report_token, settings).owner_id
+    return require_owner_context(x_worktrace_owner_id, x_worktrace_report_token, settings).owner_id

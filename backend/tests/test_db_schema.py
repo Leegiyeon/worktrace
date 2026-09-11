@@ -6,6 +6,8 @@ from app.db.schema import load_schema_sql, resolve_schema_sql_path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CANONICAL_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "002_work_support_schema.sql"
 GITHUB_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "003_github_evidence.sql"
+GITHUB_OPERATIONS_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "004_github_delivery_operations.sql"
+WORKTRACE_BRAND_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "005_worktrace_brand.sql"
 
 
 def test_schema_loader_reads_canonical_sql_file() -> None:
@@ -70,3 +72,19 @@ def test_canonical_schema_contains_github_evidence_tables() -> None:
         assert f"CREATE TABLE IF NOT EXISTS {table}" in schema
     assert "delivery_id TEXT NOT NULL UNIQUE" in schema
     assert "UNIQUE (owner_id, repository_source_id, sha)" in schema
+
+
+def test_github_delivery_operations_track_reprocessing() -> None:
+    schema = GITHUB_OPERATIONS_SCHEMA.read_text(encoding="utf-8")
+
+    assert "processing_attempts INTEGER NOT NULL DEFAULT 1" in schema
+    assert "last_processed_at TIMESTAMPTZ NOT NULL DEFAULT now()" in schema
+    assert "idx_github_deliveries_repository_received" in schema
+
+
+def test_worktrace_brand_migration_updates_project_and_repository() -> None:
+    schema = WORKTRACE_BRAND_SCHEMA.read_text(encoding="utf-8")
+
+    assert "SET title = 'worktrace'" in schema
+    assert "SET full_name = 'Leegiyeon/worktrace'" in schema
+    assert "lower(title) = 'work-support'" in schema

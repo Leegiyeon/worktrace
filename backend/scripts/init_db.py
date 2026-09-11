@@ -11,4 +11,4 @@ from app.db.schema import init_schema
 
 if __name__ == "__main__":
     init_schema(get_settings())
-    print("work-support database schema initialized")
+    print("worktrace database schema initialized")

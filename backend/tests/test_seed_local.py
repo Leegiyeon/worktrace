@@ -29,7 +29,7 @@ def test_user_project_seed_shape_is_local_and_evidence_safe() -> None:
     seeds = _user_project_seed_data(date(2026, 6, 1))
 
     assert [seed["title"] for seed in seeds] == [
-        f"{USER_PROJECT_PREFIX} work-support",
+        f"{USER_PROJECT_PREFIX} worktrace",
         f"{USER_PROJECT_PREFIX} OCC AI 민원 플랫폼",
         f"{USER_PROJECT_PREFIX} E-manual RAG Chatbot",
     ]

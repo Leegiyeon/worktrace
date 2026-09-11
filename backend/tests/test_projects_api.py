@@ -4,12 +4,13 @@ from fastapi.testclient import TestClient
 
 from app.api import projects
 from app.main import app
-from app.schemas.projects import ProjectSummary, ProjectTask
+from app.schemas.projects import GitHubDelivery, ProjectGitHubStatus, ProjectSummary, ProjectTask, RepositorySource
+from app.services.github_webhooks import GitHubDeliveryNotFoundError, GitHubWebhookResult
 from app.services.projects import ProjectNotFoundError, ProjectTaskNotFoundError
 
 HEADERS = {
-    "X-Work-Support-Owner-Id": "local-owner",
-    "X-Work-Support-Report-Token": "dev-only-report-token",
+    "X-Worktrace-Owner-Id": "local-owner",
+    "X-Worktrace-Report-Token": "dev-only-report-token",
 }
 PROJECT_ID = "00000000-0000-0000-0000-000000000001"
 TASK_ID = "00000000-0000-0000-0000-000000000101"
@@ -138,3 +139,65 @@ def test_project_and_task_not_found_use_stable_errors(monkeypatch):
         "code": "PROJECT_TASK_NOT_FOUND",
         "message": "Project task was not found.",
     }
+
+
+def test_project_github_status_and_reprocess_routes(monkeypatch):
+    delivery = GitHubDelivery(
+        id="00000000-0000-0000-0000-000000000201",
+        delivery_id="delivery-1",
+        event_name="push",
+        ref="refs/heads/main",
+        status="failed",
+        reason="temporary_failure",
+        processing_attempts=1,
+        received_at="2026-09-11 01:00:00+00",
+        last_processed_at="2026-09-11 01:00:00+00",
+    )
+    github_status = ProjectGitHubStatus(
+        repository=RepositorySource(
+            id="00000000-0000-0000-0000-000000000301",
+            project_id=PROJECT_ID,
+            repository_id=123,
+            full_name="Leegiyeon/worktrace",
+            default_branch="main",
+            updated_at="2026-09-11 01:00:00+00",
+        ),
+        stored_commit_count=51,
+        last_success_at="2026-09-11 01:00:00+00",
+        deliveries=[delivery],
+    )
+
+    monkeypatch.setattr(projects, "get_project", lambda settings, owner_id, project_id: sample_project())
+    monkeypatch.setattr(projects, "get_project_github_status", lambda settings, owner_id, project_id: github_status)
+    monkeypatch.setattr(
+        projects,
+        "reprocess_github_delivery",
+        lambda settings, owner_id, project_id, delivery_id: GitHubWebhookResult("processed", "", 2),
+    )
+    client = TestClient(app)
+
+    status_response = client.get(f"/projects/{PROJECT_ID}/github-status", headers=HEADERS)
+    reprocess_response = client.post(
+        f"/projects/{PROJECT_ID}/github-deliveries/delivery-1/reprocess",
+        headers=HEADERS,
+    )
+
+    assert status_response.status_code == 200
+    assert status_response.json()["stored_commit_count"] == 51
+    assert status_response.json()["deliveries"][0]["status"] == "failed"
+    assert reprocess_response.status_code == 200
+    assert reprocess_response.json() == {"status": "processed", "reason": "", "commits_stored": 2}
+
+
+def test_reprocess_unknown_delivery_uses_stable_error(monkeypatch):
+    def fake_reprocess(settings, owner_id, project_id, delivery_id):
+        raise GitHubDeliveryNotFoundError()
+
+    monkeypatch.setattr(projects, "reprocess_github_delivery", fake_reprocess)
+    response = TestClient(app).post(
+        f"/projects/{PROJECT_ID}/github-deliveries/missing/reprocess",
+        headers=HEADERS,
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "GITHUB_DELIVERY_NOT_FOUND"

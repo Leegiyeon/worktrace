@@ -1,4 +1,4 @@
-name: work-support
+name: worktrace
 
 services:
   db:
@@ -54,11 +54,11 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
-      WORK_SUPPORT_BACKEND_URL: http://backend:8000
-      WORK_SUPPORT_OWNER_ID: ${DEFAULT_OWNER_ID:?Set DEFAULT_OWNER_ID}
-      WORK_SUPPORT_REPORT_TOKEN: ${REPORT_ACCESS_TOKEN:?Set REPORT_ACCESS_TOKEN}
-      WORK_SUPPORT_PASSWORD_HASH: ${WORK_SUPPORT_PASSWORD_HASH:?Set WORK_SUPPORT_PASSWORD_HASH}
-      WORK_SUPPORT_SESSION_SECRET: ${WORK_SUPPORT_SESSION_SECRET:?Set WORK_SUPPORT_SESSION_SECRET}
+      WORKTRACE_BACKEND_URL: http://backend:8000
+      WORKTRACE_OWNER_ID: ${DEFAULT_OWNER_ID:?Set DEFAULT_OWNER_ID}
+      WORKTRACE_REPORT_TOKEN: ${REPORT_ACCESS_TOKEN:?Set REPORT_ACCESS_TOKEN}
+      WORKTRACE_PASSWORD_HASH: ${WORKTRACE_PASSWORD_HASH:-${WORK_SUPPORT_PASSWORD_HASH:?Set WORKTRACE_PASSWORD_HASH}}
+      WORKTRACE_SESSION_SECRET: ${WORKTRACE_SESSION_SECRET:-${WORK_SUPPORT_SESSION_SECRET:?Set WORKTRACE_SESSION_SECRET}}
     expose:
       - "3000"
     depends_on:
@@ -89,5 +89,8 @@ services:
 
 volumes:
   postgres_data:
+    name: work-support_postgres_data
   caddy_data:
+    name: work-support_caddy_data
   caddy_config:
+    name: work-support_caddy_config

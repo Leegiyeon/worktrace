@@ -18,7 +18,7 @@ app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
     description=(
-        "API for the work-support MVP. "
+        "API for the worktrace MVP. "
         "Projects, work logs, outcomes, career assets, and reports are available; "
         "file ingestion, document analysis, and RAG are not implemented in this slice."
     ),
@@ -46,6 +46,6 @@ app.include_router(work_logs_router)
 def root() -> dict[str, str]:
     return {
         "service": settings.app_name,
-        "message": "work-support backend is running",
+        "message": "worktrace backend is running",
         "scope": "personal work evidence and career asset MVP; file ingestion, document analysis, and RAG are not implemented",
     }

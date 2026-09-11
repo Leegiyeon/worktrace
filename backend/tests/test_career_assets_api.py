@@ -11,8 +11,8 @@ from app.services import career_assets as career_asset_service
 from app.services.career_assets import CareerAssetNotFoundError, CareerAssetProjectNotFoundError
 
 HEADERS = {
-    "X-Work-Support-Owner-Id": "local-owner",
-    "X-Work-Support-Report-Token": "dev-only-report-token",
+    "X-Worktrace-Owner-Id": "local-owner",
+    "X-Worktrace-Report-Token": "dev-only-report-token",
 }
 PROJECT_ID = "00000000-0000-0000-0000-000000000001"
 CAREER_ASSET_ID = "00000000-0000-0000-0000-000000000301"
@@ -309,11 +309,11 @@ def test_ai_generation_receives_all_evidence_without_real_api(monkeypatch):
 
     monkeypatch.setattr(career_asset_service, "OpenAI", FakeOpenAI)
     fallback = career_asset_service._build_career_asset_content(
-        {"title": "work-support", "status": "in_progress", "role": "PM"}, [], [], [], "PM", []
+        {"title": "worktrace", "status": "in_progress", "role": "PM"}, [], [], [], "PM", []
     )
     result = career_asset_service._build_ai_career_asset_content(
         Settings(openai_api_key="test-key", openai_model="test-model"),
-        {"title": "work-support", "status": "in_progress", "role": "PM"},
+        {"title": "worktrace", "status": "in_progress", "role": "PM"},
         [{"title": "Webhook", "status": "done"}],
         [{"title": "설계 기록"}],
         [{"title": "자동 수집", "resume_ready": True}],

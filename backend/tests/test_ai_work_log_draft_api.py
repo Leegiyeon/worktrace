@@ -10,8 +10,8 @@ from app.services import ai_work_log_draft
 from app.services.ai_work_log_draft import AiConfigurationError, AiDraftProjectNotFoundError
 
 HEADERS = {
-    "X-Work-Support-Owner-Id": "local-owner",
-    "X-Work-Support-Report-Token": "dev-only-report-token",
+    "X-Worktrace-Owner-Id": "local-owner",
+    "X-Worktrace-Report-Token": "dev-only-report-token",
 }
 PROJECT_ID = "00000000-0000-0000-0000-000000000001"
 

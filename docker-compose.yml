@@ -1,11 +1,11 @@
-name: work-support
+name: worktrace
 
 services:
   db:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-work_support}
+      POSTGRES_DB: ${POSTGRES_DB:-worktrace}
       POSTGRES_USER: ${POSTGRES_USER:-leegiyeon}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in root .env}
     ports:
@@ -27,7 +27,7 @@ services:
       - path: .env
         required: false
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-work_support}
+      POSTGRES_DB: ${POSTGRES_DB:-worktrace}
       POSTGRES_USER: ${POSTGRES_USER:-leegiyeon}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in root .env}
       POSTGRES_HOST: db
@@ -50,12 +50,12 @@ services:
     restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
-      NEXT_PUBLIC_WORK_SUPPORT_OWNER_ID: ${NEXT_PUBLIC_WORK_SUPPORT_OWNER_ID:-local-owner}
-      WORK_SUPPORT_BACKEND_URL: ${WORK_SUPPORT_BACKEND_URL:-http://backend:8000}
-      WORK_SUPPORT_OWNER_ID: ${DEFAULT_OWNER_ID:-local-owner}
-      WORK_SUPPORT_REPORT_TOKEN: ${REPORT_ACCESS_TOKEN:-dev-only-report-token}
-      WORK_SUPPORT_PASSWORD_HASH: ${WORK_SUPPORT_PASSWORD_HASH:-}
-      WORK_SUPPORT_SESSION_SECRET: ${WORK_SUPPORT_SESSION_SECRET:-}
+      NEXT_PUBLIC_WORKTRACE_OWNER_ID: ${NEXT_PUBLIC_WORKTRACE_OWNER_ID:-local-owner}
+      WORKTRACE_BACKEND_URL: ${WORKTRACE_BACKEND_URL:-http://backend:8000}
+      WORKTRACE_OWNER_ID: ${DEFAULT_OWNER_ID:-local-owner}
+      WORKTRACE_REPORT_TOKEN: ${REPORT_ACCESS_TOKEN:-dev-only-report-token}
+      WORKTRACE_PASSWORD_HASH: ${WORKTRACE_PASSWORD_HASH:-}
+      WORKTRACE_SESSION_SECRET: ${WORKTRACE_SESSION_SECRET:-}
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
     volumes:

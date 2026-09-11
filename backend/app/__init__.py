@@ -1,1 +1,1 @@
-"""work-support FastAPI application package."""
+"""worktrace FastAPI application package."""

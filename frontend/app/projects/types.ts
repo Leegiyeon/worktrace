@@ -97,6 +97,25 @@ export type GitHubCommit = {
   url: string;
 };
 
+export type GitHubDelivery = {
+  id: string;
+  delivery_id: string;
+  event_name: string;
+  ref: string;
+  status: "processed" | "ignored" | "failed";
+  reason: string;
+  processing_attempts: number;
+  received_at: string;
+  last_processed_at: string;
+};
+
+export type ProjectGitHubStatus = {
+  repository: RepositorySource | null;
+  stored_commit_count: number;
+  last_success_at: string | null;
+  deliveries: GitHubDelivery[];
+};
+
 export const projectStatusLabels: Record<ProjectStatus, string> = {
   idea: "아이디어",
   review: "검토",

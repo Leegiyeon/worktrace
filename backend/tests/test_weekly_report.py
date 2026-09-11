@@ -96,8 +96,8 @@ def test_weekly_report_api_returns_markdown(monkeypatch):
     response = client.post(
         "/reports/weekly",
         headers={
-            "X-Work-Support-Owner-Id": "local-owner",
-            "X-Work-Support-Report-Token": "dev-only-report-token",
+            "X-Worktrace-Owner-Id": "local-owner",
+            "X-Worktrace-Report-Token": "dev-only-report-token",
         },
         json={"start_date": "2026-06-01", "end_date": "2026-06-07"},
     )
@@ -116,8 +116,8 @@ def test_weekly_report_rejects_invalid_period():
     response = client.post(
         "/reports/weekly",
         headers={
-            "X-Work-Support-Owner-Id": "local-owner",
-            "X-Work-Support-Report-Token": "dev-only-report-token",
+            "X-Worktrace-Owner-Id": "local-owner",
+            "X-Worktrace-Report-Token": "dev-only-report-token",
         },
         json={"start_date": "2026-06-08", "end_date": "2026-06-01"},
     )
@@ -143,8 +143,8 @@ def test_weekly_report_api_rejects_other_owner():
     response = client.post(
         "/reports/weekly",
         headers={
-            "X-Work-Support-Owner-Id": "other-owner",
-            "X-Work-Support-Report-Token": "dev-only-report-token",
+            "X-Worktrace-Owner-Id": "other-owner",
+            "X-Worktrace-Report-Token": "dev-only-report-token",
         },
         json={"start_date": "2026-06-01", "end_date": "2026-06-07"},
     )
@@ -228,8 +228,8 @@ def test_weekly_report_api_rejects_invalid_token():
     response = client.post(
         "/reports/weekly",
         headers={
-            "X-Work-Support-Owner-Id": "local-owner",
-            "X-Work-Support-Report-Token": "wrong-token",
+            "X-Worktrace-Owner-Id": "local-owner",
+            "X-Worktrace-Report-Token": "wrong-token",
         },
         json={"start_date": "2026-06-01", "end_date": "2026-06-07"},
     )
@@ -251,8 +251,8 @@ def test_weekly_report_api_returns_stable_database_error(monkeypatch):
     response = client.post(
         "/reports/weekly",
         headers={
-            "X-Work-Support-Owner-Id": "local-owner",
-            "X-Work-Support-Report-Token": "dev-only-report-token",
+            "X-Worktrace-Owner-Id": "local-owner",
+            "X-Worktrace-Report-Token": "dev-only-report-token",
         },
         json={"start_date": "2026-06-01", "end_date": "2026-06-07"},
     )
