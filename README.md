@@ -263,6 +263,19 @@ cp .env.example .env
 
 기존 Git 이력을 최초 1회 가져올 때는 `backend/scripts/import_git_history.py`에 프로젝트명, 로컬 Git 경로, GitHub 저장소명과 repository ID를 전달합니다. 이미 저장된 SHA는 다시 추가하지 않습니다.
 
+### 기존 Nginx 서버에 Oracle 배포
+
+호스트 Nginx가 이미 80/443을 사용한다면 Caddy를 실행하지 않고 frontend와 GitHub webhook용 backend만 loopback 포트에 노출합니다.
+
+```bash
+docker compose --env-file .env.production \
+  -f docker-compose.prod.yml \
+  -f docker-compose.oracle.yml \
+  up -d --build db backend frontend
+```
+
+Nginx는 일반 요청을 `http://127.0.0.1:3200`으로 reverse proxy합니다. `/webhooks/github`는 frontend 인증을 거치지 않도록 `http://127.0.0.1:8200`으로 직접 전달합니다. 두 포트 모두 loopback에만 바인딩되므로 외부에서는 Nginx를 통해서만 접근할 수 있습니다.
+
 ### Backend 로컬 `.env`
 
 로컬 backend 프로세스는 `backend/.env.example`을 복사합니다.
