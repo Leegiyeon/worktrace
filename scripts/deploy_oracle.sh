@@ -44,23 +44,12 @@ git pull --ff-only origin main
 
 "${COMPOSE[@]}" down --remove-orphans
 
-docker volume inspect work-support_caddy_data >/dev/null 2>&1 \
-  || docker volume create work-support_caddy_data >/dev/null
-docker volume inspect work-support_caddy_config >/dev/null 2>&1 \
-  || docker volume create work-support_caddy_config >/dev/null
-
-for legacy_proxy in work-support-caddy-1 work-support-caddy; do
-  if docker container inspect "$legacy_proxy" >/dev/null 2>&1; then
-    docker rm -f "$legacy_proxy"
-  fi
-done
-
 if docker ps -a --filter label=com.docker.compose.project=work-support --format '{{.ID}}' | grep -q .; then
-  "${LEGACY_COMPOSE[@]}" stop caddy frontend backend db
-  "${LEGACY_COMPOSE[@]}" rm -f caddy frontend backend db
+  "${LEGACY_COMPOSE[@]}" stop backend frontend db
+  "${LEGACY_COMPOSE[@]}" rm -f backend frontend db
 fi
 
-"${COMPOSE[@]}" up -d --build --remove-orphans db backend frontend caddy
+"${COMPOSE[@]}" up -d --build --remove-orphans db backend frontend
 
 for attempt in {1..30}; do
   if curl --fail --silent --show-error http://127.0.0.1:8200/health/ready >/dev/null \
