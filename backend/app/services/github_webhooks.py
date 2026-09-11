@@ -220,7 +220,65 @@ def _store_push_commits(connection, owner_id: str, source: dict[str, Any], paylo
             },
         )
         stored += max(result.rowcount, 0)
+        _sync_commit_work_items(connection, owner_id, source["id"], source["project_id"], sha, commit)
     return stored
+
+
+def _sync_commit_work_items(connection, owner_id: str, source_id: str, project_id: str, sha: str, commit: dict[str, Any]) -> None:
+    message = str(commit.get("message") or "")
+    lines = message.splitlines()
+    title = (((lines[0] if lines else "").strip()) or "제목 없는 커밋")[:240]
+    url = str(commit.get("url") or "")
+    committed_at = commit.get("timestamp")
+    connection.execute(
+        """
+        INSERT INTO project_tasks (
+            owner_id, project_id, title, description, status, priority, source_provider, source_key
+        ) VALUES (
+            %(owner_id)s, %(project_id)s, %(title)s, %(description)s,
+            'done', 'medium', 'github', %(source_key)s
+        )
+        ON CONFLICT (owner_id, source_provider, source_key)
+            WHERE source_provider IS NOT NULL AND source_key IS NOT NULL
+        DO UPDATE SET title = excluded.title, description = excluded.description,
+                      status = 'done', updated_at = now()
+        """,
+        {"owner_id": owner_id, "project_id": project_id, "title": title,
+         "description": f"main 커밋 {sha[:7]} · {url}", "source_key": f"commit:{source_id}:{sha}"},
+    )
+    if not committed_at:
+        return
+    summary = connection.execute(
+        """
+        SELECT committed_at::date AS log_date, COUNT(*)::int AS commit_count,
+               string_agg('- ' || split_part(message, E'\n', 1), E'\n' ORDER BY committed_at) AS content
+        FROM github_commits
+        WHERE owner_id = %(owner_id)s AND project_id = %(project_id)s
+          AND committed_at::date = %(committed_at)s::timestamptz::date
+        GROUP BY committed_at::date
+        """,
+        {"owner_id": owner_id, "project_id": project_id, "committed_at": committed_at},
+    ).fetchone()
+    if summary is None:
+        return
+    connection.execute(
+        """
+        INSERT INTO work_logs (
+            owner_id, project_id, log_date, work_type, title, content, decisions,
+            next_actions, duration_minutes, source_provider, source_key
+        ) VALUES (
+            %(owner_id)s, %(project_id)s, %(log_date)s, 'development', %(title)s,
+            %(content)s, 'main 브랜치 커밋 근거 자동 동기화',
+            '후속 WBS와 성과 근거를 검토한다.', 0, 'github', %(source_key)s
+        )
+        ON CONFLICT (owner_id, source_provider, source_key)
+            WHERE source_provider IS NOT NULL AND source_key IS NOT NULL
+        DO UPDATE SET title = excluded.title, content = excluded.content, updated_at = now()
+        """,
+        {"owner_id": owner_id, "project_id": project_id, "log_date": summary["log_date"],
+         "title": f"GitHub 작업 · {summary['commit_count']}개 커밋", "content": summary["content"],
+         "source_key": f"day:{source_id}:{summary['log_date']}"},
+    )
 
 
 def _record_ignored(connection, settings, delivery_id, event_name, repository_id, full_name, ref, payload, reason):

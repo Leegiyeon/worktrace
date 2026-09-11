@@ -8,6 +8,7 @@ CANONICAL_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "002_wor
 GITHUB_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "003_github_evidence.sql"
 GITHUB_OPERATIONS_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "004_github_delivery_operations.sql"
 WORKTRACE_BRAND_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "005_worktrace_brand.sql"
+GITHUB_MANAGED_WORK_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "006_github_managed_work.sql"
 
 
 def test_schema_loader_reads_canonical_sql_file() -> None:
@@ -88,3 +89,14 @@ def test_worktrace_brand_migration_updates_project_and_repository() -> None:
     assert "SET title = 'worktrace'" in schema
     assert "SET full_name = 'Leegiyeon/worktrace'" in schema
     assert "lower(title) = 'work-support'" in schema
+
+
+def test_github_managed_work_has_idempotent_source_keys() -> None:
+    schema = GITHUB_MANAGED_WORK_SCHEMA.read_text(encoding="utf-8")
+
+    assert "ALTER TABLE project_tasks" in schema
+    assert "ALTER TABLE work_logs" in schema
+    assert "source_provider TEXT" in schema
+    assert "source_key TEXT" in schema
+    assert "uq_project_tasks_owner_source" in schema
+    assert "uq_work_logs_owner_source" in schema

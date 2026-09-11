@@ -50,6 +50,7 @@ test("production compose runs release commands without source mounts or public i
   assert.match(deployScript, /stop backend frontend db/);
   assert.match(deployScript, /rm -f backend frontend db/);
   assert.match(deployScript, /up -d --build --remove-orphans db backend frontend/);
+  assert.match(deployScript, /sync_github_data\.py --cleanup-samples/);
   assert.doesNotMatch(deployScript, /down -v/);
   assert.match(compose, /external: true/);
   assert.match(compose, /GITHUB_WEBHOOK_SECRET/);
