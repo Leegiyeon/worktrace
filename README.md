@@ -261,6 +261,8 @@ cp .env.example .env
 
 커밋은 수행 활동의 근거로만 취급합니다. WBS 완료나 성과 확정은 자동으로 단정하지 않으며, 경력 자산 생성 시 커밋·WBS·업무 로그·확정 성과를 함께 분석합니다.
 
+기존 Git 이력을 최초 1회 가져올 때는 `backend/scripts/import_git_history.py`에 프로젝트명, 로컬 Git 경로, GitHub 저장소명과 repository ID를 전달합니다. 이미 저장된 SHA는 다시 추가하지 않습니다.
+
 ### Backend 로컬 `.env`
 
 로컬 backend 프로세스는 `backend/.env.example`을 복사합니다.

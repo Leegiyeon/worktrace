@@ -5,6 +5,7 @@ from app.db.schema import load_schema_sql, resolve_schema_sql_path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CANONICAL_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "002_work_support_schema.sql"
+GITHUB_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "003_github_evidence.sql"
 
 
 def test_schema_loader_reads_canonical_sql_file() -> None:
@@ -63,7 +64,7 @@ def test_canonical_schema_contains_career_assets() -> None:
 
 
 def test_canonical_schema_contains_github_evidence_tables() -> None:
-    schema = CANONICAL_SCHEMA.read_text(encoding="utf-8")
+    schema = GITHUB_SCHEMA.read_text(encoding="utf-8")
 
     for table in ["repository_sources", "github_deliveries", "github_commits"]:
         assert f"CREATE TABLE IF NOT EXISTS {table}" in schema
