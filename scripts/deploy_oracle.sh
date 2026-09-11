@@ -8,6 +8,13 @@ readonly COMPOSE=(
   -f docker-compose.prod.yml
   -f docker-compose.oracle.yml
 )
+readonly LEGACY_COMPOSE=(
+  docker compose
+  -p work-support
+  --env-file .env.production
+  -f docker-compose.prod.yml
+  -f docker-compose.oracle.yml
+)
 
 cd "$APP_DIR"
 
@@ -22,6 +29,11 @@ sed -i 's/^WORK_SUPPORT_SESSION_SECRET=/WORKTRACE_SESSION_SECRET=/' .env.product
 git fetch --prune origin main
 git checkout main
 git pull --ff-only origin main
+
+if docker ps -a --filter label=com.docker.compose.project=work-support --format '{{.ID}}' | grep -q .; then
+  "${LEGACY_COMPOSE[@]}" stop backend frontend db
+  "${LEGACY_COMPOSE[@]}" rm -f backend frontend db
+fi
 
 "${COMPOSE[@]}" up -d --build --remove-orphans db backend frontend
 
