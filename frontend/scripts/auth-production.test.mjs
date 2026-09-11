@@ -38,10 +38,13 @@ test("request proxy protects pages and APIs while preserving local setup", () =>
 test("production compose runs release commands without source mounts or public internal ports", () => {
   const compose = read("../docker-compose.prod.yml");
   const frontendDockerfile = read("Dockerfile");
+  const deployScript = read("../scripts/deploy_oracle.sh");
 
   assert.match(compose, /APP_ENV:\s*production/);
   assert.match(compose, /WORKTRACE_PASSWORD_HASH/);
   assert.match(compose, /WORKTRACE_SESSION_SECRET/);
+  assert.match(deployScript, /WORK_SUPPORT_PASSWORD_HASH=.*WORKTRACE_PASSWORD_HASH/);
+  assert.match(deployScript, /WORK_SUPPORT_SESSION_SECRET=.*WORKTRACE_SESSION_SECRET/);
   assert.match(compose, /GITHUB_WEBHOOK_SECRET/);
   assert.doesNotMatch(compose, /--reload|npm run dev|\.\/frontend\/app:\/app\/app/);
   assert.doesNotMatch(compose, /5432:5432|8000:8000|127\.0\.0\.1:\$\{FRONTEND_PORT/);

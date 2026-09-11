@@ -16,6 +16,9 @@ test -f .env.production || {
   exit 1
 }
 
+sed -i 's/^WORK_SUPPORT_PASSWORD_HASH=/WORKTRACE_PASSWORD_HASH=/' .env.production
+sed -i 's/^WORK_SUPPORT_SESSION_SECRET=/WORKTRACE_SESSION_SECRET=/' .env.production
+
 git fetch --prune origin main
 git checkout main
 git pull --ff-only origin main
