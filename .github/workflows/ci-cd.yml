@@ -53,7 +53,7 @@ jobs:
           npm run lint
           npm run build
 
-      - name: Validate production Compose configuration
+      - name: Validate production containers
         env:
           POSTGRES_DB: work_support
           POSTGRES_USER: work_support
@@ -65,7 +65,9 @@ jobs:
           WORK_SUPPORT_PASSWORD_HASH: scrypt$validation$validation
           WORK_SUPPORT_SESSION_SECRET: validation-only
           GITHUB_WEBHOOK_SECRET: validation-only
-        run: docker compose -f docker-compose.prod.yml -f docker-compose.oracle.yml config --quiet
+        run: |
+          docker compose -f docker-compose.prod.yml -f docker-compose.oracle.yml config --quiet
+          docker compose -f docker-compose.prod.yml -f docker-compose.oracle.yml build backend frontend
 
   deploy:
     name: Deploy to Oracle Cloud

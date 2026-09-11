@@ -9,6 +9,7 @@ FROM node:24-alpine AS builder
 WORKDIR /app
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
+RUN mkdir -p public
 RUN npm run build
 RUN npm prune --omit=dev
 
