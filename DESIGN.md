@@ -3,7 +3,7 @@
 ## Source of truth
 - Status: Active
 - Last refreshed: 2026-09-11
-- Primary product surfaces: dashboard, project list, project detail, reports
+- Primary product surfaces: login, dashboard, project list, project detail, reports
 - Evidence reviewed: `AGENTS.md`, `docs/DESIGN_SYSTEM.md`, `README.md`, frontend routes, shared CSS, API contracts, and current UI tests
 
 ## Brand
@@ -23,7 +23,8 @@
 
 ## Information architecture
 - Primary navigation: dashboard, projects, reports
-- Core routes/screens: `/`, `/projects`, `/projects/[projectId]`, `/reports`
+- Navigation state: the current primary route is visually selected and exposed with `aria-current`; the dashboard quick-record anchor remains a command rather than a competing route state
+- Core routes/screens: `/login`, `/`, `/projects`, `/projects/[projectId]`, `/reports`
 - Content hierarchy: urgent work and quick capture first; project status and evidence second; reports and career reuse after records exist
 
 ## Design principles
@@ -43,9 +44,10 @@
 
 ## Components
 - Existing components to reuse: metric rows, dense lists, data tables, progress bars, badges, forms, tab navigation, and alerts
-- New/changed components: attention queue, project quick actions, editable career asset workspace
+- New/changed components: single-user login, authenticated app header, attention queue, project quick actions, editable career asset workspace
 - Variants and states: normal, overdue, due-soon, loading, empty, error, success, editing, saving, and copied
 - Token/component ownership: CSS tokens and shared primitives remain in `frontend/app/globals.css`; domain interactions stay with their route/component
+- Alignment contract: standard inputs and command buttons are 40px high, table and navigation controls are 32px high, panel headers reserve one 40px row, and repeated items in the same grid row stretch to equal height
 
 ## Accessibility
 - Target standard: WCAG 2.2 AA for core flows
@@ -57,6 +59,8 @@
 ## Responsive behavior
 - Supported breakpoints/devices: current desktop browsers and mobile widths down to 360px
 - Layout adaptations: dashboard grids move from the desktop composition to two columns and then one; forms move from three columns to two and then one; auto-fit cards preserve useful minimum widths; dense tables keep horizontal scrolling; action bars wrap without overlap
+- Mobile planning: the full month grid yields to the deadline list below 760px instead of forcing a 760px-wide pan surface
+- Narrow header behavior: below 760px, primary navigation occupies a dedicated second row; below 480px, actions stack to full width and long navigation remains horizontally scrollable
 - Touch/hover differences: actions remain visible and usable without hover; standard controls use a consistent 40px height and compact table controls use 32px
 
 ## Interaction states
@@ -76,7 +80,7 @@
 - Framework/styling system: Next.js App Router, React, TypeScript, and repo-local CSS without new dependencies
 - Design-token constraints: extend existing tokens and semantic classes; do not create a second theme layer
 - Performance constraints: avoid additional per-item API waterfalls; keep dashboard requests bounded by the current project set
-- Compatibility constraints: preserve the local owner/token proxy boundary and Korean UX
+- Compatibility constraints: preserve the backend owner/token service boundary, require a signed single-user session outside unconfigured local development, and retain Korean UX
 - Test/screenshot expectations: API proxy tests, frontend contract tests, typecheck, lint, production build, and desktop/mobile browser screenshots for changed flows
 
 ## Open questions

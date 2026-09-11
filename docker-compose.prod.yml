@@ -1,0 +1,92 @@
+name: work-support
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      DEFAULT_OWNER_ID: ${DEFAULT_OWNER_ID:?Set DEFAULT_OWNER_ID}
+      REPORT_ACCESS_TOKEN: ${REPORT_ACCESS_TOKEN:?Set REPORT_ACCESS_TOKEN}
+      REPORT_TIMEZONE: ${REPORT_TIMEZONE:-Asia/Seoul}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?Set FRONTEND_ORIGIN}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      MIGRATIONS_DIR: /app/infrastructure/postgres/init
+    volumes:
+      - ./infrastructure/postgres/init:/app/infrastructure/postgres/init:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    command: ["sh", "-c", "python scripts/migrate_db.py && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      WORK_SUPPORT_BACKEND_URL: http://backend:8000
+      WORK_SUPPORT_OWNER_ID: ${DEFAULT_OWNER_ID:?Set DEFAULT_OWNER_ID}
+      WORK_SUPPORT_REPORT_TOKEN: ${REPORT_ACCESS_TOKEN:?Set REPORT_ACCESS_TOKEN}
+      WORK_SUPPORT_PASSWORD_HASH: ${WORK_SUPPORT_PASSWORD_HASH:?Set WORK_SUPPORT_PASSWORD_HASH}
+      WORK_SUPPORT_SESSION_SECRET: ${WORK_SUPPORT_SESSION_SECRET:?Set WORK_SUPPORT_SESSION_SECRET}
+    expose:
+      - "3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/login"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:

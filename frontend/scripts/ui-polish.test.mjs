@@ -7,6 +7,7 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf
 const globals = read("app/globals.css");
 const layoutPage = read("app/layout.tsx");
 const logoComponent = read("app/components/AppLogo.tsx");
+const headerComponent = read("app/components/AppHeader.tsx");
 const dashboardPage = read("app/page.tsx");
 const projectsPage = read("app/projects/page.tsx");
 const detailPage = read("app/projects/[projectId]/page.tsx");
@@ -15,19 +16,23 @@ const reportsPage = read("app/reports/page.tsx");
 const readme = read("../README.md");
 
 test("global logo always links back to dashboard", () => {
-  assert.match(layoutPage, /<AppLogo \/>/);
+  assert.match(layoutPage, /<AppHeader/);
+  assert.match(headerComponent, /<AppLogo \/>/);
   assert.match(logoComponent, /href="\/"/);
   assert.match(logoComponent, /대시보드로 이동/);
   assert.match(globals, /\.app-logo/);
 });
 
 test("global header exposes compact product navigation", () => {
-  assert.match(layoutPage, /className="app-header-inner"/);
-  assert.match(layoutPage, /className="app-nav"/);
+  assert.match(layoutPage, /<AppHeader/);
+  assert.match(headerComponent, /className="app-header-inner"/);
+  assert.match(headerComponent, /className="app-nav"/);
   for (const label of ["대시보드", "프로젝트", "리포트"]) {
-    assert.match(layoutPage, new RegExp(label));
+    assert.match(headerComponent, new RegExp(label));
   }
   assert.match(globals, /\.app-nav/);
+  assert.match(headerComponent, /aria-current/);
+  assert.match(globals, /\.app-nav a\[aria-current="page"\]/);
 });
 
 test("top-level work surfaces prioritize commands and data over explanatory chrome", () => {
@@ -126,6 +131,22 @@ test("responsive grids preserve useful intermediate layouts before stacking", ()
   assert.match(detailPage, /className="panel task-form-panel"/);
   assert.match(detailPage, /className="primary-button"[^>]*>업무 추가/);
   assert.match(careerPanel, /className="primary-button"/);
+});
+
+test("shared surfaces keep controls, panels, and responsive regions aligned", () => {
+  assert.match(globals, /\/\* Shared layout normalization \*\//);
+  assert.match(globals, /\.panel-title-row\s*\{[\s\S]*?min-height:\s*var\(--control-height\)/);
+  assert.match(globals, /button,[\s\S]*?height:\s*var\(--control-height\)/);
+  assert.match(globals, /input,[\s\S]*?height:\s*var\(--control-height\)/);
+  assert.match(globals, /\.summary-grid,[\s\S]*?align-items:\s*stretch/);
+  assert.match(globals, /@media \(max-width:\s*760px\)[\s\S]*?\.app-header-inner[\s\S]*?grid-template-columns:\s*auto minmax\(0,\s*1fr\)/);
+  assert.match(globals, /@media \(max-width:\s*480px\)[\s\S]*?\.project-quick-actions > \*/);
+  assert.match(globals, /@media \(prefers-reduced-motion:\s*reduce\)/);
+  assert.match(reportsPage, /className="report-evidence-grid"/);
+  assert.match(globals, /\.report-evidence-grid\s*\{[\s\S]*?grid-template-areas/);
+  assert.doesNotMatch(reportsPage, /className="dashboard-grid"/);
+  assert.match(globals, /\.delayed-panel \.dense-list-row b/);
+  assert.match(globals, /@media \(max-width:\s*760px\)[\s\S]*?\.calendar-month-panel[\s\S]*?display:\s*none/);
 });
 
 test("partial data failures stay distinct from valid empty states and can be retried", () => {

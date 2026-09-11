@@ -9,6 +9,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BACKUP_SCRIPT = REPO_ROOT / "scripts" / "backup_local.sh"
 RESTORE_SCRIPT = REPO_ROOT / "scripts" / "restore_local.sh"
+SCHEDULED_SCRIPT = REPO_ROOT / "scripts" / "backup_scheduled.sh"
 
 
 def read_script(path: Path) -> str:
@@ -16,12 +17,12 @@ def read_script(path: Path) -> str:
 
 
 def test_local_backup_restore_scripts_are_shell_syntax_valid() -> None:
-    for script in (BACKUP_SCRIPT, RESTORE_SCRIPT):
+    for script in (BACKUP_SCRIPT, RESTORE_SCRIPT, SCHEDULED_SCRIPT):
         subprocess.run(["bash", "-n", str(script)], check=True)
 
 
 def test_local_backup_restore_scripts_are_executable() -> None:
-    for script in (BACKUP_SCRIPT, RESTORE_SCRIPT):
+    for script in (BACKUP_SCRIPT, RESTORE_SCRIPT, SCHEDULED_SCRIPT):
         mode = script.stat().st_mode
         assert mode & stat.S_IXUSR
 
@@ -76,3 +77,12 @@ def test_restore_without_confirm_exits_before_docker_or_database_access() -> Non
     assert result.returncode == 2
     assert "Restore requires: --confirm BACKUP_FILE" in result.stderr
     assert "db service is not available" not in result.stderr
+
+
+def test_scheduled_backup_has_lock_and_retention_guard() -> None:
+    script = read_script(SCHEDULED_SCRIPT)
+
+    assert ".backup.lock" in script
+    assert "BACKUP_RETENTION_DAYS" in script
+    assert "backup_local.sh" in script
+    assert "-mtime" in script

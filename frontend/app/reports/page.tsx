@@ -176,7 +176,7 @@ export default function WeeklyReportPage() {
             <div className="metric-card"><span>잔여 업무</span><strong>{reportMetrics.remaining}</strong></div>
             <div className="metric-card"><span>지연 업무</span><strong>{reportMetrics.delayed}</strong></div>
           </section>
-          <section className="dashboard-grid" aria-label="자동 리포트 근거">
+          <section className="report-evidence-grid" aria-label="자동 리포트 근거">
             <section className="panel dashboard-main-panel">
               <div className="panel-title-row"><h2>업무 로그</h2><span className="count-badge">{report.work_logs.length}개</span></div>
               {report.work_logs.length === 0 ? <div className="empty-state">로그 없음</div> : null}

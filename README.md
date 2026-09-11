@@ -25,9 +25,11 @@
 - 근거 기반 경력 자산 생성, 사용자 편집·저장, Markdown 복사
 - 로컬 개발용 샘플 seed 데이터 생성 스크립트
 - PostgreSQL + pgvector Docker Compose 구성
-- `/health` 헬스체크 API
+- `/health/live`, `/health/ready` 생존·DB 준비 상태 API
 
-아직 파일 업로드, AI 문서 분석, RAG, 로그인, 배포/백업 자동화는 구현하지 않았습니다.
+아직 파일 업로드, AI 문서 분석, RAG, CI/CD 자동 배포, 원격 백업은 구현하지
+않았습니다. 단일 사용자 로그인, migration runner, 자동 HTTPS 운영 Compose,
+로컬 백업·복구 기반은 포함되어 있습니다.
 
 ## 기술 스택
 
@@ -64,7 +66,50 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-실행 후 접속 URL:
+로컬에서도 로그인 경계를 확인하려면 12자 이상의 비밀번호 해시와 세션
+비밀값을 `.env`에 설정합니다. 두 값을 비워두면 로컬 개발에서만 인증을
+우회하며, production 모드에서는 설정 누락 시 접근을 거부합니다.
+
+```bash
+node scripts/generate_password_hash.mjs
+openssl rand -base64 48
+```
+
+각 출력값을 `WORK_SUPPORT_PASSWORD_HASH`, `WORK_SUPPORT_SESSION_SECRET`에
+저장합니다. 원문 비밀번호는 환경변수나 저장소에 보관하지 않습니다.
+
+## 운영 컨테이너 사전 검증
+
+`docker-compose.prod.yml`은 개발용 source mount와 reload를 사용하지 않고,
+Caddy만 host의 80/443 port에 공개합니다. frontend, backend, database는
+Compose 내부 network에서만 통신합니다. `APP_DOMAIN`의 DNS가 서버를 가리키면
+Caddy가 인증서를 자동 발급하고 HTTP 요청을 HTTPS로 전환합니다.
+
+운영 환경 파일을 준비한 뒤 구성을 먼저 검증합니다.
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml config --quiet
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+```
+
+운영 필수값은 `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`,
+`DEFAULT_OWNER_ID`, `REPORT_ACCESS_TOKEN`, `FRONTEND_ORIGIN`, `APP_DOMAIN`,
+`WORK_SUPPORT_PASSWORD_HASH`, `WORK_SUPPORT_SESSION_SECRET`입니다.
+`FRONTEND_ORIGIN`은 `https://APP_DOMAIN`과 동일한 실제 HTTPS 주소여야 하며
+기본 owner/token은 거부됩니다. Oracle Cloud VCN security list 또는 NSG에는
+80/TCP, 443/TCP, 443/UDP만 공개하고 PostgreSQL 5432와 backend 8000은 열지
+않습니다. SSH 22는 관리 IP CIDR로 제한합니다.
+backend는 기동 전에 `backend/scripts/migrate_db.py`를 실행합니다. 적용된 SQL
+파일명과 SHA-256 체크섬은 `schema_migrations`에 기록하며, 이미 적용된 SQL이
+수정되었거나 migration이 실패하면 API 서버를 시작하지 않습니다. 기존 SQL을
+수정하지 말고 다음 번호의 새 SQL 파일을 추가해야 합니다.
+
+컨테이너 생존 확인은 `/health/live`, 서비스 준비 확인은 DB에 `SELECT 1`을
+수행하는 `/health/ready`를 사용합니다. backend Compose healthcheck는 readiness를
+기준으로 하므로 DB 연결이 끊긴 상태를 정상으로 판정하지 않습니다.
+
+아래 URL은 별도 `docker-compose.yml`을 사용하는 로컬 개발 환경 기준입니다.
+운영 환경에서는 `https://APP_DOMAIN`만 외부에 공개됩니다.
 
 - Frontend: <http://localhost:3000>
 - Backend API: <http://localhost:8000>
@@ -328,6 +373,20 @@ scripts/restore_local.sh --confirm backups/postgres/work_support_YYYYMMDDTHHMMSS
 
 현재 데이터를 보존해야 한다면 복원 전에 새 백업을 먼저 만듭니다.
 
+### 예약 백업
+
+`backup_scheduled.sh`는 동시 실행을 차단하고 백업 성공 후 보존 기간이 지난
+dump를 정리합니다. 기본 보존 기간은 14일입니다.
+
+```bash
+BACKUP_RETENTION_DAYS=14 scripts/backup_scheduled.sh
+```
+
+운영 서버에서는 이 명령을 systemd timer 또는 cron으로 하루 한 번 실행하고,
+실패 종료 코드를 모니터링 대상으로 연결합니다. Oracle Cloud 배포 단계에서는
+생성된 dump를 별도 Object Storage bucket으로 복제한 후 복원 리허설을 수행해야
+합니다.
+
 ## 로컬 테스트용 샘플 데이터 생성
 
 처음 실행 후 실제 사용 흐름을 빠르게 확인하려면 로컬 seed 스크립트를 실행합니다.
@@ -527,30 +586,30 @@ docker compose ps
 아래 항목은 의도된 단순화이며, 외부 노출 또는 다중 사용자 전환 전에
 반드시 재설계합니다.
 
-- **접근 가드**: Next.js 서버 라우트가 `WORK_SUPPORT_OWNER_ID`와
-  `WORK_SUPPORT_REPORT_TOKEN`을 백엔드 헤더로 주입합니다. 이는
-  loopback-only 개인 실행을 위한 임시 경계이며 로그인/권한 시스템이
-  아닙니다.
+- **접근 가드**: 서명된 HttpOnly 세션으로 단일 사용자 프론트 접근을
+  보호하고 Next.js 서버 라우트가 owner/token을 백엔드에 주입합니다. 다중
+  사용자별 데이터 권한을 판정하는 인증 모델은 아니므로 개인 배포 범위를
+  넘기기 전에 owner-scoped identity 연동이 필요합니다.
 - **상태값 계약**: 프로젝트/업무/리포트 상태값은 SQL check constraint,
   Pydantic schema, frontend type/label map에 명시적으로 반복되어 있습니다.
   MVP에서는 변경 지점을 눈에 보이게 두기 위한 선택이며, 상태값이
   늘어나기 전 공통 contract 또는 생성 방식으로 정리합니다.
-- **스키마 관리**: 현재는 versioned migration 대신 canonical SQL source와
-  재실행 가능한 초기화 스크립트를 사용합니다. 파괴적 변경이나 협업
-  배포가 필요해지면 migration 도구를 도입합니다.
+- **스키마 관리**: 번호가 붙은 SQL migration과 체크섬 기반 runner를
+  사용합니다. 이미 적용된 migration은 수정하지 않고 새 파일로 변경을
+  누적합니다.
 
 ## 현재 v0.1 범위에서 하지 않은 것
 
 - 문서 업로드·텍스트 추출·AI 문서 분석
 - 문서 청크 검색·임베딩·근거 기반 Q&A
-- 배포 작업
-- 로그인/권한 체계 도입
+- CI/CD와 Oracle Cloud 원격 배포 자동화
+- 다중 사용자 인증과 owner-scoped 권한 체계
 
 ## 보안 주의
 
 - 실제 secret은 `.env` 또는 `.env.local`에만 저장하고 커밋하지 않습니다.
 - `.env.example` 파일은 placeholder만 제공합니다. DB 비밀번호, report token,
   OpenAI key는 실제 `.env` / `.env.local`에만 입력합니다.
-- 외부 네트워크에 노출하기 전에 DB 비밀번호, report token, CORS origin,
-  인증 방식을 반드시 교체/강화해야 합니다.
+- 외부 네트워크에 노출하기 전에 운영용 DB 비밀번호, report token, session
+  secret, 로그인 hash, HTTPS origin을 각각 고유한 값으로 설정해야 합니다.
 - 업로드 원본 파일은 추후에도 public 경로에 직접 노출하지 않는 구조를 유지합니다.

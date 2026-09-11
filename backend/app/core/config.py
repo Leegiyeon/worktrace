@@ -54,3 +54,19 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def validate_runtime_settings(settings: Settings) -> None:
+    if settings.app_env != "production":
+        return
+    errors = []
+    if not settings.postgres_password:
+        errors.append("POSTGRES_PASSWORD")
+    if not settings.report_access_token or settings.report_access_token == "dev-only-report-token":
+        errors.append("REPORT_ACCESS_TOKEN")
+    if not settings.default_owner_id or settings.default_owner_id == "local-owner":
+        errors.append("DEFAULT_OWNER_ID")
+    if not settings.frontend_origin.startswith("https://"):
+        errors.append("FRONTEND_ORIGIN must use https")
+    if errors:
+        raise RuntimeError("Invalid production settings: " + ", ".join(errors))

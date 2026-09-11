@@ -12,6 +12,7 @@ __pycache__/
 !.env.example
 !frontend/.env.example
 !backend/.env.example
+!.env.production.example
 
 # Build outputs
 .next/
