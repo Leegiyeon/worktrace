@@ -42,12 +42,14 @@ git fetch --prune origin main
 git checkout main
 git pull --ff-only origin main
 
+"${COMPOSE[@]}" down --remove-orphans
+
 if docker ps -a --filter label=com.docker.compose.project=work-support --format '{{.ID}}' | grep -q .; then
-  "${LEGACY_COMPOSE[@]}" stop backend frontend db
-  "${LEGACY_COMPOSE[@]}" rm -f backend frontend db
+  "${LEGACY_COMPOSE[@]}" stop caddy frontend backend db
+  "${LEGACY_COMPOSE[@]}" rm -f caddy frontend backend db
 fi
 
-"${COMPOSE[@]}" up -d --build --remove-orphans db backend frontend
+"${COMPOSE[@]}" up -d --build --remove-orphans db backend frontend caddy
 
 for attempt in {1..30}; do
   if curl --fail --silent --show-error http://127.0.0.1:8200/health/ready >/dev/null \
