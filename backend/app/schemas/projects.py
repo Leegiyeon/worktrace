@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 ProjectStatus = Literal["idea", "review", "in_progress", "on_hold", "done"]
 TaskStatus = Literal["planned", "in_progress", "done", "on_hold"]
 TaskPriority = Literal["low", "medium", "high"]
+ProgressBasis = Literal["milestone", "wbs", "unscoped"]
 
 
 class ProjectBaseModel(BaseModel):
@@ -23,6 +24,8 @@ class ProjectBaseModel(BaseModel):
 class ProjectCreate(ProjectBaseModel):
     title: str = Field(..., min_length=1, max_length=160)
     description: str = ""
+    objective: str = ""
+    success_criteria: str = ""
     status: ProjectStatus = "idea"
     role: str = ""
 
@@ -30,6 +33,8 @@ class ProjectCreate(ProjectBaseModel):
 class ProjectUpdate(ProjectBaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=160)
     description: str | None = None
+    objective: str | None = None
+    success_criteria: str | None = None
     status: ProjectStatus | None = None
     role: str | None = None
 
@@ -38,11 +43,47 @@ class ProjectSummary(ProjectBaseModel):
     id: str
     title: str
     description: str = ""
+    objective: str = ""
+    success_criteria: str = ""
     status: ProjectStatus
     role: str = ""
     total_tasks: int = 0
     completed_tasks: int = 0
     remaining_tasks: int = 0
+    milestone_count: int = 0
+    progress_basis: ProgressBasis = "unscoped"
+    progress_percent: int = 0
+    updated_at: str
+
+
+class ProjectMilestoneCreate(ProjectBaseModel):
+    milestone_key: str = Field(..., min_length=1, max_length=120, pattern=r"^[a-z0-9][a-z0-9-]*$")
+    title: str = Field(..., min_length=1, max_length=180)
+    description: str = ""
+    acceptance_criteria: str = ""
+    weight: int = Field(..., ge=1, le=100)
+    sort_order: int = Field(default=0, ge=0)
+
+
+class ProjectMilestoneUpdate(ProjectBaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=180)
+    description: str | None = None
+    acceptance_criteria: str | None = None
+    weight: int | None = Field(default=None, ge=1, le=100)
+    sort_order: int | None = Field(default=None, ge=0)
+
+
+class ProjectMilestone(ProjectBaseModel):
+    id: str
+    project_id: str
+    milestone_key: str
+    title: str
+    description: str = ""
+    acceptance_criteria: str = ""
+    weight: int
+    sort_order: int = 0
+    total_tasks: int = 0
+    completed_tasks: int = 0
     progress_percent: int = 0
     updated_at: str
 
@@ -53,6 +94,8 @@ class ProjectTaskCreate(ProjectBaseModel):
     status: TaskStatus = "planned"
     priority: TaskPriority = "medium"
     due_date: date | None = None
+    milestone_id: UUID | None = None
+    counts_toward_progress: bool = True
 
 
 class ProjectTaskUpdate(ProjectBaseModel):
@@ -61,6 +104,8 @@ class ProjectTaskUpdate(ProjectBaseModel):
     status: TaskStatus | None = None
     priority: TaskPriority | None = None
     due_date: date | None = None
+    milestone_id: UUID | None = None
+    counts_toward_progress: bool | None = None
 
 
 class ProjectTask(ProjectBaseModel):
@@ -71,6 +116,8 @@ class ProjectTask(ProjectBaseModel):
     status: TaskStatus
     priority: TaskPriority = "medium"
     due_date: str | None = None
+    milestone_id: str | None = None
+    counts_toward_progress: bool = True
     created_at: str
     updated_at: str
 
