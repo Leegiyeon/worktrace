@@ -18,6 +18,26 @@ function basisLabel(project: ProjectSummary) {
   return "진척률 산정 전";
 }
 
+async function fetchGoalProjects(): Promise<GoalProject[]> {
+  const response = await fetch("/api/projects", { cache: "no-store" });
+  if (!response.ok) throw new Error("프로젝트를 불러오지 못했습니다.");
+  const baseProjects = (await response.json()) as ProjectSummary[];
+  return Promise.all(
+    baseProjects.map(async (project) => {
+      const milestoneResponse = await fetch(`/api/projects/${project.id}/milestones`, { cache: "no-store" });
+      const milestones = milestoneResponse.ok ? ((await milestoneResponse.json()) as ProjectMilestone[]) : [];
+      return { ...project, milestones };
+    })
+  );
+}
+
+function projectDrafts(projects: GoalProject[]) {
+  return Object.fromEntries(projects.map((project) => [project.id, {
+    objective: project.objective,
+    success_criteria: project.success_criteria
+  }]));
+}
+
 export default function GoalsPage() {
   const [projects, setProjects] = useState<GoalProject[]>([]);
   const [drafts, setDrafts] = useState<Record<string, ProjectDraft>>({});
@@ -30,21 +50,9 @@ export default function GoalsPage() {
     setIsLoading(true);
     setErrorMessage("");
     try {
-      const response = await fetch("/api/projects", { cache: "no-store" });
-      if (!response.ok) throw new Error("프로젝트를 불러오지 못했습니다.");
-      const baseProjects = (await response.json()) as ProjectSummary[];
-      const withMilestones = await Promise.all(
-        baseProjects.map(async (project) => {
-          const milestoneResponse = await fetch(`/api/projects/${project.id}/milestones`, { cache: "no-store" });
-          const milestones = milestoneResponse.ok ? ((await milestoneResponse.json()) as ProjectMilestone[]) : [];
-          return { ...project, milestones };
-        })
-      );
+      const withMilestones = await fetchGoalProjects();
       setProjects(withMilestones);
-      setDrafts(Object.fromEntries(withMilestones.map((project) => [project.id, {
-        objective: project.objective,
-        success_criteria: project.success_criteria
-      }])));
+      setDrafts(projectDrafts(withMilestones));
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "목표 데이터를 불러오지 못했습니다.");
     } finally {
@@ -53,8 +61,24 @@ export default function GoalsPage() {
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+    fetchGoalProjects()
+      .then((withMilestones) => {
+        if (cancelled) return;
+        setProjects(withMilestones);
+        setDrafts(projectDrafts(withMilestones));
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setErrorMessage(error instanceof Error ? error.message : "목표 데이터를 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const averageProgress = useMemo(() => {
     const scoped = projects.filter((project) => project.progress_basis !== "unscoped");
