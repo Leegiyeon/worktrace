@@ -35,6 +35,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:?Set GITHUB_WEBHOOK_SECRET}
+      WORKTRACE_GITHUB_REPOSITORIES: ${WORKTRACE_GITHUB_REPOSITORIES:-}
       MIGRATIONS_DIR: /app/infrastructure/postgres/init
     volumes:
       - ./infrastructure/postgres/init:/app/infrastructure/postgres/init:ro

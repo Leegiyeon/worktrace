@@ -53,13 +53,12 @@ fi
 
 # PostgreSQL's docker-entrypoint init scripts run only when the data volume is first created.
 # Re-apply every idempotent schema/migration file on deploy so existing production volumes
-# receive additive Worktrace schema changes as well.
+# receive additive Worktrace schema changes as well. Resolve database credentials inside the
+# running DB container so existing installations keep using the role/database that owns them.
 for migration in infrastructure/postgres/init/*.sql; do
   echo "Applying database migration: $migration"
-  "${COMPOSE[@]}" exec -T db psql \
-    -v ON_ERROR_STOP=1 \
-    -U "${POSTGRES_USER:-worktrace}" \
-    -d "${POSTGRES_DB:-worktrace}" \
+  "${COMPOSE[@]}" exec -T db sh -c \
+    'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
     < "$migration"
 done
 
