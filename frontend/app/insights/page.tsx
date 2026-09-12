@@ -63,12 +63,8 @@ export default function InsightsPage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedProjectId) {
-      setTasks([]);
-      return;
-    }
+    if (!selectedProjectId) return;
     let cancelled = false;
-    setResult(null);
     fetch(`/api/projects/${selectedProjectId}/tasks`, { cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) throw new Error("WBS를 불러오지 못했습니다.");
@@ -96,6 +92,13 @@ export default function InsightsPage() {
   );
 
   const taskMap = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
+
+  function selectProject(projectId: string) {
+    setSelectedProjectId(projectId);
+    setTasks([]);
+    setResult(null);
+    setErrorMessage("");
+  }
 
   async function analyzeProject() {
     if (!selectedProjectId) return;
@@ -143,7 +146,7 @@ export default function InsightsPage() {
         {!loading && projects.length === 0 ? <p className="muted">분석할 프로젝트가 없습니다.</p> : null}
         {projects.length > 0 ? (
           <div className="form-actions">
-            <select value={selectedProjectId} onChange={(event) => setSelectedProjectId(event.target.value)}>
+            <select value={selectedProjectId} onChange={(event) => selectProject(event.target.value)}>
               {projects.map((project) => <option value={project.id} key={project.id}>{project.title}</option>)}
             </select>
             <button type="button" disabled={!selectedProjectId || analyzing} onClick={() => void analyzeProject()}>
