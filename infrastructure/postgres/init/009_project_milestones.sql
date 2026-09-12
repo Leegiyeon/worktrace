@@ -23,6 +23,19 @@ CREATE INDEX IF NOT EXISTS idx_project_tasks_milestone_id
     ON project_tasks (milestone_id)
     WHERE milestone_id IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS project_milestone_evidence (
+    owner_id TEXT NOT NULL,
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    milestone_id UUID NOT NULL REFERENCES project_milestones(id) ON DELETE CASCADE,
+    github_commit_id UUID NOT NULL REFERENCES github_commits(id) ON DELETE CASCADE,
+    confidence TEXT NOT NULL DEFAULT 'keyword' CHECK (confidence IN ('keyword', 'manual')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (owner_id, milestone_id, github_commit_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_milestone_evidence_project
+    ON project_milestone_evidence (owner_id, project_id, milestone_id);
+
 INSERT INTO project_milestones (owner_id, project_id, milestone_key, title, acceptance_criteria, weight, sort_order)
 SELECT p.owner_id, p.id, seed.key, seed.title, seed.criteria, seed.weight, seed.sort_order
 FROM projects p
