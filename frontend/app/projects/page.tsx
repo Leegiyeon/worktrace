@@ -14,6 +14,10 @@ const initialForm = {
   status: "idea" as ProjectStatus
 };
 
+function progressLabel(project: ProjectSummary) {
+  return project.progress_basis === "unscoped" ? "산정 전" : `${project.progress_percent}%`;
+}
+
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [form, setForm] = useState(initialForm);
@@ -25,9 +29,10 @@ export default function ProjectsPage() {
   const dashboard = useMemo(() => {
     const activeProjects = projects.filter((project) => project.status !== "done" && project.status !== "on_hold");
     const remainingTasks = projects.reduce((sum, project) => sum + project.remaining_tasks, 0);
-    const averageProgress = projects.length
-      ? Math.round(projects.reduce((sum, project) => sum + project.progress_percent, 0) / projects.length)
-      : 0;
+    const scopedProjects = projects.filter((project) => project.progress_basis !== "unscoped");
+    const averageProgress = scopedProjects.length
+      ? Math.round(scopedProjects.reduce((sum, project) => sum + project.progress_percent, 0) / scopedProjects.length)
+      : null;
 
     return { activeProjects, remainingTasks, averageProgress };
   }, [projects]);
@@ -114,7 +119,7 @@ export default function ProjectsPage() {
         <div className="task-meta">
           <span className="meta-pill status-navy">진행 {dashboard.activeProjects.length}</span>
           <span className="meta-pill">잔여 {dashboard.remainingTasks}</span>
-          <span className="meta-pill">평균 {dashboard.averageProgress}%</span>
+          <span className="meta-pill">평균 {dashboard.averageProgress === null ? "산정 전" : `${dashboard.averageProgress}%`}</span>
         </div>
       </header>
 
@@ -122,7 +127,7 @@ export default function ProjectsPage() {
         <div className="metric-card"><span>진행 중</span><strong>{dashboard.activeProjects.length}</strong></div>
         <div className="metric-card"><span>전체</span><strong>{projects.length}</strong></div>
         <div className="metric-card"><span>잔여 업무</span><strong>{dashboard.remainingTasks}</strong></div>
-        <div className="metric-card"><span>평균 진척</span><strong>{dashboard.averageProgress}%</strong></div>
+        <div className="metric-card"><span>평균 진척</span><strong>{dashboard.averageProgress === null ? "산정 전" : `${dashboard.averageProgress}%`}</strong></div>
       </section>
 
       {errorMessage ? <div className="alert error" role="alert">{errorMessage}</div> : null}
@@ -153,7 +158,13 @@ export default function ProjectsPage() {
                     <td><Link className="table-link-button" href={`/projects/${project.id}`}>{project.title}</Link></td>
                     <td><span className="meta-pill status-navy">{projectStatusLabels[project.status]}</span></td>
                     <td>{project.role || "-"}</td>
-                    <td><div className="table-progress"><div className="mini-progress"><span style={{ width: `${project.progress_percent}%` }} /></div><b>{project.progress_percent}%</b></div></td>
+                    <td>
+                      {project.progress_basis === "unscoped" ? (
+                        <b>산정 전</b>
+                      ) : (
+                        <div className="table-progress"><div className="mini-progress"><span style={{ width: `${project.progress_percent}%` }} /></div><b>{progressLabel(project)}</b></div>
+                      )}
+                    </td>
                     <td>{project.remaining_tasks}</td>
                     <td>{project.completed_tasks}/{project.total_tasks}</td>
                     <td>{project.updated_at.slice(0, 10)}</td>
