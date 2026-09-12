@@ -166,6 +166,7 @@ def list_project_milestones(settings: Settings, owner_id: str, project_id: UUID)
         rows = connection.execute(
             _MILESTONE_SQL + """
             WHERE m.owner_id = %(owner_id)s AND m.project_id = %(project_id)s
+            GROUP BY m.id
             ORDER BY m.sort_order, m.created_at, m.title
             """,
             {"owner_id": owner_id, "project_id": project_id},
@@ -198,6 +199,7 @@ def get_project_milestone(settings: Settings, owner_id: str, project_id: UUID, m
         row = connection.execute(
             _MILESTONE_SQL + """
             WHERE m.owner_id = %(owner_id)s AND m.project_id = %(project_id)s AND m.id = %(milestone_id)s
+            GROUP BY m.id
             """,
             {"owner_id": owner_id, "project_id": project_id, "milestone_id": milestone_id},
         ).fetchone()
