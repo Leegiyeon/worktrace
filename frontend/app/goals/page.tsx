@@ -12,10 +12,37 @@ type ProjectDraft = {
   success_criteria: string;
 };
 
+type MilestoneEvidence = {
+  milestone_id: string;
+  acceptance_criteria: string;
+  total_wbs: number;
+  completed_wbs: number;
+  pending_wbs: Array<{
+    id: string;
+    title: string;
+    status: string;
+    priority: string;
+    url: string;
+  }>;
+  evidence_count: number;
+  recent_evidence: Array<{
+    kind: "commit" | "pull_request";
+    id: string;
+    title: string;
+    url: string;
+    occurred_at: string | null;
+    status: string;
+  }>;
+};
+
 function basisLabel(project: ProjectSummary) {
   if (project.progress_basis === "milestone") return "마일스톤 기반";
   if (project.progress_basis === "wbs") return "WBS 기반";
   return "진척률 산정 전";
+}
+
+function evidenceKindLabel(kind: MilestoneEvidence["recent_evidence"][number]["kind"]) {
+  return kind === "commit" ? "Commit" : "PR";
 }
 
 async function fetchGoalProjects(): Promise<GoalProject[]> {
@@ -43,6 +70,9 @@ export default function GoalsPage() {
   const [drafts, setDrafts] = useState<Record<string, ProjectDraft>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [savingProjectId, setSavingProjectId] = useState<string | null>(null);
+  const [expandedMilestoneId, setExpandedMilestoneId] = useState<string | null>(null);
+  const [evidenceByMilestone, setEvidenceByMilestone] = useState<Record<string, MilestoneEvidence>>({});
+  const [loadingEvidenceId, setLoadingEvidenceId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
@@ -106,6 +136,27 @@ export default function GoalsPage() {
       setErrorMessage(error instanceof Error ? error.message : "저장 중 오류가 발생했습니다.");
     } finally {
       setSavingProjectId(null);
+    }
+  }
+
+  async function toggleMilestoneEvidence(projectId: string, milestoneId: string) {
+    if (expandedMilestoneId === milestoneId) {
+      setExpandedMilestoneId(null);
+      return;
+    }
+    setExpandedMilestoneId(milestoneId);
+    if (evidenceByMilestone[milestoneId]) return;
+    setLoadingEvidenceId(milestoneId);
+    setErrorMessage("");
+    try {
+      const response = await fetch(`/api/projects/${projectId}/milestones/${milestoneId}/evidence`, { cache: "no-store" });
+      if (!response.ok) throw new Error("마일스톤 근거를 불러오지 못했습니다.");
+      const evidence = (await response.json()) as MilestoneEvidence;
+      setEvidenceByMilestone((current) => ({ ...current, [milestoneId]: evidence }));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "마일스톤 근거 조회 중 오류가 발생했습니다.");
+    } finally {
+      setLoadingEvidenceId(null);
     }
   }
 
@@ -177,16 +228,96 @@ export default function GoalsPage() {
                 </form>
 
                 <div className="dense-list">
-                  {project.milestones.map((milestone) => (
-                    <article className="dense-list-row" key={milestone.id}>
-                      <div>
-                        <strong>{milestone.title}</strong>
-                        <small>{milestone.acceptance_criteria || "성취 기준 미정"}</small>
-                      </div>
-                      <span>{milestone.completed_tasks}/{milestone.total_tasks} WBS</span>
-                      <b>{milestone.progress_percent}% · {milestone.weight}%</b>
-                    </article>
-                  ))}
+                  {project.milestones.map((milestone) => {
+                    const evidence = evidenceByMilestone[milestone.id];
+                    const isExpanded = expandedMilestoneId === milestone.id;
+                    return (
+                      <article key={milestone.id}>
+                        <div className="dense-list-row">
+                          <div>
+                            <strong>{milestone.title}</strong>
+                            <small>{milestone.acceptance_criteria || "성취 기준 미정"}</small>
+                          </div>
+                          <span>{milestone.completed_tasks}/{milestone.total_tasks} WBS</span>
+                          <b>{milestone.progress_percent}% · {milestone.weight}%</b>
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            aria-expanded={isExpanded}
+                            onClick={() => void toggleMilestoneEvidence(project.id, milestone.id)}
+                          >
+                            {isExpanded ? "근거 닫기" : "근거 보기"}
+                          </button>
+                        </div>
+
+                        {isExpanded ? (
+                          <div className="panel milestone-evidence-panel">
+                            {loadingEvidenceId === milestone.id ? <p className="muted">근거를 불러오는 중입니다.</p> : null}
+                            {evidence ? (
+                              <>
+                                <div className="panel-title-row">
+                                  <div>
+                                    <strong>완료 판단 근거</strong>
+                                    <small>
+                                      WBS {evidence.completed_wbs}/{evidence.total_wbs} 완료 · Evidence {evidence.evidence_count}건
+                                    </small>
+                                  </div>
+                                  <span className="count-badge">
+                                    {milestone.progress_percent === 100 ? "완료 후보" : "진행 중"}
+                                  </span>
+                                </div>
+
+                                <div className="stacked-section">
+                                  <div>
+                                    <strong>성취 기준</strong>
+                                    <p className="muted">{evidence.acceptance_criteria || "성취 기준이 정의되지 않았습니다."}</p>
+                                    {milestone.progress_percent === 100 ? (
+                                      <small>계획 WBS는 완료되었습니다. 성취 기준 충족 여부는 근거를 확인해 최종 판단하세요.</small>
+                                    ) : (
+                                      <small>아직 완료되지 않은 계획 WBS가 있어 성취 기준 검증 전 단계입니다.</small>
+                                    )}
+                                  </div>
+
+                                  <div>
+                                    <strong>남은 WBS</strong>
+                                    <div className="dense-list">
+                                      {evidence.pending_wbs.map((item) => (
+                                        <div className="dense-list-row" key={item.id}>
+                                          <span>{item.title}</span>
+                                          <small>{item.status} · {item.priority}</small>
+                                        </div>
+                                      ))}
+                                      {evidence.pending_wbs.length === 0 ? <div className="empty-state">남은 계획 WBS가 없습니다.</div> : null}
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <strong>최근 Evidence</strong>
+                                    <div className="dense-list">
+                                      {evidence.recent_evidence.map((item) => (
+                                        <div className="dense-list-row" key={`${item.kind}-${item.id}`}>
+                                          <div>
+                                            {item.url ? (
+                                              <a className="text-link" href={item.url} target="_blank" rel="noreferrer">{item.title}</a>
+                                            ) : (
+                                              <span>{item.title}</span>
+                                            )}
+                                            <small>{evidenceKindLabel(item.kind)} · {item.status}</small>
+                                          </div>
+                                          <small>{item.occurred_at ? item.occurred_at.slice(0, 10) : "날짜 없음"}</small>
+                                        </div>
+                                      ))}
+                                      {evidence.recent_evidence.length === 0 ? <div className="empty-state">연결된 GitHub Evidence가 없습니다.</div> : null}
+                                    </div>
+                                  </div>
+                                </div>
+                              </>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </article>
+                    );
+                  })}
                   {project.milestones.length === 0 ? <div className="empty-state">마일스톤이 없습니다. 프로젝트 상세에서 계획 WBS부터 정의하세요.</div> : null}
                 </div>
               </section>
