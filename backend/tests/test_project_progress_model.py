@@ -5,6 +5,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 GOALS_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "007_project_progress_goals.sql"
 EVIDENCE_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "008_github_evidence_not_progress.sql"
 DEPLOY_SCRIPT = REPO_ROOT / "scripts" / "deploy_oracle.sh"
+PROJECT_SERVICE = REPO_ROOT / "backend" / "app" / "services" / "projects.py"
 
 
 def test_project_goals_and_progress_flag_are_migrated() -> None:
@@ -34,3 +35,12 @@ def test_deploy_reapplies_idempotent_migrations_to_existing_volume() -> None:
     assert "for migration in infrastructure/postgres/init/*.sql" in script
     assert "psql" in script
     assert "ON_ERROR_STOP=1" in script
+
+
+def test_milestone_progress_requires_complete_wbs_coverage() -> None:
+    service = PROJECT_SERVICE.read_text(encoding="utf-8")
+
+    assert "COALESCE(ms.scoped_task_count, 0) = COALESCE(ts.total_tasks, 0)" in service
+    assert "WHEN COALESCE(ts.total_tasks, 0) > 0 THEN 'wbs'" in service
+    assert "ELSE 'unscoped' END AS progress_basis" in service
+    assert "COALESCE(SUM(mt.task_count), 0)::int AS scoped_task_count" in service
