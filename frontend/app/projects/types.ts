@@ -5,6 +5,7 @@ export type ProgressBasis = "milestone" | "wbs" | "unscoped";
 export type WorkType = "planning" | "meeting" | "research" | "deliverable" | "development" | "testing" | "reporting" | "coordination" | "problem_solving" | "other";
 export type OutcomeType = "quantitative" | "qualitative";
 export type CareerTargetRole = "IT기획" | "PM" | "AI서비스기획" | "Backend" | "DevOps";
+export type MilestoneReviewVerdict = "ready_candidate" | "not_ready" | "needs_review";
 
 export type ProjectSummary = {
   id: string;
@@ -36,6 +37,17 @@ export type ProjectMilestone = {
   completed_tasks: number;
   progress_percent: number;
   updated_at: string;
+};
+
+export type MilestoneReview = {
+  verdict: MilestoneReviewVerdict;
+  confidence: number;
+  reasoning_summary: string;
+  missing_checks: string[];
+  supporting_evidence_ids: string[];
+  reviewed_wbs_total: number;
+  reviewed_wbs_completed: number;
+  evidence_count: number;
 };
 
 export type ProjectTask = {
