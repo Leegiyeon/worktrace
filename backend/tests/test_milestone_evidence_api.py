@@ -2,9 +2,10 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+import app.api.milestone_evidence as milestone_evidence_api
+from app.api.security import require_report_access
 from app.main import app
 from app.schemas.milestone_evidence import MilestoneEvidenceSummary
-import app.api.milestone_evidence as milestone_evidence_api
 
 
 def test_milestone_evidence_endpoint_returns_grounded_summary(monkeypatch) -> None:
@@ -12,6 +13,7 @@ def test_milestone_evidence_endpoint_returns_grounded_summary(monkeypatch) -> No
     milestone_id = uuid4()
 
     def fake_get_milestone_evidence(settings, owner_id, requested_project_id, requested_milestone_id):
+        assert owner_id == "local-owner"
         assert requested_project_id == project_id
         assert requested_milestone_id == milestone_id
         return MilestoneEvidenceSummary(
@@ -40,11 +42,12 @@ def test_milestone_evidence_endpoint_returns_grounded_summary(monkeypatch) -> No
         )
 
     monkeypatch.setattr(milestone_evidence_api, "get_milestone_evidence", fake_get_milestone_evidence)
-    client = TestClient(app)
-    response = client.get(
-        f"/projects/{project_id}/milestones/{milestone_id}/evidence",
-        headers={"X-Worktrace-Owner": "local-owner", "X-Report-Token": ""},
-    )
+    app.dependency_overrides[require_report_access] = lambda: "local-owner"
+    try:
+        client = TestClient(app)
+        response = client.get(f"/projects/{project_id}/milestones/{milestone_id}/evidence")
+    finally:
+        app.dependency_overrides.pop(require_report_access, None)
 
     assert response.status_code == 200
     payload = response.json()
