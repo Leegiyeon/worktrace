@@ -9,6 +9,9 @@ GITHUB_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "003_github
 GITHUB_OPERATIONS_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "004_github_delivery_operations.sql"
 WORKTRACE_BRAND_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "005_worktrace_brand.sql"
 GITHUB_MANAGED_WORK_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "006_github_managed_work.sql"
+PROJECT_GOALS_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "007_project_progress_goals.sql"
+GITHUB_EVIDENCE_PROGRESS_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "008_github_evidence_not_progress.sql"
+PROJECT_MILESTONE_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "009_project_milestones.sql"
 
 
 def test_schema_loader_reads_canonical_sql_file() -> None:
@@ -100,3 +103,28 @@ def test_github_managed_work_has_idempotent_source_keys() -> None:
     assert "source_key TEXT" in schema
     assert "uq_project_tasks_owner_source" in schema
     assert "uq_work_logs_owner_source" in schema
+
+
+def test_project_goal_migration_separates_progress_evidence() -> None:
+    goals = PROJECT_GOALS_SCHEMA.read_text(encoding="utf-8")
+    evidence = GITHUB_EVIDENCE_PROGRESS_SCHEMA.read_text(encoding="utf-8")
+
+    assert "objective TEXT" in goals
+    assert "success_criteria TEXT" in goals
+    assert "counts_toward_progress BOOLEAN" in goals
+    assert "DELETE FROM project_tasks" in evidence
+    assert "source_key LIKE 'commit:%'" in evidence
+    assert "source_key LIKE 'pr:%'" in evidence
+
+
+def test_project_milestone_migration_has_weighted_progress_structure() -> None:
+    schema = PROJECT_MILESTONE_SCHEMA.read_text(encoding="utf-8")
+
+    assert "CREATE TABLE IF NOT EXISTS project_milestones" in schema
+    assert "weight INTEGER NOT NULL CHECK (weight > 0 AND weight <= 100)" in schema
+    assert "acceptance_criteria TEXT NOT NULL DEFAULT ''" in schema
+    assert "ADD COLUMN IF NOT EXISTS milestone_id UUID" in schema
+    assert "ON DELETE SET NULL" in schema
+    assert "핵심 업무 전산화" in schema
+    assert "Retrieval 품질" in schema
+    assert "Career AI" in schema
