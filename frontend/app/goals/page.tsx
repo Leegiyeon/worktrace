@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
-import type { ProjectMilestone, ProjectSummary } from "../projects/types";
+import type { MilestoneReview, ProjectMilestone, ProjectSummary } from "../projects/types";
 
 type GoalProject = ProjectSummary & { milestones: ProjectMilestone[] };
 
@@ -45,6 +45,12 @@ function evidenceKindLabel(kind: MilestoneEvidence["recent_evidence"][number]["k
   return kind === "commit" ? "Commit" : "PR";
 }
 
+function reviewVerdictLabel(review: MilestoneReview) {
+  if (review.verdict === "ready_candidate") return "완료 후보";
+  if (review.verdict === "not_ready") return "아직 미완료";
+  return "추가 확인 필요";
+}
+
 async function fetchGoalProjects(): Promise<GoalProject[]> {
   const response = await fetch("/api/projects", { cache: "no-store" });
   if (!response.ok) throw new Error("프로젝트를 불러오지 못했습니다.");
@@ -72,7 +78,9 @@ export default function GoalsPage() {
   const [savingProjectId, setSavingProjectId] = useState<string | null>(null);
   const [expandedMilestoneId, setExpandedMilestoneId] = useState<string | null>(null);
   const [evidenceByMilestone, setEvidenceByMilestone] = useState<Record<string, MilestoneEvidence>>({});
+  const [reviewByMilestone, setReviewByMilestone] = useState<Record<string, MilestoneReview>>({});
   const [loadingEvidenceId, setLoadingEvidenceId] = useState<string | null>(null);
+  const [reviewingMilestoneId, setReviewingMilestoneId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
@@ -160,6 +168,29 @@ export default function GoalsPage() {
     }
   }
 
+  async function reviewMilestone(projectId: string, milestoneId: string) {
+    setReviewingMilestoneId(milestoneId);
+    setErrorMessage("");
+    try {
+      const response = await fetch("/api/ai/milestone-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId, milestone_id: milestoneId })
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { detail?: { message?: string } | string } | null;
+        const message = typeof payload?.detail === "object" ? payload.detail?.message : payload?.detail;
+        throw new Error(message || "AI 마일스톤 검토를 완료하지 못했습니다.");
+      }
+      const review = (await response.json()) as MilestoneReview;
+      setReviewByMilestone((current) => ({ ...current, [milestoneId]: review }));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "AI 검토 중 오류가 발생했습니다.");
+    } finally {
+      setReviewingMilestoneId(null);
+    }
+  }
+
   return (
     <main className="page-shell project-page">
       <div className="dashboard-topbar">
@@ -230,6 +261,7 @@ export default function GoalsPage() {
                 <div className="dense-list">
                   {project.milestones.map((milestone) => {
                     const evidence = evidenceByMilestone[milestone.id];
+                    const review = reviewByMilestone[milestone.id];
                     const isExpanded = expandedMilestoneId === milestone.id;
                     return (
                       <article key={milestone.id}>
@@ -262,10 +294,48 @@ export default function GoalsPage() {
                                       WBS {evidence.completed_wbs}/{evidence.total_wbs} 완료 · Evidence {evidence.evidence_count}건
                                     </small>
                                   </div>
-                                  <span className="count-badge">
-                                    {milestone.progress_percent === 100 ? "완료 후보" : "진행 중"}
-                                  </span>
+                                  <div className="form-actions">
+                                    <span className="count-badge">
+                                      {milestone.progress_percent === 100 ? "완료 후보" : "진행 중"}
+                                    </span>
+                                    <button
+                                      className="secondary-button"
+                                      type="button"
+                                      disabled={reviewingMilestoneId === milestone.id}
+                                      onClick={() => void reviewMilestone(project.id, milestone.id)}
+                                    >
+                                      {reviewingMilestoneId === milestone.id ? "AI 검토 중" : review ? "AI 다시 검토" : "AI 검토"}
+                                    </button>
+                                  </div>
                                 </div>
+
+                                {review ? (
+                                  <div className="panel">
+                                    <div className="panel-title-row">
+                                      <div>
+                                        <strong>AI 완료 판단 보조</strong>
+                                        <small>AI는 완료 상태를 변경하지 않습니다. 최종 판단은 사용자가 합니다.</small>
+                                      </div>
+                                      <span className="count-badge">{reviewVerdictLabel(review)} · {Math.round(review.confidence * 100)}%</span>
+                                    </div>
+                                    <p>{review.reasoning_summary}</p>
+                                    <small>
+                                      검토 WBS {review.reviewed_wbs_completed}/{review.reviewed_wbs_total} · Evidence {review.evidence_count}건 중 실제 인용 {review.supporting_evidence_ids.length}건
+                                    </small>
+                                    <div className="stacked-section">
+                                      <div>
+                                        <strong>추가 확인 항목</strong>
+                                        {review.missing_checks.length > 0 ? (
+                                          <ul>
+                                            {review.missing_checks.map((item) => <li key={item}>{item}</li>)}
+                                          </ul>
+                                        ) : (
+                                          <p className="muted">AI가 추가 확인이 필요하다고 판단한 항목은 없습니다.</p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : null}
 
                                 <div className="stacked-section">
                                   <div>

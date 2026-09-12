@@ -23,4 +23,29 @@ class WorkLogDraftResponse(BaseModel):
     confidence: float = Field(..., ge=0, le=1)
 
 
-AiErrorCode = Literal["AI_CONFIG_MISSING", "AI_DRAFT_FAILED", "PROJECT_NOT_FOUND"]
+MilestoneReviewVerdict = Literal["ready_candidate", "not_ready", "needs_review"]
+
+
+class MilestoneReviewRequest(BaseModel):
+    project_id: UUID
+    milestone_id: UUID
+
+
+class MilestoneReviewResponse(BaseModel):
+    verdict: MilestoneReviewVerdict
+    confidence: float = Field(..., ge=0, le=1)
+    reasoning_summary: str = Field(..., min_length=1, max_length=1200)
+    missing_checks: list[str] = Field(default_factory=list, max_length=12)
+    supporting_evidence_ids: list[str] = Field(default_factory=list, max_length=20)
+    reviewed_wbs_total: int = Field(default=0, ge=0)
+    reviewed_wbs_completed: int = Field(default=0, ge=0)
+    evidence_count: int = Field(default=0, ge=0)
+
+
+AiErrorCode = Literal[
+    "AI_CONFIG_MISSING",
+    "AI_DRAFT_FAILED",
+    "AI_MILESTONE_REVIEW_FAILED",
+    "PROJECT_NOT_FOUND",
+    "PROJECT_MILESTONE_NOT_FOUND",
+]
