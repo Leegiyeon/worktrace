@@ -51,6 +51,18 @@ fi
 
 "${COMPOSE[@]}" up -d --build --remove-orphans db backend frontend
 
+# PostgreSQL's docker-entrypoint init scripts run only when the data volume is first created.
+# Re-apply every idempotent schema/migration file on deploy so existing production volumes
+# receive additive Worktrace schema changes as well.
+for migration in infrastructure/postgres/init/*.sql; do
+  echo "Applying database migration: $migration"
+  "${COMPOSE[@]}" exec -T db psql \
+    -v ON_ERROR_STOP=1 \
+    -U "${POSTGRES_USER:-worktrace}" \
+    -d "${POSTGRES_DB:-worktrace}" \
+    < "$migration"
+done
+
 for attempt in {1..30}; do
   if curl --fail --silent --show-error http://127.0.0.1:8200/health/ready >/dev/null \
     && curl --fail --silent --show-error http://127.0.0.1:3200/login >/dev/null; then
