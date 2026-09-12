@@ -383,10 +383,14 @@ _PROJECT_SUMMARY_SQL = """
            COALESCE(ts.completed_tasks, 0)::int AS completed_tasks,
            COALESCE(ts.remaining_tasks, 0)::int AS remaining_tasks,
            COALESCE(ms.milestone_count, 0)::int AS milestone_count,
-           CASE WHEN COALESCE(ms.milestone_count, 0) > 0 THEN 'milestone'
+           CASE WHEN COALESCE(ts.total_tasks, 0) > 0
+                     AND COALESCE(ms.scoped_task_count, 0) = COALESCE(ts.total_tasks, 0)
+                     AND COALESCE(ms.scoped_task_count, 0) > 0 THEN 'milestone'
                 WHEN COALESCE(ts.total_tasks, 0) > 0 THEN 'wbs'
                 ELSE 'unscoped' END AS progress_basis,
-           CASE WHEN COALESCE(ms.milestone_count, 0) > 0 THEN COALESCE(ms.weighted_progress, 0)
+           CASE WHEN COALESCE(ts.total_tasks, 0) > 0
+                     AND COALESCE(ms.scoped_task_count, 0) = COALESCE(ts.total_tasks, 0)
+                     AND COALESCE(ms.scoped_task_count, 0) > 0 THEN COALESCE(ms.weighted_progress, 0)
                 WHEN COALESCE(ts.total_tasks, 0) > 0 THEN ROUND((ts.completed_tasks::numeric / ts.total_tasks::numeric) * 100)::int
                 ELSE 0 END AS progress_percent
     FROM projects p
@@ -399,10 +403,12 @@ _PROJECT_SUMMARY_SQL = """
     ) ts ON true
     LEFT JOIN LATERAL (
         SELECT COUNT(*)::int AS milestone_count,
+               COALESCE(SUM(mt.task_count), 0)::int AS scoped_task_count,
                ROUND(COALESCE(SUM(m.weight * COALESCE(mt.progress_percent, 0)), 0)::numeric / NULLIF(SUM(m.weight), 0))::int AS weighted_progress
         FROM project_milestones m
         LEFT JOIN LATERAL (
-            SELECT CASE WHEN COUNT(*)=0 THEN 0
+            SELECT COUNT(*)::int AS task_count,
+                   CASE WHEN COUNT(*)=0 THEN 0
                         ELSE ROUND((COUNT(*) FILTER (WHERE t.status='done')::numeric / COUNT(*)::numeric) * 100)::int END AS progress_percent
             FROM project_tasks t
             WHERE t.owner_id=%(owner_id)s AND t.project_id=p.id AND t.milestone_id=m.id AND t.counts_toward_progress
