@@ -8,6 +8,8 @@ from app.core.config import Settings, get_settings
 from app.schemas.ai import (
     MilestoneReviewRequest,
     MilestoneReviewResponse,
+    ProjectAnalystRequest,
+    ProjectAnalystResponse,
     WorkLogDraftRequest,
     WorkLogDraftResponse,
 )
@@ -15,6 +17,11 @@ from app.services.ai_milestone_review import (
     AiMilestoneReviewConfigurationError,
     AiMilestoneReviewGenerationError,
     review_milestone_completion,
+)
+from app.services.ai_project_analyst import (
+    AiProjectAnalystConfigurationError,
+    AiProjectAnalystGenerationError,
+    analyze_project,
 )
 from app.services.ai_work_log_draft import (
     AiConfigurationError,
@@ -58,16 +65,26 @@ def create_milestone_review(
     except ProjectNotFoundError as exc:
         raise http_error(status.HTTP_404_NOT_FOUND, "PROJECT_NOT_FOUND", "프로젝트를 찾을 수 없습니다.") from exc
     except ProjectMilestoneNotFoundError as exc:
-        raise http_error(
-            status.HTTP_404_NOT_FOUND,
-            "PROJECT_MILESTONE_NOT_FOUND",
-            "마일스톤을 찾을 수 없습니다.",
-        ) from exc
+        raise http_error(status.HTTP_404_NOT_FOUND, "PROJECT_MILESTONE_NOT_FOUND", "마일스톤을 찾을 수 없습니다.") from exc
     except AiMilestoneReviewGenerationError as exc:
-        raise http_error(
-            status.HTTP_502_BAD_GATEWAY,
-            "AI_MILESTONE_REVIEW_FAILED",
-            "AI 마일스톤 검토를 완료하지 못했습니다.",
-        ) from exc
+        raise http_error(status.HTTP_502_BAD_GATEWAY, "AI_MILESTONE_REVIEW_FAILED", "AI 마일스톤 검토를 완료하지 못했습니다.") from exc
+    except psycopg.Error as exc:
+        raise http_error(status.HTTP_503_SERVICE_UNAVAILABLE, "DATABASE_UNAVAILABLE", "Database is unavailable.") from exc
+
+
+@router.post("/project-analyst", response_model=ProjectAnalystResponse)
+def create_project_analysis(
+    payload: ProjectAnalystRequest,
+    owner_id: str = Depends(require_report_access),
+    settings: Settings = Depends(get_settings),
+) -> ProjectAnalystResponse:
+    try:
+        return analyze_project(settings, owner_id, payload.project_id)
+    except AiProjectAnalystConfigurationError as exc:
+        raise http_error(status.HTTP_503_SERVICE_UNAVAILABLE, "AI_CONFIG_MISSING", "AI 설정이 필요합니다.") from exc
+    except ProjectNotFoundError as exc:
+        raise http_error(status.HTTP_404_NOT_FOUND, "PROJECT_NOT_FOUND", "프로젝트를 찾을 수 없습니다.") from exc
+    except AiProjectAnalystGenerationError as exc:
+        raise http_error(status.HTTP_502_BAD_GATEWAY, "AI_PROJECT_ANALYST_FAILED", "프로젝트 AI 분석을 완료하지 못했습니다.") from exc
     except psycopg.Error as exc:
         raise http_error(status.HTTP_503_SERVICE_UNAVAILABLE, "DATABASE_UNAVAILABLE", "Database is unavailable.") from exc
