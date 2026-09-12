@@ -1,6 +1,7 @@
 export type ProjectStatus = "idea" | "review" | "in_progress" | "on_hold" | "done";
 export type TaskStatus = "planned" | "in_progress" | "done" | "on_hold";
 export type TaskPriority = "low" | "medium" | "high";
+export type ProgressBasis = "milestone" | "wbs" | "unscoped";
 export type WorkType = "planning" | "meeting" | "research" | "deliverable" | "development" | "testing" | "reporting" | "coordination" | "problem_solving" | "other";
 export type OutcomeType = "quantitative" | "qualitative";
 export type CareerTargetRole = "IT기획" | "PM" | "AI서비스기획" | "Backend" | "DevOps";
@@ -9,11 +10,30 @@ export type ProjectSummary = {
   id: string;
   title: string;
   description: string;
+  objective: string;
+  success_criteria: string;
   status: ProjectStatus;
   role: string;
   total_tasks: number;
   completed_tasks: number;
   remaining_tasks: number;
+  milestone_count: number;
+  progress_basis: ProgressBasis;
+  progress_percent: number;
+  updated_at: string;
+};
+
+export type ProjectMilestone = {
+  id: string;
+  project_id: string;
+  milestone_key: string;
+  title: string;
+  description: string;
+  acceptance_criteria: string;
+  weight: number;
+  sort_order: number;
+  total_tasks: number;
+  completed_tasks: number;
   progress_percent: number;
   updated_at: string;
 };
@@ -26,6 +46,8 @@ export type ProjectTask = {
   status: TaskStatus;
   priority: TaskPriority;
   due_date: string | null;
+  milestone_id: string | null;
+  counts_toward_progress: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -135,6 +157,12 @@ export const taskPriorityLabels: Record<TaskPriority, string> = {
   low: "낮음",
   medium: "보통",
   high: "높음"
+};
+
+export const progressBasisLabels: Record<ProgressBasis, string> = {
+  milestone: "마일스톤 기준",
+  wbs: "계획 WBS 기준",
+  unscoped: "산정 전"
 };
 
 export const workTypeLabels: Record<WorkType, string> = {
