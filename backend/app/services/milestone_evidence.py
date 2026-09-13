@@ -26,7 +26,9 @@ def get_milestone_evidence(
 
         wbs_rows = connection.execute(
             """
-            SELECT id::text, title, status, priority, COALESCE(description, '') AS description
+            SELECT id::text, title, status, priority, COALESCE(description, '') AS description,
+                   COALESCE(source_provider, '') AS source_provider,
+                   COALESCE(source_key, '') AS source_key
             FROM project_tasks
             WHERE owner_id=%s AND project_id=%s AND milestone_id=%s AND counts_toward_progress
             ORDER BY
@@ -104,6 +106,12 @@ def get_milestone_evidence(
             title=row["title"],
             status=row["status"],
             priority=row["priority"],
+            source_provider=row.get("source_provider") or "",
+            source_key=row.get("source_key") or "",
+            is_validation_task=(
+                row.get("source_provider") == "derived-github"
+                and (row.get("source_key") or "").startswith("milestone-validation:")
+            ),
         )
         for row in wbs_rows
         if row["status"] != "done"
