@@ -3,6 +3,7 @@ from uuid import UUID
 from app.core.config import Settings
 from app.db.connection import connect
 from app.schemas.milestone_evidence import MilestoneEvidenceItem, MilestoneEvidenceSummary, MilestoneWorkItem
+from app.services.milestone_review_state import latest_review_allows_completion
 from app.services.projects import ProjectMilestoneNotFoundError
 
 
@@ -172,6 +173,8 @@ def update_milestone_validation_status(
                 (owner_id, project_id, milestone_id, milestone_id),
             ).fetchone()["total"]
             if substantive_pending > 0 or not milestone["acceptance_criteria"].strip():
+                raise MilestoneValidationBlockedError()
+            if not latest_review_allows_completion(settings, owner_id, project_id, milestone_id):
                 raise MilestoneValidationBlockedError()
 
         connection.execute(
