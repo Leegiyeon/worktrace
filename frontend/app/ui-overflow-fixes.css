@@ -1,0 +1,34 @@
+html, body, .app-frame { max-width: 100%; overflow-x: clip; }
+.page-shell, .dashboard-topbar, .panel, .metric-card, .project-card, .task-card, .candidate-card { min-width: 0; max-width: 100%; }
+img, svg, canvas, video { max-width: 100%; }
+h1, h2, h3, p, li, small, strong, .text-link, .dense-list-row a, .dense-list-row span { overflow-wrap: anywhere; }
+.app-header-inner, .app-header-actions, .app-nav { min-width: 0; }
+.app-header-actions { flex: 1 1 auto; max-width: calc(100% - 50px); overflow: hidden; }
+.app-nav { flex: 1 1 auto; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: none; }
+.app-nav::-webkit-scrollbar { display: none; }
+.app-logo { flex: 0 0 auto; }
+button, .primary-link, .primary-button, .secondary-button, .danger-button, .header-logout { height: auto; min-height: var(--control-height); max-height: none; max-width: 100%; white-space: normal; text-align: center; }
+.app-nav a, .header-logout, .tab-nav button, .view-switcher button, .data-table select, .table-link-button { white-space: nowrap; }
+.form-actions, .compact-actions, .table-actions, .panel-title-row, .report-result-header { max-width: 100%; }
+.form-actions > *, .compact-actions > *, .table-actions > * { min-width: 0; max-width: 100%; }
+.form-actions select { flex: 1 1 220px; width: auto; }
+.panel-title-row > div, .dense-list-row > div { min-width: 0; }
+.panel-title-row small, .panel-title-row strong, .dense-list-row small, .dense-list-row strong { overflow-wrap: anywhere; }
+.panel-title-row h2 .text-link { max-width: 100%; margin-bottom: 0; }
+.dense-list-row > * { min-width: 0; }
+.milestone-evidence-panel { max-width: 100%; margin-top: 8px; overflow: hidden; }
+.verification-page .stacked-section, .verification-project-panel, .verification-card { min-width: 0; max-width: 100%; }
+.verification-project-panel > .dense-list { margin-top: 12px; }
+.verification-card { display: grid; gap: 12px; overflow: hidden; }
+.verification-card > p { margin-bottom: 0; }
+.verification-review { display: grid; gap: 10px; min-width: 0; border-radius: var(--radius-md); background: var(--surface-muted); padding: 10px 12px; }
+.verification-review p, .verification-review ul { margin-bottom: 0; }
+.verification-actions { margin-top: 0; }
+.project-page .dense-list > article > .dense-list-row { grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 8px 12px; align-items: center; }
+.project-page .dense-list > article > .dense-list-row > div:first-child { display: grid; gap: 3px; min-width: 0; }
+.project-page .dense-list > article > .dense-list-row > b { grid-row: auto; }
+.project-page .dense-list > article > .dense-list-row > button { justify-self: end; }
+@media (max-width: 900px) { .project-page .dense-list > article > .dense-list-row { grid-template-columns: minmax(0, 1fr) auto auto; } .project-page .dense-list > article > .dense-list-row > button { grid-column: 1 / -1; justify-self: stretch; width: 100%; } }
+@media (max-width: 760px) { .app-header-inner { gap: 8px; } .app-header-actions { max-width: calc(100% - 42px); } .panel-title-row > .form-actions { flex: 1 1 100%; width: 100%; } }
+@media (max-width: 640px) { .dense-list-row, .project-page .dense-list > article > .dense-list-row { grid-template-columns: minmax(0, 1fr); } .dense-list-row > b, .project-page .dense-list > article > .dense-list-row > span, .project-page .dense-list > article > .dense-list-row > b, .project-page .dense-list > article > .dense-list-row > button { grid-row: auto; justify-self: stretch; text-align: left; } .project-page .dense-list > article > .dense-list-row > button, .verification-actions > *, .panel-title-row > .form-actions > * { width: 100%; } .verification-actions { align-items: stretch; } .verification-actions > * { flex: 1 1 100%; } }
+@media (max-width: 420px) { .page-shell { padding-inline: 10px; } .panel, .verification-card { padding: 12px; } .app-header-inner { padding-inline: 8px; } .app-nav a, .header-logout { padding-inline: 8px; } .count-badge, .meta-pill, .status-pill { max-width: 100%; white-space: normal; text-align: center; } }

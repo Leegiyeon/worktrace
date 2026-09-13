@@ -128,7 +128,7 @@ export default function VerificationsPage() {
   }
 
   return (
-    <main className="page-shell project-page">
+    <main className="page-shell project-page verification-page">
       <div className="dashboard-topbar">
         <div>
           <span className="eyebrow">MILESTONE VERIFICATION</span>
@@ -142,7 +142,7 @@ export default function VerificationsPage() {
 
       <div className="stacked-section">
         {projects.map((project) => (
-          <section className="panel" key={project.id}>
+          <section className="panel verification-project-panel" key={project.id}>
             <div className="panel-title-row">
               <div>
                 <h2>{project.title}</h2>
@@ -158,7 +158,7 @@ export default function VerificationsPage() {
                 const validation = milestoneEvidence?.validation_wbs;
                 const busy = workingId === milestone.id;
                 return (
-                  <article className="panel" key={milestone.id}>
+                  <article className="panel verification-card" key={milestone.id}>
                     <div className="panel-title-row">
                       <div>
                         <strong>{milestone.title}</strong>
@@ -170,7 +170,7 @@ export default function VerificationsPage() {
                     <p className="muted">WBS {milestone.completed_tasks}/{milestone.total_tasks} 완료{milestoneEvidence ? ` · Evidence ${milestoneEvidence.evidence_count}건` : ""}</p>
 
                     {reviewResult ? (
-                      <div className="stacked-section">
+                      <div className="stacked-section verification-review">
                         <div>
                           <strong>{verdictLabel(reviewResult)} · 신뢰도 {Math.round(reviewResult.confidence * 100)}%</strong>
                           <p>{reviewResult.reasoning_summary}</p>
@@ -184,7 +184,7 @@ export default function VerificationsPage() {
                       </div>
                     ) : null}
 
-                    <div className="form-actions">
+                    <div className="form-actions verification-actions">
                       <button className="secondary-button" type="button" disabled={busy} onClick={() => void review(project.id, milestone.id)}>
                         {busy ? "처리 중" : reviewResult ? "AI 다시 검토" : "AI 검토"}
                       </button>
