@@ -1,3 +1,5 @@
+from uuid import UUID
+
 import psycopg
 
 from fastapi import APIRouter, Depends, status
@@ -76,7 +78,7 @@ def create_milestone_review(
 
 @router.get("/milestone-reviews/{project_id}", response_model=list[StoredMilestoneReview])
 def get_latest_milestone_reviews(
-    project_id,
+    project_id: UUID,
     owner_id: str = Depends(require_report_access),
     settings: Settings = Depends(get_settings),
 ) -> list[StoredMilestoneReview]:
