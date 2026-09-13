@@ -146,6 +146,21 @@ class GitHubCommit(BaseModel):
     url: str
 
 
+class BranchActivityPoint(BaseModel):
+    date: str
+    commits: int = 0
+
+
+class GitHubBranchActivity(BaseModel):
+    name: str
+    is_default: bool = False
+    ahead_by: int = 0
+    behind_by: int = 0
+    status: str = "unknown"
+    latest_commit_at: str | None = None
+    activity: list[BranchActivityPoint] = Field(default_factory=list)
+
+
 class GitHubDelivery(BaseModel):
     id: str
     delivery_id: str

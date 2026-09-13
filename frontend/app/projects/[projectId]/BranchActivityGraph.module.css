@@ -1,0 +1,129 @@
+.panel {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.titleRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.titleRow > div {
+  min-width: 0;
+}
+
+.titleRow h2 {
+  margin: 0 0 4px;
+}
+
+.titleRow small,
+.heading small,
+.note {
+  color: var(--muted);
+}
+
+.list {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.row {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+}
+
+.heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.heading > div:first-child {
+  min-width: 0;
+}
+
+.heading strong,
+.heading small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.track > span {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  border-radius: inherit;
+  background: var(--accent-blue);
+}
+
+.sparkWrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sparkline {
+  display: block;
+  width: 100%;
+  height: 58px;
+  overflow: visible;
+}
+
+.sparkline polyline {
+  fill: none;
+  stroke: var(--accent-blue);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.note {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 720px) {
+  .titleRow,
+  .heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .badges {
+    justify-content: flex-start;
+  }
+
+  .sparkWrap {
+    grid-template-columns: 1fr;
+  }
+}

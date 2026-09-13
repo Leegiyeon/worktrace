@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     work_support_schema_sql_path: Optional[str] = None
     openai_api_key: Optional[str] = None
     openai_model: str = "gpt-4o-mini"
+    github_sync_token: Optional[str] = None
     github_webhook_secret: Optional[str] = None
 
     model_config = SettingsConfigDict(
