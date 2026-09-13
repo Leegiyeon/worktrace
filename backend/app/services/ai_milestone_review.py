@@ -1,10 +1,11 @@
+import json
 from uuid import UUID
 
 from openai import OpenAI, OpenAIError
 
 from app.core.config import Settings
 from app.db.connection import connect
-from app.schemas.ai import MilestoneReviewResponse
+from app.schemas.ai import MilestoneReviewResponse, StoredMilestoneReview
 from app.services.milestone_evidence import get_milestone_evidence
 from app.services.projects import ProjectMilestoneNotFoundError, ProjectNotFoundError
 
@@ -32,33 +33,19 @@ SYSTEM_PROMPT = """당신은 프로젝트 마일스톤 완료 여부를 보조 �
 """
 
 
-def review_milestone_completion(
-    settings: Settings,
-    owner_id: str,
-    project_id: UUID,
-    milestone_id: UUID,
-) -> MilestoneReviewResponse:
+def review_milestone_completion(settings: Settings, owner_id: str, project_id: UUID, milestone_id: UUID) -> MilestoneReviewResponse:
     if not settings.openai_api_key:
         raise AiMilestoneReviewConfigurationError()
 
     with connect(settings) as connection:
         project = connection.execute(
-            """
-            SELECT title, objective, success_criteria
-            FROM projects
-            WHERE owner_id=%s AND id=%s
-            """,
+            "SELECT title, objective, success_criteria FROM projects WHERE owner_id=%s AND id=%s",
             (owner_id, project_id),
         ).fetchone()
         if project is None:
             raise ProjectNotFoundError()
-
         milestone = connection.execute(
-            """
-            SELECT title, description, acceptance_criteria
-            FROM project_milestones
-            WHERE owner_id=%s AND project_id=%s AND id=%s
-            """,
+            "SELECT title, description, acceptance_criteria FROM project_milestones WHERE owner_id=%s AND project_id=%s AND id=%s",
             (owner_id, project_id, milestone_id),
         ).fetchone()
         if milestone is None:
@@ -67,11 +54,12 @@ def review_milestone_completion(
     evidence = get_milestone_evidence(settings, owner_id, project_id, milestone_id)
     evidence_ids = {item.id for item in evidence.recent_evidence}
     substantive_pending = [item for item in evidence.pending_wbs if not item.is_validation_task]
+    model = settings.openai_model or "gpt-4o-mini"
 
     client = OpenAI(api_key=settings.openai_api_key)
     try:
         response = client.responses.parse(
-            model=settings.openai_model or "gpt-4o-mini",
+            model=model,
             input=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": _build_prompt(project, milestone, evidence, substantive_pending)},
@@ -87,9 +75,7 @@ def review_milestone_completion(
     if not isinstance(review, MilestoneReviewResponse):
         raise AiMilestoneReviewGenerationError()
 
-    review.supporting_evidence_ids = [
-        evidence_id for evidence_id in review.supporting_evidence_ids if evidence_id in evidence_ids
-    ]
+    review.supporting_evidence_ids = [evidence_id for evidence_id in review.supporting_evidence_ids if evidence_id in evidence_ids]
     review.reviewed_wbs_total = evidence.total_wbs
     review.reviewed_wbs_completed = evidence.completed_wbs
     review.evidence_count = evidence.evidence_count
@@ -97,33 +83,64 @@ def review_milestone_completion(
     if substantive_pending and review.verdict == "ready_candidate":
         review.verdict = "not_ready"
         pending_titles = ", ".join(item.title for item in substantive_pending[:3])
-        review.missing_checks = _dedupe([
-            *review.missing_checks,
-            f"남은 WBS 완료 확인: {pending_titles}",
-        ])[:12]
+        review.missing_checks = _dedupe([*review.missing_checks, f"남은 WBS 완료 확인: {pending_titles}"])[:12]
 
     if not (evidence.acceptance_criteria or "").strip():
         review.verdict = "needs_review"
-        review.missing_checks = _dedupe([
-            "마일스톤 성취 기준을 먼저 정의해야 합니다.",
-            *review.missing_checks,
-        ])[:12]
+        review.missing_checks = _dedupe(["마일스톤 성취 기준을 먼저 정의해야 합니다.", *review.missing_checks])[:12]
 
+    _save_review(settings, owner_id, project_id, milestone_id, review, model)
     return review
 
 
+def list_latest_milestone_reviews(settings: Settings, owner_id: str, project_id: UUID) -> list[StoredMilestoneReview]:
+    with connect(settings) as connection:
+        project = connection.execute("SELECT 1 FROM projects WHERE owner_id=%s AND id=%s", (owner_id, project_id)).fetchone()
+        if project is None:
+            raise ProjectNotFoundError()
+        rows = connection.execute(
+            """
+            SELECT DISTINCT ON (milestone_id)
+                milestone_id, verdict, confidence, reasoning_summary,
+                missing_checks, supporting_evidence_ids,
+                reviewed_wbs_total, reviewed_wbs_completed, evidence_count,
+                model, reviewed_at
+            FROM project_milestone_reviews
+            WHERE owner_id=%s AND project_id=%s
+            ORDER BY milestone_id, reviewed_at DESC
+            """,
+            (owner_id, project_id),
+        ).fetchall()
+    return [StoredMilestoneReview(**row) for row in rows]
+
+
+def _save_review(settings: Settings, owner_id: str, project_id: UUID, milestone_id: UUID, review: MilestoneReviewResponse, model: str) -> None:
+    with connect(settings) as connection:
+        connection.execute(
+            """
+            INSERT INTO project_milestone_reviews (
+                owner_id, project_id, milestone_id, verdict, confidence,
+                reasoning_summary, missing_checks, supporting_evidence_ids,
+                reviewed_wbs_total, reviewed_wbs_completed, evidence_count, model
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s)
+            """,
+            (
+                owner_id, project_id, milestone_id, review.verdict, review.confidence,
+                review.reasoning_summary,
+                json.dumps(review.missing_checks, ensure_ascii=False),
+                json.dumps(review.supporting_evidence_ids, ensure_ascii=False),
+                review.reviewed_wbs_total, review.reviewed_wbs_completed, review.evidence_count, model,
+            ),
+        )
+
+
 def _build_prompt(project, milestone, evidence, substantive_pending) -> str:
-    pending_wbs = "\n".join(
-        f"- [{item.status}/{item.priority}] {item.title}" for item in substantive_pending
-    ) or "- 없음"
-    validation_wbs = "\n".join(
-        f"- [{item.status}] {item.title}" for item in evidence.pending_wbs if item.is_validation_task
-    ) or "- 없음"
+    pending_wbs = "\n".join(f"- [{item.status}/{item.priority}] {item.title}" for item in substantive_pending) or "- 없음"
+    validation_wbs = "\n".join(f"- [{item.status}] {item.title}" for item in evidence.pending_wbs if item.is_validation_task) or "- 없음"
     recent_evidence = "\n".join(
         f"- id={item.id} | {item.kind} | {item.status} | {item.title} | {item.occurred_at or '날짜 없음'}"
         for item in evidence.recent_evidence
     ) or "- 없음"
-
     return f"""프로젝트: {project['title']}
 프로젝트 목표: {project.get('objective') or '미정'}
 프로젝트 성취 기준: {project.get('success_criteria') or '미정'}
