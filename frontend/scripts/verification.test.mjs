@@ -5,8 +5,9 @@ import test from "node:test";
 const source = readFileSync(new URL("../app/verifications/page.tsx", import.meta.url), "utf8");
 
 test("verification center supports project-wide AI review without auto-completing milestones", () => {
-  assert.match(source, /async function reviewProject\(project: ProjectWithMilestones\)/);
-  assert.match(source, /AI 전체 검토/);
+  assert.match(source, /async function reviewProject\(project: ProjectWithMilestones, force = false\)/);
+  assert.match(source, /필요 항목 검토/);
+  assert.match(source, /전체 강제 재검토/);
   assert.match(source, /validation_wbs\?\.status === "done"/);
   assert.match(source, /await requestReview\(project\.id, milestone\.id\)/);
   assert.match(source, /reviewed \+= 1/);
