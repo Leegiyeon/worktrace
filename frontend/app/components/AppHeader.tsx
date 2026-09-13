@@ -11,6 +11,7 @@ export function AppHeader({ authEnabled }: { authEnabled: boolean }) {
 
   const isProjects = pathname.startsWith("/projects");
   const isGoals = pathname.startsWith("/goals");
+  const isVerifications = pathname.startsWith("/verifications");
   const isInsights = pathname.startsWith("/insights");
   const isReports = pathname.startsWith("/reports");
 
@@ -22,6 +23,7 @@ export function AppHeader({ authEnabled }: { authEnabled: boolean }) {
           <nav className="app-nav" aria-label="주요 메뉴">
             <Link aria-current={isProjects ? "page" : undefined} href="/projects">프로젝트</Link>
             <Link aria-current={isGoals ? "page" : undefined} href="/goals">목표·마일스톤</Link>
+            <Link aria-current={isVerifications ? "page" : undefined} href="/verifications">검증센터</Link>
             <Link aria-current={isInsights ? "page" : undefined} href="/insights">인사이트</Link>
             <Link aria-current={isReports ? "page" : undefined} href="/reports">리포트</Link>
           </nav>
