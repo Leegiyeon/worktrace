@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { AppHeader } from "./components/AppHeader";
 import "./globals.css";
+import "./ui-overflow-fixes.css";
 
 export const metadata: Metadata = {
   title: "worktrace",
