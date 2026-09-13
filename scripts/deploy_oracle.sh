@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 readonly APP_DIR="${APP_DIR:-/home/ubuntu/worktrace}"
+readonly REPOSITORY_URL="${REPOSITORY_URL:-https://github.com/Leegiyeon/worktrace.git}"
 readonly COMPOSE=(
   docker compose
   --env-file .env.production
@@ -38,6 +39,10 @@ trap deployment_diagnostics ERR
 sed -i 's/^WORK_SUPPORT_PASSWORD_HASH=/WORKTRACE_PASSWORD_HASH=/' .env.production
 sed -i 's/^WORK_SUPPORT_SESSION_SECRET=/WORKTRACE_SESSION_SECRET=/' .env.production
 
+# The repository was renamed from work-support to worktrace. GitHub redirects the old URL,
+# but keep the production checkout canonical so diagnostics and future automation do not depend on redirects.
+git remote set-url origin "$REPOSITORY_URL"
+echo "Git origin: $(git remote get-url origin)"
 git fetch --prune origin main
 git checkout main
 git pull --ff-only origin main
@@ -66,6 +71,7 @@ for attempt in {1..30}; do
   if curl --fail --silent --show-error http://127.0.0.1:8200/health/ready >/dev/null \
     && curl --fail --silent --show-error http://127.0.0.1:3200/login >/dev/null; then
     "${COMPOSE[@]}" exec -T -e GITHUB_SYNC_TOKEN backend python scripts/sync_github_data.py --cleanup-samples
+    "${COMPOSE[@]}" exec -T backend python scripts/report_progress_snapshot.py
     "${COMPOSE[@]}" ps
     echo "Deployment health checks passed."
     trap - ERR
