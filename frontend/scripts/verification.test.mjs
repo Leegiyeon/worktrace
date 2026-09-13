@@ -11,7 +11,12 @@ test("verification center supports project-wide AI review without auto-completin
   assert.match(source, /await requestReview\(project\.id, milestone\.id\)/);
   assert.match(source, /reviewed \+= 1/);
   assert.match(source, /failed \+= 1/);
-  assert.doesNotMatch(source, /reviewProject[\s\S]*changeValidation\(project\.id/);
+
+  const batchStart = source.indexOf("async function reviewProject");
+  const batchEnd = source.indexOf("async function changeValidation", batchStart);
+  const batchSource = source.slice(batchStart, batchEnd);
+  assert.doesNotMatch(batchSource, /method:\s*"PATCH"/);
+  assert.doesNotMatch(batchSource, /changeValidation\(/);
 });
 
 test("batch review keeps explicit user confirmation as the only completion path", () => {
