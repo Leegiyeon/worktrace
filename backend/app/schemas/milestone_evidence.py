@@ -9,6 +9,9 @@ class MilestoneWorkItem(BaseModel):
     status: str
     priority: str
     url: str = ""
+    source_provider: str = ""
+    source_key: str = ""
+    is_validation_task: bool = False
 
 
 class MilestoneEvidenceItem(BaseModel):

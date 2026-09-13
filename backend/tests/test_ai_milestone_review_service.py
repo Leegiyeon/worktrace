@@ -49,8 +49,15 @@ class FakeOpenAI:
         self.responses = FakeResponses()
 
 
-def test_pending_wbs_prevents_ready_candidate_and_filters_unknown_evidence(monkeypatch) -> None:
-    project_id = uuid4()
+def _run_review(monkeypatch, evidence: MilestoneEvidenceSummary):
+    monkeypatch.setattr(review_service, "connect", fake_connect)
+    monkeypatch.setattr(review_service, "get_milestone_evidence", lambda *args: evidence)
+    monkeypatch.setattr(review_service, "OpenAI", FakeOpenAI)
+    settings = SimpleNamespace(openai_api_key="test-key", openai_model="test-model")
+    return review_service.review_milestone_completion(settings, "owner", uuid4(), uuid4())
+
+
+def test_pending_substantive_wbs_prevents_ready_candidate_and_filters_unknown_evidence(monkeypatch) -> None:
     milestone_id = uuid4()
     evidence = MilestoneEvidenceSummary(
         milestone_id=str(milestone_id),
@@ -69,15 +76,45 @@ def test_pending_wbs_prevents_ready_candidate_and_filters_unknown_evidence(monke
         ],
     )
 
-    monkeypatch.setattr(review_service, "connect", fake_connect)
-    monkeypatch.setattr(review_service, "get_milestone_evidence", lambda *args: evidence)
-    monkeypatch.setattr(review_service, "OpenAI", FakeOpenAI)
-
-    settings = SimpleNamespace(openai_api_key="test-key", openai_model="test-model")
-    result = review_service.review_milestone_completion(settings, "owner", project_id, milestone_id)
+    result = _run_review(monkeypatch, evidence)
 
     assert result.verdict == "not_ready"
     assert result.supporting_evidence_ids == ["valid-evidence"]
     assert result.reviewed_wbs_total == 2
     assert result.reviewed_wbs_completed == 1
     assert any("남은 WBS 완료 확인" in item for item in result.missing_checks)
+
+
+def test_validation_checkpoint_does_not_block_ready_candidate(monkeypatch) -> None:
+    milestone_id = uuid4()
+    evidence = MilestoneEvidenceSummary(
+        milestone_id=str(milestone_id),
+        acceptance_criteria="배포 및 운영 검증 완료",
+        total_wbs=2,
+        completed_wbs=1,
+        pending_wbs=[
+            MilestoneWorkItem(
+                id="validation-wbs",
+                title="[검증 필요] 운영 안정성 성취 기준 확인",
+                status="planned",
+                priority="medium",
+                source_provider="derived-github",
+                source_key=f"milestone-validation:{milestone_id}",
+                is_validation_task=True,
+            )
+        ],
+        evidence_count=4,
+        recent_evidence=[
+            MilestoneEvidenceItem(
+                kind="commit",
+                id="valid-evidence",
+                title="fix: deploy verification",
+                url="https://github.com/example/repo/commit/abc",
+            )
+        ],
+    )
+
+    result = _run_review(monkeypatch, evidence)
+
+    assert result.verdict == "ready_candidate"
+    assert not any("남은 WBS 완료 확인" in item for item in result.missing_checks)

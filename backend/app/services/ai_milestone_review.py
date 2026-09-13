@@ -22,7 +22,8 @@ SYSTEM_PROMPT = """당신은 프로젝트 마일스톤 완료 여부를 보조 �
 규칙:
 - 완료 여부를 자동 확정하지 않는다. ready_candidate는 사람이 최종 확인할 수 있는 완료 후보라는 뜻이다.
 - 제공되지 않은 사실, 수치, 테스트 결과, 운영 상태를 추정하거나 만들어내지 않는다.
-- 남은 WBS가 있거나 성취 기준 충족 근거가 부족하면 not_ready 또는 needs_review를 선택한다.
+- 실제 구현/업무 WBS가 남아 있거나 성취 기준 충족 근거가 부족하면 not_ready 또는 needs_review를 선택한다.
+- '[검증 필요]' 합성 WBS는 지금 수행하는 검토 자체를 위한 체크포인트이므로, 그것만 남아 있다는 이유로 ready_candidate를 막지 않는다.
 - 성취 기준이 모호하거나 비어 있으면 needs_review를 선택한다.
 - supporting_evidence_ids에는 입력으로 제공된 Evidence id만 넣는다.
 - Evidence 개수가 많다는 이유만으로 완료라고 판단하지 않는다.
@@ -65,6 +66,7 @@ def review_milestone_completion(
 
     evidence = get_milestone_evidence(settings, owner_id, project_id, milestone_id)
     evidence_ids = {item.id for item in evidence.recent_evidence}
+    substantive_pending = [item for item in evidence.pending_wbs if not item.is_validation_task]
 
     client = OpenAI(api_key=settings.openai_api_key)
     try:
@@ -72,7 +74,7 @@ def review_milestone_completion(
             model=settings.openai_model or "gpt-4o-mini",
             input=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": _build_prompt(project, milestone, evidence)},
+                {"role": "user", "content": _build_prompt(project, milestone, evidence, substantive_pending)},
             ],
             text_format=MilestoneReviewResponse,
         )
@@ -92,9 +94,9 @@ def review_milestone_completion(
     review.reviewed_wbs_completed = evidence.completed_wbs
     review.evidence_count = evidence.evidence_count
 
-    if evidence.pending_wbs and review.verdict == "ready_candidate":
+    if substantive_pending and review.verdict == "ready_candidate":
         review.verdict = "not_ready"
-        pending_titles = ", ".join(item.title for item in evidence.pending_wbs[:3])
+        pending_titles = ", ".join(item.title for item in substantive_pending[:3])
         review.missing_checks = _dedupe([
             *review.missing_checks,
             f"남은 WBS 완료 확인: {pending_titles}",
@@ -110,9 +112,12 @@ def review_milestone_completion(
     return review
 
 
-def _build_prompt(project, milestone, evidence) -> str:
+def _build_prompt(project, milestone, evidence, substantive_pending) -> str:
     pending_wbs = "\n".join(
-        f"- [{item.status}/{item.priority}] {item.title}" for item in evidence.pending_wbs
+        f"- [{item.status}/{item.priority}] {item.title}" for item in substantive_pending
+    ) or "- 없음"
+    validation_wbs = "\n".join(
+        f"- [{item.status}] {item.title}" for item in evidence.pending_wbs if item.is_validation_task
     ) or "- 없음"
     recent_evidence = "\n".join(
         f"- id={item.id} | {item.kind} | {item.status} | {item.title} | {item.occurred_at or '날짜 없음'}"
@@ -128,8 +133,10 @@ def _build_prompt(project, milestone, evidence) -> str:
 마일스톤 성취 기준: {milestone.get('acceptance_criteria') or '미정'}
 
 계획 WBS: {evidence.completed_wbs}/{evidence.total_wbs} 완료
-남은 WBS:
+실제 남은 구현/업무 WBS:
 {pending_wbs}
+검토 후 사용자가 확정할 검증 WBS:
+{validation_wbs}
 
 GitHub Evidence 총 {evidence.evidence_count}건, 최근 근거:
 {recent_evidence}
