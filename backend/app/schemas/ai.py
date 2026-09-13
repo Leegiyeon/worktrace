@@ -47,6 +47,8 @@ class StoredMilestoneReview(MilestoneReviewResponse):
     milestone_id: UUID
     reviewed_at: datetime
     model: str = ""
+    is_stale: bool = False
+    stale_reason: str = ""
 
 
 class ProjectAnalystRequest(BaseModel):

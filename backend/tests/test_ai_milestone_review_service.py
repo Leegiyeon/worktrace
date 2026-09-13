@@ -23,7 +23,9 @@ class FakeConnection:
         self.calls += 1
         if self.calls == 1:
             return FakeResult({"title": "Worktrace", "objective": "업무 근거를 경력 자산으로 연결", "success_criteria": "근거 기반 완료 판단"})
-        return FakeResult({"title": "운영 안정성", "description": "운영 검증", "acceptance_criteria": "배포 및 운영 검증 완료"})
+        if self.calls == 2:
+            return FakeResult({"title": "운영 안정성", "description": "운영 검증", "acceptance_criteria": "배포 및 운영 검증 완료"})
+        return FakeResult(None)
 
 
 @contextmanager
@@ -52,6 +54,7 @@ class FakeOpenAI:
 def _run_review(monkeypatch, evidence: MilestoneEvidenceSummary):
     monkeypatch.setattr(review_service, "connect", fake_connect)
     monkeypatch.setattr(review_service, "get_milestone_evidence", lambda *args: evidence)
+    monkeypatch.setattr(review_service, "build_milestone_review_context_fingerprint", lambda *args: "context-fingerprint")
     monkeypatch.setattr(review_service, "OpenAI", FakeOpenAI)
     settings = SimpleNamespace(openai_api_key="test-key", openai_model="test-model")
     return review_service.review_milestone_completion(settings, "owner", uuid4(), uuid4())

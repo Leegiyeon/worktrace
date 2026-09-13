@@ -46,6 +46,25 @@ def test_validation_completion_is_blocked_while_real_wbs_remains(monkeypatch) ->
         yield connection
 
     monkeypatch.setattr(service, "connect", fake_connect)
+    monkeypatch.setattr(service, "latest_review_allows_completion", lambda *args: True)
+
+    with pytest.raises(service.MilestoneValidationBlockedError):
+        service.update_milestone_validation_status(
+            SimpleNamespace(), "owner", uuid4(), uuid4(), "done"
+        )
+
+    assert connection.updated_status is None
+
+
+def test_validation_completion_is_blocked_without_current_ready_review(monkeypatch) -> None:
+    connection = FakeConnection(substantive_pending=0)
+
+    @contextmanager
+    def fake_connect(settings):
+        yield connection
+
+    monkeypatch.setattr(service, "connect", fake_connect)
+    monkeypatch.setattr(service, "latest_review_allows_completion", lambda *args: False)
 
     with pytest.raises(service.MilestoneValidationBlockedError):
         service.update_milestone_validation_status(
@@ -64,6 +83,7 @@ def test_validation_completion_updates_only_validation_checkpoint(monkeypatch) -
         yield connection
 
     monkeypatch.setattr(service, "connect", fake_connect)
+    monkeypatch.setattr(service, "latest_review_allows_completion", lambda *args: True)
     monkeypatch.setattr(service, "get_milestone_evidence", lambda *args: expected)
 
     result = service.update_milestone_validation_status(

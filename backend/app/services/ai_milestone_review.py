@@ -7,6 +7,7 @@ from app.core.config import Settings
 from app.db.connection import connect
 from app.schemas.ai import MilestoneReviewResponse, StoredMilestoneReview
 from app.services.milestone_evidence import get_milestone_evidence
+from app.services.milestone_review_state import build_milestone_review_context_fingerprint
 from app.services.projects import ProjectMilestoneNotFoundError, ProjectNotFoundError
 
 
@@ -89,7 +90,8 @@ def review_milestone_completion(settings: Settings, owner_id: str, project_id: U
         review.verdict = "needs_review"
         review.missing_checks = _dedupe(["마일스톤 성취 기준을 먼저 정의해야 합니다.", *review.missing_checks])[:12]
 
-    _save_review(settings, owner_id, project_id, milestone_id, review, model)
+    context_fingerprint = build_milestone_review_context_fingerprint(settings, owner_id, project_id, milestone_id)
+    _save_review(settings, owner_id, project_id, milestone_id, review, model, context_fingerprint)
     return review
 
 
@@ -104,25 +106,57 @@ def list_latest_milestone_reviews(settings: Settings, owner_id: str, project_id:
                 milestone_id, verdict, confidence, reasoning_summary,
                 missing_checks, supporting_evidence_ids,
                 reviewed_wbs_total, reviewed_wbs_completed, evidence_count,
-                model, reviewed_at
+                model, reviewed_at, context_fingerprint
             FROM project_milestone_reviews
             WHERE owner_id=%s AND project_id=%s
             ORDER BY milestone_id, reviewed_at DESC
             """,
             (owner_id, project_id),
         ).fetchall()
-    return [StoredMilestoneReview(**row) for row in rows]
+
+    results: list[StoredMilestoneReview] = []
+    for row in rows:
+        current_fingerprint = build_milestone_review_context_fingerprint(settings, owner_id, project_id, row["milestone_id"])
+        stored_fingerprint = row.get("context_fingerprint") or ""
+        is_stale = not stored_fingerprint or stored_fingerprint != current_fingerprint
+        results.append(
+            StoredMilestoneReview(
+                milestone_id=row["milestone_id"],
+                verdict=row["verdict"],
+                confidence=row["confidence"],
+                reasoning_summary=row["reasoning_summary"],
+                missing_checks=row["missing_checks"] or [],
+                supporting_evidence_ids=row["supporting_evidence_ids"] or [],
+                reviewed_wbs_total=row["reviewed_wbs_total"],
+                reviewed_wbs_completed=row["reviewed_wbs_completed"],
+                evidence_count=row["evidence_count"],
+                model=row.get("model") or "",
+                reviewed_at=row["reviewed_at"],
+                is_stale=is_stale,
+                stale_reason="검토 이후 Evidence·WBS·성취 기준이 변경되어 재검토가 필요합니다." if is_stale else "",
+            )
+        )
+    return results
 
 
-def _save_review(settings: Settings, owner_id: str, project_id: UUID, milestone_id: UUID, review: MilestoneReviewResponse, model: str) -> None:
+def _save_review(
+    settings: Settings,
+    owner_id: str,
+    project_id: UUID,
+    milestone_id: UUID,
+    review: MilestoneReviewResponse,
+    model: str,
+    context_fingerprint: str,
+) -> None:
     with connect(settings) as connection:
         connection.execute(
             """
             INSERT INTO project_milestone_reviews (
                 owner_id, project_id, milestone_id, verdict, confidence,
                 reasoning_summary, missing_checks, supporting_evidence_ids,
-                reviewed_wbs_total, reviewed_wbs_completed, evidence_count, model
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s)
+                reviewed_wbs_total, reviewed_wbs_completed, evidence_count, model,
+                context_fingerprint
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s)
             """,
             (
                 owner_id, project_id, milestone_id, review.verdict, review.confidence,
@@ -130,6 +164,7 @@ def _save_review(settings: Settings, owner_id: str, project_id: UUID, milestone_
                 json.dumps(review.missing_checks, ensure_ascii=False),
                 json.dumps(review.supporting_evidence_ids, ensure_ascii=False),
                 review.reviewed_wbs_total, review.reviewed_wbs_completed, review.evidence_count, model,
+                context_fingerprint,
             ),
         )
 
