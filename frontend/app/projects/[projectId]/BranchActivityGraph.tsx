@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import styles from "./BranchActivityGraph.module.css";
+
 type BranchActivityPoint = {
   date: string;
   commits: number;
@@ -47,8 +49,8 @@ function Sparkline({ points }: { points: BranchActivityPoint[] }) {
 
   const total = points.reduce((sum, point) => sum + point.commits, 0);
   return (
-    <div className="branch-sparkline-wrap" aria-label={`최근 30일 고유 커밋 ${total}개`}>
-      <svg className="branch-sparkline" role="img" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+    <div className={styles.sparkWrap} aria-label={`최근 30일 고유 커밋 ${total}개`}>
+      <svg className={styles.sparkline} role="img" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
         <polyline points={coordinates} />
       </svg>
       <small>최근 30일 {total}개</small>
@@ -89,8 +91,8 @@ export function BranchActivityGraph({ projectId, repositoryName }: Props) {
   const workBranches = branches.filter((branch) => !branch.is_default);
 
   return (
-    <section className="panel branch-activity-panel">
-      <div className="panel-title-row">
+    <section className={`panel ${styles.panel}`}>
+      <div className={styles.titleRow}>
         <div>
           <h2>작업 브랜치 그래프</h2>
           <small>{repositoryName ?? "연결된 저장소 없음"}</small>
@@ -101,27 +103,27 @@ export function BranchActivityGraph({ projectId, repositoryName }: Props) {
       {isLoading ? <div className="empty-state">브랜치 활동을 계산하는 중입니다.</div> : null}
       {error ? <div className="alert error" role="alert">{error}</div> : null}
       {!isLoading && !error && repositoryName && branches.length === 0 ? <div className="empty-state">표시할 작업 브랜치가 없습니다.</div> : null}
-      <div className="branch-graph-list">
+      <div className={styles.list}>
         {branches.map((branch) => (
-          <article className="branch-graph-row" key={branch.name}>
-            <div className="branch-graph-heading">
+          <article className={styles.row} key={branch.name}>
+            <div className={styles.heading}>
               <div>
                 <strong>{branch.name}</strong>
                 <small>{branchStatusLabel(branch)} · 최근 {formatLatest(branch.latest_commit_at)}</small>
               </div>
-              <div className="branch-graph-badges">
+              <div className={styles.badges}>
                 {!branch.is_default ? <span className="count-badge">ahead {branch.ahead_by}</span> : null}
                 {!branch.is_default ? <span className="count-badge">behind {branch.behind_by}</span> : null}
               </div>
             </div>
-            <div className="branch-ahead-track" aria-label={`${branch.name} 기준 브랜치 대비 고유 커밋 ${branch.ahead_by}개`}>
+            <div className={styles.track} aria-label={`${branch.name} 기준 브랜치 대비 고유 커밋 ${branch.ahead_by}개`}>
               <span style={{ width: branch.is_default ? "100%" : `${Math.max(branch.ahead_by > 0 ? 6 : 0, (branch.ahead_by / maxAhead) * 100)}%` }} />
             </div>
             <Sparkline points={branch.activity} />
           </article>
         ))}
       </div>
-      {branches.length > 0 ? <p className="muted branch-graph-note">작업 브랜치 막대는 기준 브랜치 대비 고유 커밋 수를, 선 그래프는 최근 30일 고유 커밋 흐름을 나타냅니다.</p> : null}
+      {branches.length > 0 ? <p className={styles.note}>작업 브랜치 막대는 기준 브랜치 대비 고유 커밋 수를, 선 그래프는 최근 30일 고유 커밋 흐름을 나타냅니다.</p> : null}
     </section>
   );
 }
