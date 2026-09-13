@@ -24,16 +24,8 @@ BEGIN
     END IF;
 
     INSERT INTO project_tasks (
-        owner_id,
-        project_id,
-        title,
-        description,
-        status,
-        priority,
-        source_provider,
-        source_key,
-        milestone_id,
-        counts_toward_progress
+        owner_id, project_id, title, description, status, priority,
+        source_provider, source_key, milestone_id, counts_toward_progress
     )
     SELECT
         e.owner_id,
@@ -68,16 +60,8 @@ BEGIN
         updated_at = now();
 
     INSERT INTO project_tasks (
-        owner_id,
-        project_id,
-        title,
-        description,
-        status,
-        priority,
-        source_provider,
-        source_key,
-        milestone_id,
-        counts_toward_progress
+        owner_id, project_id, title, description, status, priority,
+        source_provider, source_key, milestone_id, counts_toward_progress
     )
     SELECT DISTINCT
         e.owner_id,
@@ -116,11 +100,12 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    PERFORM worktrace_refresh_commit_derived_wbs(
-        COALESCE(NEW.owner_id, OLD.owner_id),
-        COALESCE(NEW.project_id, OLD.project_id)
-    );
-    RETURN COALESCE(NEW, OLD);
+    IF TG_OP = 'DELETE' THEN
+        PERFORM worktrace_refresh_commit_derived_wbs(OLD.owner_id, OLD.project_id);
+    ELSE
+        PERFORM worktrace_refresh_commit_derived_wbs(NEW.owner_id, NEW.project_id);
+    END IF;
+    RETURN NULL;
 END;
 $$;
 
@@ -140,15 +125,22 @@ DECLARE
     changed_owner TEXT;
     changed_project UUID;
 BEGIN
-    changed_provider := COALESCE(NEW.source_provider, OLD.source_provider);
-    changed_key := COALESCE(NEW.source_key, OLD.source_key);
-    changed_owner := COALESCE(NEW.owner_id, OLD.owner_id);
-    changed_project := COALESCE(NEW.project_id, OLD.project_id);
+    IF TG_OP = 'DELETE' THEN
+        changed_provider := OLD.source_provider;
+        changed_key := OLD.source_key;
+        changed_owner := OLD.owner_id;
+        changed_project := OLD.project_id;
+    ELSE
+        changed_provider := NEW.source_provider;
+        changed_key := NEW.source_key;
+        changed_owner := NEW.owner_id;
+        changed_project := NEW.project_id;
+    END IF;
 
     IF changed_provider = 'github' AND changed_key LIKE 'issue:%' THEN
         PERFORM worktrace_refresh_commit_derived_wbs(changed_owner, changed_project);
     END IF;
-    RETURN COALESCE(NEW, OLD);
+    RETURN NULL;
 END;
 $$;
 
@@ -156,10 +148,6 @@ DROP TRIGGER IF EXISTS trg_refresh_commit_derived_wbs_issue ON project_tasks;
 CREATE TRIGGER trg_refresh_commit_derived_wbs_issue
 AFTER INSERT OR UPDATE OR DELETE ON project_tasks
 FOR EACH ROW
-WHEN (
-    COALESCE(NEW.source_provider, OLD.source_provider) = 'github'
-    AND COALESCE(NEW.source_key, OLD.source_key) LIKE 'issue:%'
-)
 EXECUTE FUNCTION worktrace_refresh_commit_derived_wbs_from_issue();
 
 DO $$
