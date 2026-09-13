@@ -5,7 +5,13 @@ import { useEffect, useState } from "react";
 import type { MilestoneReview, ProjectMilestone, ProjectSummary } from "../projects/types";
 
 type ProjectWithMilestones = ProjectSummary & { milestones: ProjectMilestone[] };
-type StoredMilestoneReview = MilestoneReview & { milestone_id: string; reviewed_at: string; model: string };
+type StoredMilestoneReview = MilestoneReview & {
+  milestone_id: string;
+  reviewed_at: string;
+  model: string;
+  is_stale: boolean;
+  stale_reason: string;
+};
 
 type ValidationWbs = { id: string; title: string; status: string; priority: string; is_validation_task: boolean };
 type EvidenceSummary = {
@@ -45,6 +51,10 @@ function verdictLabel(review: MilestoneReview) {
   if (review.verdict === "ready_candidate") return "완료 후보";
   if (review.verdict === "not_ready") return "아직 미완료";
   return "추가 확인 필요";
+}
+
+function isStoredReview(review: MilestoneReview | StoredMilestoneReview): review is StoredMilestoneReview {
+  return "reviewed_at" in review;
 }
 
 export default function VerificationsPage() {
@@ -188,7 +198,14 @@ export default function VerificationsPage() {
       {message ? <div className="alert success" role="status" aria-live="polite">{message}</div> : null}
       <div className="stacked-section">
         {projects.map((project) => {
-          const reviewedCount = project.milestones.filter((milestone) => Boolean(reviews[milestone.id])).length;
+          const currentReviewedCount = project.milestones.filter((milestone) => {
+            const review = reviews[milestone.id];
+            return Boolean(review && (!isStoredReview(review) || !review.is_stale));
+          }).length;
+          const staleCount = project.milestones.filter((milestone) => {
+            const review = reviews[milestone.id];
+            return Boolean(review && isStoredReview(review) && review.is_stale);
+          }).length;
           const batchBusy = batchWorkingProjectId === project.id;
           return (
             <section className="panel verification-project-panel" key={project.id}>
@@ -198,7 +215,8 @@ export default function VerificationsPage() {
                   <small>전체 진척 {project.progress_percent}% · 마일스톤 {project.milestones.length}개</small>
                 </div>
                 <div className="form-actions verification-project-actions">
-                  <span className="count-badge">AI 검토 {reviewedCount}/{project.milestones.length}</span>
+                  <span className="count-badge">유효 AI 검토 {currentReviewedCount}/{project.milestones.length}</span>
+                  {staleCount > 0 ? <span className="count-badge">재검토 필요 {staleCount}</span> : null}
                   <button className="secondary-button" type="button" disabled={batchWorkingProjectId !== null || project.milestones.length === 0} onClick={() => void reviewProject(project)}>
                     {batchBusy ? "AI 전체 검토 중" : "AI 전체 검토"}
                   </button>
@@ -211,7 +229,8 @@ export default function VerificationsPage() {
                   const reviewResult = reviews[milestone.id];
                   const validation = milestoneEvidence?.validation_wbs;
                   const busy = workingId === milestone.id || batchBusy;
-                  const reviewedAt = reviewResult && "reviewed_at" in reviewResult ? reviewResult.reviewed_at : null;
+                  const storedReview = reviewResult && isStoredReview(reviewResult) ? reviewResult : null;
+                  const isStale = storedReview?.is_stale ?? false;
                   return (
                     <article className="panel verification-card" key={milestone.id}>
                       <div className="panel-title-row">
@@ -221,11 +240,16 @@ export default function VerificationsPage() {
                         </div>
                         <span className="count-badge">{milestone.progress_percent}%</span>
                       </div>
-                      <p className="muted">WBS {milestone.completed_tasks}/{milestone.total_tasks} 완료{milestoneEvidence ? ` · Evidence ${milestoneEvidence.evidence_count}건` : ""}{reviewedAt ? ` · 최근 AI 검토 ${new Date(reviewedAt).toLocaleString("ko-KR")}` : ""}</p>
+                      <p className="muted">WBS {milestone.completed_tasks}/{milestone.total_tasks} 완료{milestoneEvidence ? ` · Evidence ${milestoneEvidence.evidence_count}건` : ""}{storedReview ? ` · 최근 AI 검토 ${new Date(storedReview.reviewed_at).toLocaleString("ko-KR")}` : ""}</p>
+                      {isStale ? (
+                        <div className="alert error" role="status">
+                          {storedReview?.stale_reason || "검토 이후 프로젝트 근거가 변경되어 AI 재검토가 필요합니다."}
+                        </div>
+                      ) : null}
                       {reviewResult ? (
                         <div className="stacked-section verification-review">
                           <div>
-                            <strong>{verdictLabel(reviewResult)} · 신뢰도 {Math.round(reviewResult.confidence * 100)}%</strong>
+                            <strong>{verdictLabel(reviewResult)} · 신뢰도 {Math.round(reviewResult.confidence * 100)}%{isStale ? " · 이전 판단" : ""}</strong>
                             <p>{reviewResult.reasoning_summary}</p>
                           </div>
                           {reviewResult.missing_checks.length > 0 ? (
@@ -242,7 +266,7 @@ export default function VerificationsPage() {
                         </button>
                         {validation?.status === "done" ? (
                           <button className="secondary-button" type="button" disabled={busy || batchWorkingProjectId !== null} onClick={() => void changeValidation(project.id, milestone.id, "planned")}>검증 완료 취소</button>
-                        ) : reviewResult?.verdict === "ready_candidate" && validation ? (
+                        ) : reviewResult?.verdict === "ready_candidate" && validation && !isStale ? (
                           <button type="button" disabled={busy || batchWorkingProjectId !== null} onClick={() => void changeValidation(project.id, milestone.id, "done")}>성취 기준 확인 · 검증 완료</button>
                         ) : null}
                       </div>
