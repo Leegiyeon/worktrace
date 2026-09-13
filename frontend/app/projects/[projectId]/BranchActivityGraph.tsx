@@ -60,29 +60,27 @@ function Sparkline({ points }: { points: BranchActivityPoint[] }) {
 
 export function BranchActivityGraph({ projectId, repositoryName }: Props) {
   const [branches, setBranches] = useState<GitHubBranchActivity[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!repositoryName) {
-      setBranches([]);
-      return;
-    }
+    if (!repositoryName) return;
     const controller = new AbortController();
-    setIsLoading(true);
-    setError("");
     fetch(`/api/projects/${projectId}/branch-activity`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("브랜치 활동을 불러오지 못했습니다.");
         return (await response.json()) as GitHubBranchActivity[];
       })
-      .then((payload) => setBranches(payload))
+      .then((payload) => {
+        setBranches(payload);
+        setError("");
+      })
       .catch((reason: unknown) => {
         if (controller.signal.aborted) return;
         setError(reason instanceof Error ? reason.message : "브랜치 활동을 불러오지 못했습니다.");
       })
       .finally(() => {
-        if (!controller.signal.aborted) setIsLoading(false);
+        if (!controller.signal.aborted) setLoaded(true);
       });
     return () => controller.abort();
   }, [projectId, repositoryName]);
@@ -100,9 +98,9 @@ export function BranchActivityGraph({ projectId, repositoryName }: Props) {
         <span className="count-badge">{workBranches.length}개 작업 브랜치</span>
       </div>
       {!repositoryName ? <div className="empty-state">GitHub 저장소를 먼저 연결하세요.</div> : null}
-      {isLoading ? <div className="empty-state">브랜치 활동을 계산하는 중입니다.</div> : null}
+      {repositoryName && !loaded && !error ? <div className="empty-state">브랜치 활동을 계산하는 중입니다.</div> : null}
       {error ? <div className="alert error" role="alert">{error}</div> : null}
-      {!isLoading && !error && repositoryName && branches.length === 0 ? <div className="empty-state">표시할 작업 브랜치가 없습니다.</div> : null}
+      {loaded && !error && repositoryName && branches.length === 0 ? <div className="empty-state">표시할 작업 브랜치가 없습니다.</div> : null}
       <div className={styles.list}>
         {branches.map((branch) => (
           <article className={styles.row} key={branch.name}>
