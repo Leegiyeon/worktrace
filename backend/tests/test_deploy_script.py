@@ -41,4 +41,6 @@ def test_deploy_reports_real_progress_after_github_sync() -> None:
     assert "list_project_milestones" in report
     assert "derived_wbs=" in report
     assert "github_issue_wbs=" in report
+    assert "source_key LIKE 'issue:%%'" in report
+    assert "source_key LIKE 'issue:%'" not in report.replace("issue:%%", "")
     assert 'progress_text = "산정 전" if project.progress_basis == "unscoped"' in report
