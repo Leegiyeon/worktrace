@@ -23,11 +23,16 @@ class MilestoneEvidenceItem(BaseModel):
     status: str = "evidence"
 
 
+class MilestoneValidationUpdate(BaseModel):
+    status: Literal["done", "planned"]
+
+
 class MilestoneEvidenceSummary(BaseModel):
     milestone_id: str
     acceptance_criteria: str = ""
     total_wbs: int = 0
     completed_wbs: int = 0
     pending_wbs: list[MilestoneWorkItem] = Field(default_factory=list)
+    validation_wbs: MilestoneWorkItem | None = None
     evidence_count: int = 0
     recent_evidence: list[MilestoneEvidenceItem] = Field(default_factory=list)
