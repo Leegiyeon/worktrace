@@ -57,12 +57,17 @@ function isStoredReview(review: MilestoneReview | StoredMilestoneReview): review
   return "reviewed_at" in review;
 }
 
+function needsReview(review: MilestoneReview | StoredMilestoneReview | undefined) {
+  return !review || (isStoredReview(review) && review.is_stale);
+}
+
 export default function VerificationsPage() {
   const [projects, setProjects] = useState<ProjectWithMilestones[]>([]);
   const [evidence, setEvidence] = useState<Record<string, EvidenceSummary>>({});
   const [reviews, setReviews] = useState<Record<string, MilestoneReview | StoredMilestoneReview>>({});
   const [workingId, setWorkingId] = useState<string | null>(null);
   const [batchWorkingProjectId, setBatchWorkingProjectId] = useState<string | null>(null);
+  const [batchMode, setBatchMode] = useState<"needed" | "force" | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -120,21 +125,29 @@ export default function VerificationsPage() {
     }
   }
 
-  async function reviewProject(project: ProjectWithMilestones) {
+  async function reviewProject(project: ProjectWithMilestones, force = false) {
     if (project.milestones.length === 0) return;
     setBatchWorkingProjectId(project.id);
+    setBatchMode(force ? "force" : "needed");
     setError("");
     setMessage("");
     let reviewed = 0;
-    let skipped = 0;
+    let skippedCurrent = 0;
+    let skippedDone = 0;
     let failed = 0;
     try {
       for (const milestone of project.milestones) {
+        const currentReview = reviews[milestone.id];
+        if (!force && !needsReview(currentReview)) {
+          skippedCurrent += 1;
+          continue;
+        }
+
         setWorkingId(milestone.id);
         try {
           const milestoneEvidence = await getEvidence(project.id, milestone.id);
           if (milestoneEvidence.validation_wbs?.status === "done") {
-            skipped += 1;
+            skippedDone += 1;
             continue;
           }
           await requestReview(project.id, milestone.id);
@@ -144,12 +157,14 @@ export default function VerificationsPage() {
           failed += 1;
         }
       }
-      const summary = `${project.title} 일괄 검토: AI 검토 ${reviewed}건 · 검증 완료 유지 ${skipped}건`;
+      const modeLabel = force ? "전체 강제 재검토" : "필요 항목 검토";
+      const summary = `${project.title} ${modeLabel}: AI 검토 ${reviewed}건 · 최신 검토 유지 ${skippedCurrent}건 · 검증 완료 유지 ${skippedDone}건`;
       setMessage(failed > 0 ? `${summary} · 실패 ${failed}건` : summary);
       if (failed > 0) setError(`일부 마일스톤 ${failed}건은 검토하지 못했습니다. 해당 항목에서 AI 검토를 다시 실행해 주세요.`);
     } finally {
       setWorkingId(null);
       setBatchWorkingProjectId(null);
+      setBatchMode(null);
     }
   }
 
@@ -191,7 +206,7 @@ export default function VerificationsPage() {
         <div>
           <span className="eyebrow">MILESTONE VERIFICATION</span>
           <h1>검증센터</h1>
-          <p className="muted">AI는 완료 후보를 제안하고, 최종 완료와 진척률 반영은 사용자가 근거를 확인한 뒤 결정합니다.</p>
+          <p className="muted">기본 일괄 검토는 미검토·재검토 필요 항목만 AI를 호출합니다. 전체 강제 재검토는 최신 판단까지 다시 확인할 때만 사용하세요.</p>
         </div>
       </div>
       {error ? <div className="alert error" role="alert">{error}</div> : null}
@@ -206,6 +221,8 @@ export default function VerificationsPage() {
             const review = reviews[milestone.id];
             return Boolean(review && isStoredReview(review) && review.is_stale);
           }).length;
+          const missingCount = project.milestones.filter((milestone) => !reviews[milestone.id]).length;
+          const neededCount = staleCount + missingCount;
           const batchBusy = batchWorkingProjectId === project.id;
           return (
             <section className="panel verification-project-panel" key={project.id}>
@@ -216,9 +233,12 @@ export default function VerificationsPage() {
                 </div>
                 <div className="form-actions verification-project-actions">
                   <span className="count-badge">유효 AI 검토 {currentReviewedCount}/{project.milestones.length}</span>
-                  {staleCount > 0 ? <span className="count-badge">재검토 필요 {staleCount}</span> : null}
-                  <button className="secondary-button" type="button" disabled={batchWorkingProjectId !== null || project.milestones.length === 0} onClick={() => void reviewProject(project)}>
-                    {batchBusy ? "AI 전체 검토 중" : "AI 전체 검토"}
+                  {neededCount > 0 ? <span className="count-badge">검토 필요 {neededCount}</span> : null}
+                  <button className="secondary-button" type="button" disabled={batchWorkingProjectId !== null || neededCount === 0} onClick={() => void reviewProject(project)}>
+                    {batchBusy && batchMode === "needed" ? "필요 항목 검토 중" : neededCount > 0 ? `필요 항목 검토 ${neededCount}건` : "검토 필요 없음"}
+                  </button>
+                  <button className="secondary-button" type="button" disabled={batchWorkingProjectId !== null || project.milestones.length === 0} onClick={() => void reviewProject(project, true)}>
+                    {batchBusy && batchMode === "force" ? "전체 재검토 중" : "전체 강제 재검토"}
                   </button>
                   <span className="count-badge">{project.progress_percent}%</span>
                 </div>
