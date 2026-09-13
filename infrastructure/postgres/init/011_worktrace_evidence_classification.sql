@@ -1,6 +1,6 @@
 -- Canonicalize Worktrace commit evidence with specific milestone signals before broad project/WBS terms.
 -- The GitHub sync remains the first-pass classifier, while this database boundary prevents generic words
--- such as "project" from stealing evidence that clearly belongs to Project Insight or another domain.
+-- such as "project" or "evidence" from stealing commits that clearly belong to another milestone.
 
 CREATE OR REPLACE FUNCTION worktrace_infer_worktrace_milestone_key(p_message TEXT)
 RETURNS TEXT
@@ -10,7 +10,7 @@ AS $$
 DECLARE
     normalized TEXT := lower(COALESCE(p_message, ''));
 BEGIN
-    -- Specific product capabilities first. Avoid broad "project" as a WBS signal.
+    -- Specific product capabilities first. Avoid broad "project" and "evidence" signals.
     IF normalized ~ '(project[ _-]?(analyst|insight)|analyst|insight|blocker|next[ _-]?action|priority|우선순위|프로젝트 분석)' THEN
         RETURN 'project-insight';
     END IF;
@@ -26,14 +26,14 @@ BEGIN
     IF normalized ~ '(work[ _-]?memory|memory|rag|vector|embedding|semantic[ _-]?search|의미 검색|기억)' THEN
         RETURN 'work-memory';
     END IF;
-    IF normalized ~ '(github|commit|커밋|webhook|evidence|근거|repository|repo)' THEN
+    IF normalized ~ '(\mwbs\M|milestone|마일스톤|progress|진척|goal|목표·마일스톤|목표 관리)' THEN
+        RETURN 'project-wbs';
+    END IF;
+    IF normalized ~ '(github|webhook|github[ _-]?commit|commit[ _-]?(sync|import|history)|커밋[ _-]?(동기화|수집)|repository[ _-]?(sync|evidence)|repo[ _-]?(sync|evidence))' THEN
         RETURN 'github-evidence';
     END IF;
     IF normalized ~ '(deploy|배포|oracle|https|auth|인증|backup|백업|복구|docker|ci/cd|migration)' THEN
         RETURN 'operations';
-    END IF;
-    IF normalized ~ '(\mwbs\M|milestone|마일스톤|progress|진척|goal|목표·마일스톤|목표 관리)' THEN
-        RETURN 'project-wbs';
     END IF;
     RETURN NULL;
 END;
