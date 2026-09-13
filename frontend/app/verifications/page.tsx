@@ -46,6 +46,7 @@ export default function VerificationsPage() {
   const [evidence, setEvidence] = useState<Record<string, EvidenceSummary>>({});
   const [reviews, setReviews] = useState<Record<string, MilestoneReview>>({});
   const [workingId, setWorkingId] = useState<string | null>(null);
+  const [batchWorkingProjectId, setBatchWorkingProjectId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -74,24 +75,65 @@ export default function VerificationsPage() {
     return payload;
   }
 
+  async function requestReview(projectId: string, milestoneId: string) {
+    const response = await fetch("/api/ai/milestone-review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project_id: projectId, milestone_id: milestoneId })
+    });
+    if (!response.ok) throw new Error("AI 마일스톤 검토를 완료하지 못했습니다.");
+    const payload = (await response.json()) as MilestoneReview;
+    setReviews((current) => ({ ...current, [milestoneId]: payload }));
+    return payload;
+  }
+
   async function review(projectId: string, milestoneId: string) {
     setWorkingId(milestoneId);
     setError("");
     setMessage("");
     try {
       await getEvidence(projectId, milestoneId);
-      const response = await fetch("/api/ai/milestone-review", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: projectId, milestone_id: milestoneId })
-      });
-      if (!response.ok) throw new Error("AI 마일스톤 검토를 완료하지 못했습니다.");
-      const payload = (await response.json()) as MilestoneReview;
-      setReviews((current) => ({ ...current, [milestoneId]: payload }));
+      await requestReview(projectId, milestoneId);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "AI 검토 중 오류가 발생했습니다.");
     } finally {
       setWorkingId(null);
+    }
+  }
+
+  async function reviewProject(project: ProjectWithMilestones) {
+    if (project.milestones.length === 0) return;
+    setBatchWorkingProjectId(project.id);
+    setError("");
+    setMessage("");
+    let reviewed = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    try {
+      for (const milestone of project.milestones) {
+        setWorkingId(milestone.id);
+        try {
+          const milestoneEvidence = await getEvidence(project.id, milestone.id);
+          if (milestoneEvidence.validation_wbs?.status === "done") {
+            skipped += 1;
+            continue;
+          }
+          await requestReview(project.id, milestone.id);
+          reviewed += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+
+      const summary = `${project.title} 일괄 검토: AI 검토 ${reviewed}건 · 검증 완료 유지 ${skipped}건`;
+      setMessage(failed > 0 ? `${summary} · 실패 ${failed}건` : summary);
+      if (failed > 0) {
+        setError(`일부 마일스톤 ${failed}건은 검토하지 못했습니다. 해당 항목에서 AI 검토를 다시 실행해 주세요.`);
+      }
+    } finally {
+      setWorkingId(null);
+      setBatchWorkingProjectId(null);
     }
   }
 
@@ -138,72 +180,87 @@ export default function VerificationsPage() {
       </div>
 
       {error ? <div className="alert error" role="alert">{error}</div> : null}
-      {message ? <div className="alert success" role="status">{message}</div> : null}
+      {message ? <div className="alert success" role="status" aria-live="polite">{message}</div> : null}
 
       <div className="stacked-section">
-        {projects.map((project) => (
-          <section className="panel verification-project-panel" key={project.id}>
-            <div className="panel-title-row">
-              <div>
-                <h2>{project.title}</h2>
-                <small>전체 진척 {project.progress_percent}% · 마일스톤 {project.milestones.length}개</small>
+        {projects.map((project) => {
+          const reviewedCount = project.milestones.filter((milestone) => Boolean(reviews[milestone.id])).length;
+          const batchBusy = batchWorkingProjectId === project.id;
+          return (
+            <section className="panel verification-project-panel" key={project.id}>
+              <div className="panel-title-row">
+                <div>
+                  <h2>{project.title}</h2>
+                  <small>전체 진척 {project.progress_percent}% · 마일스톤 {project.milestones.length}개</small>
+                </div>
+                <div className="form-actions verification-project-actions">
+                  <span className="count-badge">AI 검토 {reviewedCount}/{project.milestones.length}</span>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={batchWorkingProjectId !== null || project.milestones.length === 0}
+                    onClick={() => void reviewProject(project)}
+                  >
+                    {batchBusy ? "AI 전체 검토 중" : "AI 전체 검토"}
+                  </button>
+                  <span className="count-badge">{project.progress_percent}%</span>
+                </div>
               </div>
-              <span className="count-badge">{project.progress_percent}%</span>
-            </div>
 
-            <div className="dense-list">
-              {project.milestones.map((milestone) => {
-                const milestoneEvidence = evidence[milestone.id];
-                const reviewResult = reviews[milestone.id];
-                const validation = milestoneEvidence?.validation_wbs;
-                const busy = workingId === milestone.id;
-                return (
-                  <article className="panel verification-card" key={milestone.id}>
-                    <div className="panel-title-row">
-                      <div>
-                        <strong>{milestone.title}</strong>
-                        <small>{milestone.acceptance_criteria || "성취 기준 미정"}</small>
-                      </div>
-                      <span className="count-badge">{milestone.progress_percent}%</span>
-                    </div>
-
-                    <p className="muted">WBS {milestone.completed_tasks}/{milestone.total_tasks} 완료{milestoneEvidence ? ` · Evidence ${milestoneEvidence.evidence_count}건` : ""}</p>
-
-                    {reviewResult ? (
-                      <div className="stacked-section verification-review">
+              <div className="dense-list">
+                {project.milestones.map((milestone) => {
+                  const milestoneEvidence = evidence[milestone.id];
+                  const reviewResult = reviews[milestone.id];
+                  const validation = milestoneEvidence?.validation_wbs;
+                  const busy = workingId === milestone.id || batchBusy;
+                  return (
+                    <article className="panel verification-card" key={milestone.id}>
+                      <div className="panel-title-row">
                         <div>
-                          <strong>{verdictLabel(reviewResult)} · 신뢰도 {Math.round(reviewResult.confidence * 100)}%</strong>
-                          <p>{reviewResult.reasoning_summary}</p>
+                          <strong>{milestone.title}</strong>
+                          <small>{milestone.acceptance_criteria || "성취 기준 미정"}</small>
                         </div>
-                        {reviewResult.missing_checks.length > 0 ? (
+                        <span className="count-badge">{milestone.progress_percent}%</span>
+                      </div>
+
+                      <p className="muted">WBS {milestone.completed_tasks}/{milestone.total_tasks} 완료{milestoneEvidence ? ` · Evidence ${milestoneEvidence.evidence_count}건` : ""}</p>
+
+                      {reviewResult ? (
+                        <div className="stacked-section verification-review">
                           <div>
-                            <strong>추가 확인</strong>
-                            <ul>{reviewResult.missing_checks.map((item) => <li key={item}>{item}</li>)}</ul>
+                            <strong>{verdictLabel(reviewResult)} · 신뢰도 {Math.round(reviewResult.confidence * 100)}%</strong>
+                            <p>{reviewResult.reasoning_summary}</p>
                           </div>
+                          {reviewResult.missing_checks.length > 0 ? (
+                            <div>
+                              <strong>추가 확인</strong>
+                              <ul>{reviewResult.missing_checks.map((item) => <li key={item}>{item}</li>)}</ul>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      <div className="form-actions verification-actions">
+                        <button className="secondary-button" type="button" disabled={busy || batchWorkingProjectId !== null} onClick={() => void review(project.id, milestone.id)}>
+                          {workingId === milestone.id ? "처리 중" : reviewResult ? "AI 다시 검토" : "AI 검토"}
+                        </button>
+                        {validation?.status === "done" ? (
+                          <button className="secondary-button" type="button" disabled={busy || batchWorkingProjectId !== null} onClick={() => void changeValidation(project.id, milestone.id, "planned")}>
+                            검증 완료 취소
+                          </button>
+                        ) : reviewResult?.verdict === "ready_candidate" && validation ? (
+                          <button type="button" disabled={busy || batchWorkingProjectId !== null} onClick={() => void changeValidation(project.id, milestone.id, "done")}>
+                            성취 기준 확인 · 검증 완료
+                          </button>
                         ) : null}
                       </div>
-                    ) : null}
-
-                    <div className="form-actions verification-actions">
-                      <button className="secondary-button" type="button" disabled={busy} onClick={() => void review(project.id, milestone.id)}>
-                        {busy ? "처리 중" : reviewResult ? "AI 다시 검토" : "AI 검토"}
-                      </button>
-                      {validation?.status === "done" ? (
-                        <button className="secondary-button" type="button" disabled={busy} onClick={() => void changeValidation(project.id, milestone.id, "planned")}>
-                          검증 완료 취소
-                        </button>
-                      ) : reviewResult?.verdict === "ready_candidate" && validation ? (
-                        <button type="button" disabled={busy} onClick={() => void changeValidation(project.id, milestone.id, "done")}>
-                          성취 기준 확인 · 검증 완료
-                        </button>
-                      ) : null}
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          </section>
-        ))}
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })}
       </div>
     </main>
   );
