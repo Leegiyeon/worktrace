@@ -121,7 +121,8 @@ export default function VerificationsPage() {
           }
           await requestReview(project.id, milestone.id);
           reviewed += 1;
-        } catch {
+        } catch (error) {
+          console.error(`Failed to review milestone [${milestone.id}] "${milestone.title}":`, error);
           failed += 1;
         }
       }
