@@ -4,6 +4,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GOALS_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "007_project_progress_goals.sql"
 EVIDENCE_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "008_github_evidence_not_progress.sql"
+COMMIT_WBS_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "010_commit_derived_wbs.sql"
 DEPLOY_SCRIPT = REPO_ROOT / "scripts" / "deploy_oracle.sh"
 PROJECT_SERVICE = REPO_ROOT / "backend" / "app" / "services" / "projects.py"
 
@@ -27,6 +28,21 @@ def test_github_commit_and_pr_evidence_are_not_wbs_tasks() -> None:
     assert "source_key LIKE 'pr:%'" in schema
     assert "RETURN NULL" in schema
     assert "trg_skip_github_evidence_task" in schema
+
+
+def test_commit_evidence_synthesizes_wbs_only_without_real_issues() -> None:
+    schema = COMMIT_WBS_SCHEMA.read_text(encoding="utf-8")
+
+    assert "source_key LIKE 'issue:%'" in schema
+    assert "source_provider = 'derived-github'" in schema
+    assert "'commit-milestone:' || m.id::text" in schema
+    assert "'milestone-validation:' || m.id::text" in schema
+    assert "'[커밋 근거] ' || m.title || ' 구현'" in schema
+    assert "'[검증 필요] ' || m.title || ' 성취 기준 확인'" in schema
+    assert "status = 'done'" in schema
+    assert "worktrace_refresh_commit_derived_wbs" in schema
+    assert "trg_refresh_commit_derived_wbs_evidence" in schema
+    assert "trg_refresh_commit_derived_wbs_issue" in schema
 
 
 def test_deploy_reapplies_idempotent_migrations_to_existing_volume() -> None:
