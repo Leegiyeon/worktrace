@@ -79,7 +79,7 @@ def patch_project_milestone_validation(
         raise http_error(
             status.HTTP_409_CONFLICT,
             "MILESTONE_VALIDATION_BLOCKED",
-            "실제 미완료 WBS가 남아 있거나 성취 기준이 없어 검증 완료할 수 없습니다.",
+            "최신 AI 검토가 완료 후보가 아니거나 검토 이후 Evidence·WBS·성취 기준이 변경되었습니다. 다시 AI 검토한 뒤 완료해 주세요.",
         ) from exc
     except psycopg.Error as exc:
         raise http_error(
