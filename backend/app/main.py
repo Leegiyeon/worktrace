@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.ai import router as ai_router
+from app.api.branch_activity import router as branch_activity_router
 from app.api.career_assets import router as career_assets_router
 from app.api.health import router as health_router
 from app.api.github_webhooks import router as github_webhooks_router
@@ -37,6 +38,7 @@ app.include_router(health_router)
 app.include_router(github_webhooks_router)
 app.include_router(ai_router)
 app.include_router(projects_router)
+app.include_router(branch_activity_router)
 app.include_router(milestone_evidence_router)
 app.include_router(career_assets_router)
 app.include_router(outcomes_router)
