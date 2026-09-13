@@ -25,7 +25,7 @@ def main() -> None:
                 SELECT
                     COUNT(*) FILTER (WHERE source_provider='derived-github')::int AS synthetic_total,
                     COUNT(*) FILTER (WHERE source_provider='derived-github' AND status='done')::int AS synthetic_done,
-                    COUNT(*) FILTER (WHERE source_provider='github' AND source_key LIKE 'issue:%')::int AS github_issue_wbs
+                    COUNT(*) FILTER (WHERE source_provider='github' AND source_key LIKE 'issue:%%')::int AS github_issue_wbs
                 FROM project_tasks
                 WHERE owner_id=%s AND project_id=%s
                 """,
