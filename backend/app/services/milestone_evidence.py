@@ -6,6 +6,14 @@ from app.schemas.milestone_evidence import MilestoneEvidenceItem, MilestoneEvide
 from app.services.projects import ProjectMilestoneNotFoundError
 
 
+class MilestoneValidationTaskNotFoundError(Exception):
+    pass
+
+
+class MilestoneValidationBlockedError(Exception):
+    pass
+
+
 def get_milestone_evidence(
     settings: Settings,
     owner_id: str,
@@ -99,23 +107,10 @@ def get_milestone_evidence(
     )
     evidence.sort(key=lambda item: item.occurred_at or "", reverse=True)
 
+    work_items = [_work_item_from_row(row) for row in wbs_rows]
     completed_wbs = sum(1 for row in wbs_rows if row["status"] == "done")
-    pending = [
-        MilestoneWorkItem(
-            id=row["id"],
-            title=row["title"],
-            status=row["status"],
-            priority=row["priority"],
-            source_provider=row.get("source_provider") or "",
-            source_key=row.get("source_key") or "",
-            is_validation_task=(
-                row.get("source_provider") == "derived-github"
-                and (row.get("source_key") or "").startswith("milestone-validation:")
-            ),
-        )
-        for row in wbs_rows
-        if row["status"] != "done"
-    ]
+    pending = [item for item in work_items if item.status != "done"]
+    validation = next((item for item in work_items if item.is_validation_task), None)
 
     return MilestoneEvidenceSummary(
         milestone_id=milestone["id"],
@@ -123,6 +118,92 @@ def get_milestone_evidence(
         total_wbs=len(wbs_rows),
         completed_wbs=completed_wbs,
         pending_wbs=pending,
+        validation_wbs=validation,
         evidence_count=int(evidence_count or 0),
         recent_evidence=evidence[:20],
+    )
+
+
+def update_milestone_validation_status(
+    settings: Settings,
+    owner_id: str,
+    project_id: UUID,
+    milestone_id: UUID,
+    next_status: str,
+) -> MilestoneEvidenceSummary:
+    with connect(settings) as connection:
+        milestone = connection.execute(
+            """
+            SELECT id, COALESCE(acceptance_criteria, '') AS acceptance_criteria
+            FROM project_milestones
+            WHERE owner_id=%s AND project_id=%s AND id=%s
+            """,
+            (owner_id, project_id, milestone_id),
+        ).fetchone()
+        if milestone is None:
+            raise ProjectMilestoneNotFoundError()
+
+        validation = connection.execute(
+            """
+            SELECT id
+            FROM project_tasks
+            WHERE owner_id=%s AND project_id=%s AND milestone_id=%s
+              AND source_provider='derived-github'
+              AND source_key='milestone-validation:' || %s::text
+            """,
+            (owner_id, project_id, milestone_id, milestone_id),
+        ).fetchone()
+        if validation is None:
+            raise MilestoneValidationTaskNotFoundError()
+
+        if next_status == "done":
+            substantive_pending = connection.execute(
+                """
+                SELECT COUNT(*)::int AS total
+                FROM project_tasks
+                WHERE owner_id=%s AND project_id=%s AND milestone_id=%s
+                  AND counts_toward_progress
+                  AND status <> 'done'
+                  AND NOT (
+                    source_provider='derived-github'
+                    AND source_key='milestone-validation:' || %s::text
+                  )
+                """,
+                (owner_id, project_id, milestone_id, milestone_id),
+            ).fetchone()["total"]
+            if substantive_pending > 0 or not milestone["acceptance_criteria"].strip():
+                raise MilestoneValidationBlockedError()
+
+        connection.execute(
+            """
+            UPDATE project_tasks
+            SET status=%s, updated_at=now()
+            WHERE owner_id=%s AND project_id=%s AND milestone_id=%s
+              AND source_provider='derived-github'
+              AND source_key='milestone-validation:' || %s::text
+            """,
+            (next_status, owner_id, project_id, milestone_id, milestone_id),
+        )
+        connection.execute(
+            "UPDATE projects SET updated_at=now() WHERE owner_id=%s AND id=%s",
+            (owner_id, project_id),
+        )
+
+    return get_milestone_evidence(settings, owner_id, project_id, milestone_id)
+
+
+def _work_item_from_row(row) -> MilestoneWorkItem:
+    source_provider = row.get("source_provider") or ""
+    source_key = row.get("source_key") or ""
+    return MilestoneWorkItem(
+        id=row["id"],
+        title=row["title"],
+        status=row["status"],
+        priority=row["priority"],
+        source_provider=source_provider,
+        source_key=source_key,
+        is_validation_task=(
+            source_provider == "derived-github"
+            and source_key.startswith("milestone-validation:")
+        ),
     )
