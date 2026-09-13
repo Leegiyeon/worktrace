@@ -5,15 +5,9 @@ import { useEffect, useState } from "react";
 import type { MilestoneReview, ProjectMilestone, ProjectSummary } from "../projects/types";
 
 type ProjectWithMilestones = ProjectSummary & { milestones: ProjectMilestone[] };
+type StoredMilestoneReview = MilestoneReview & { milestone_id: string; reviewed_at: string; model: string };
 
-type ValidationWbs = {
-  id: string;
-  title: string;
-  status: string;
-  priority: string;
-  is_validation_task: boolean;
-};
-
+type ValidationWbs = { id: string; title: string; status: string; priority: string; is_validation_task: boolean };
 type EvidenceSummary = {
   milestone_id: string;
   acceptance_criteria: string;
@@ -35,6 +29,18 @@ async function loadProjects(): Promise<ProjectWithMilestones[]> {
   }));
 }
 
+async function loadLatestReviews(projects: ProjectWithMilestones[]) {
+  const groups = await Promise.all(projects.map(async (project) => {
+    const response = await fetch(`/api/ai/milestone-reviews/${project.id}`, { cache: "no-store" });
+    if (!response.ok) return [] as StoredMilestoneReview[];
+    return (await response.json()) as StoredMilestoneReview[];
+  }));
+  return groups.flat().reduce<Record<string, StoredMilestoneReview>>((result, review) => {
+    result[review.milestone_id] = review;
+    return result;
+  }, {});
+}
+
 function verdictLabel(review: MilestoneReview) {
   if (review.verdict === "ready_candidate") return "완료 후보";
   if (review.verdict === "not_ready") return "아직 미완료";
@@ -44,7 +50,7 @@ function verdictLabel(review: MilestoneReview) {
 export default function VerificationsPage() {
   const [projects, setProjects] = useState<ProjectWithMilestones[]>([]);
   const [evidence, setEvidence] = useState<Record<string, EvidenceSummary>>({});
-  const [reviews, setReviews] = useState<Record<string, MilestoneReview>>({});
+  const [reviews, setReviews] = useState<Record<string, MilestoneReview | StoredMilestoneReview>>({});
   const [workingId, setWorkingId] = useState<string | null>(null);
   const [batchWorkingProjectId, setBatchWorkingProjectId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -58,8 +64,11 @@ export default function VerificationsPage() {
   useEffect(() => {
     let cancelled = false;
     loadProjects()
-      .then((items) => {
-        if (!cancelled) setProjects(items);
+      .then(async (items) => {
+        if (cancelled) return;
+        setProjects(items);
+        const storedReviews = await loadLatestReviews(items);
+        if (!cancelled) setReviews(storedReviews);
       })
       .catch((reason: unknown) => {
         if (!cancelled) setError(reason instanceof Error ? reason.message : "데이터를 불러오지 못했습니다.");
@@ -109,7 +118,6 @@ export default function VerificationsPage() {
     let reviewed = 0;
     let skipped = 0;
     let failed = 0;
-
     try {
       for (const milestone of project.milestones) {
         setWorkingId(milestone.id);
@@ -121,17 +129,14 @@ export default function VerificationsPage() {
           }
           await requestReview(project.id, milestone.id);
           reviewed += 1;
-        } catch (error) {
-          console.error(`Failed to review milestone [${milestone.id}] "${milestone.title}":`, error);
+        } catch (reviewError) {
+          console.error(`Failed to review milestone [${milestone.id}] "${milestone.title}":`, reviewError);
           failed += 1;
         }
       }
-
       const summary = `${project.title} 일괄 검토: AI 검토 ${reviewed}건 · 검증 완료 유지 ${skipped}건`;
       setMessage(failed > 0 ? `${summary} · 실패 ${failed}건` : summary);
-      if (failed > 0) {
-        setError(`일부 마일스톤 ${failed}건은 검토하지 못했습니다. 해당 항목에서 AI 검토를 다시 실행해 주세요.`);
-      }
+      if (failed > 0) setError(`일부 마일스톤 ${failed}건은 검토하지 못했습니다. 해당 항목에서 AI 검토를 다시 실행해 주세요.`);
     } finally {
       setWorkingId(null);
       setBatchWorkingProjectId(null);
@@ -179,10 +184,8 @@ export default function VerificationsPage() {
           <p className="muted">AI는 완료 후보를 제안하고, 최종 완료와 진척률 반영은 사용자가 근거를 확인한 뒤 결정합니다.</p>
         </div>
       </div>
-
       {error ? <div className="alert error" role="alert">{error}</div> : null}
       {message ? <div className="alert success" role="status" aria-live="polite">{message}</div> : null}
-
       <div className="stacked-section">
         {projects.map((project) => {
           const reviewedCount = project.milestones.filter((milestone) => Boolean(reviews[milestone.id])).length;
@@ -196,24 +199,19 @@ export default function VerificationsPage() {
                 </div>
                 <div className="form-actions verification-project-actions">
                   <span className="count-badge">AI 검토 {reviewedCount}/{project.milestones.length}</span>
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    disabled={batchWorkingProjectId !== null || project.milestones.length === 0}
-                    onClick={() => void reviewProject(project)}
-                  >
+                  <button className="secondary-button" type="button" disabled={batchWorkingProjectId !== null || project.milestones.length === 0} onClick={() => void reviewProject(project)}>
                     {batchBusy ? "AI 전체 검토 중" : "AI 전체 검토"}
                   </button>
                   <span className="count-badge">{project.progress_percent}%</span>
                 </div>
               </div>
-
               <div className="dense-list">
                 {project.milestones.map((milestone) => {
                   const milestoneEvidence = evidence[milestone.id];
                   const reviewResult = reviews[milestone.id];
                   const validation = milestoneEvidence?.validation_wbs;
                   const busy = workingId === milestone.id || batchBusy;
+                  const reviewedAt = reviewResult && "reviewed_at" in reviewResult ? reviewResult.reviewed_at : null;
                   return (
                     <article className="panel verification-card" key={milestone.id}>
                       <div className="panel-title-row">
@@ -223,9 +221,7 @@ export default function VerificationsPage() {
                         </div>
                         <span className="count-badge">{milestone.progress_percent}%</span>
                       </div>
-
-                      <p className="muted">WBS {milestone.completed_tasks}/{milestone.total_tasks} 완료{milestoneEvidence ? ` · Evidence ${milestoneEvidence.evidence_count}건` : ""}</p>
-
+                      <p className="muted">WBS {milestone.completed_tasks}/{milestone.total_tasks} 완료{milestoneEvidence ? ` · Evidence ${milestoneEvidence.evidence_count}건` : ""}{reviewedAt ? ` · 최근 AI 검토 ${new Date(reviewedAt).toLocaleString("ko-KR")}` : ""}</p>
                       {reviewResult ? (
                         <div className="stacked-section verification-review">
                           <div>
@@ -240,19 +236,14 @@ export default function VerificationsPage() {
                           ) : null}
                         </div>
                       ) : null}
-
                       <div className="form-actions verification-actions">
                         <button className="secondary-button" type="button" disabled={busy || batchWorkingProjectId !== null} onClick={() => void review(project.id, milestone.id)}>
                           {workingId === milestone.id ? "처리 중" : reviewResult ? "AI 다시 검토" : "AI 검토"}
                         </button>
                         {validation?.status === "done" ? (
-                          <button className="secondary-button" type="button" disabled={busy || batchWorkingProjectId !== null} onClick={() => void changeValidation(project.id, milestone.id, "planned")}>
-                            검증 완료 취소
-                          </button>
+                          <button className="secondary-button" type="button" disabled={busy || batchWorkingProjectId !== null} onClick={() => void changeValidation(project.id, milestone.id, "planned")}>검증 완료 취소</button>
                         ) : reviewResult?.verdict === "ready_candidate" && validation ? (
-                          <button type="button" disabled={busy || batchWorkingProjectId !== null} onClick={() => void changeValidation(project.id, milestone.id, "done")}>
-                            성취 기준 확인 · 검증 완료
-                          </button>
+                          <button type="button" disabled={busy || batchWorkingProjectId !== null} onClick={() => void changeValidation(project.id, milestone.id, "done")}>성취 기준 확인 · 검증 완료</button>
                         ) : null}
                       </div>
                     </article>

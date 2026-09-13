@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -40,6 +41,12 @@ class MilestoneReviewResponse(BaseModel):
     reviewed_wbs_total: int = Field(default=0, ge=0)
     reviewed_wbs_completed: int = Field(default=0, ge=0)
     evidence_count: int = Field(default=0, ge=0)
+
+
+class StoredMilestoneReview(MilestoneReviewResponse):
+    milestone_id: UUID
+    reviewed_at: datetime
+    model: str = ""
 
 
 class ProjectAnalystRequest(BaseModel):
