@@ -26,6 +26,9 @@ storage/uploads/*
 !storage/uploads/.gitkeep
 backups/
 
+# Local OMX activity metrics (keep shared plans and documentation tracked).
+/.omx/metrics.json
+
 # OS/editor
 .DS_Store
 .idea/
