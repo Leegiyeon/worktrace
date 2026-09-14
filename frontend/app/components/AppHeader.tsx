@@ -4,10 +4,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { AppLogo } from "./AppLogo";
 import { LogoutButton } from "./LogoutButton";
+import { useGoalDrafts } from "./GoalDraftProvider";
 
 export function AppHeader({ authEnabled }: { authEnabled: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { confirmNavigation } = useGoalDrafts();
   if (pathname === "/login") return null;
 
   const isProjects = pathname.startsWith("/projects");
@@ -23,7 +25,7 @@ export function AppHeader({ authEnabled }: { authEnabled: boolean }) {
         <AppLogo />
         <div className="app-header-actions">
           <div className="app-mobile-nav">
-            <select aria-label="화면 이동" value={pathname === "/" ? "/" : `/${pathname.split("/")[1]}`} onChange={(event) => router.push(event.target.value)}>
+            <select aria-label="화면 이동" value={pathname === "/" ? "/" : `/${pathname.split("/")[1]}`} onChange={(event) => { if (confirmNavigation()) router.push(event.target.value); }}>
               <option value="/">대시보드</option>
               <option value="/projects">프로젝트</option>
               <option value="/goals">목표·마일스톤</option>

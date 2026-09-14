@@ -5,17 +5,14 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { projectProgressDisplay, scopedProjectAverage } from "../projects/progress-display";
 import type { MilestoneReview, ProjectMilestone, ProjectSummary } from "../projects/types";
+import { useGoalDrafts } from "../components/GoalDraftProvider";
+import styles from "./page.module.css";
 
 type GoalProject = ProjectSummary & { milestones: ProjectMilestone[] };
 
 type GoalProjectsPayload = {
   projects: GoalProject[];
   milestoneErrors: Record<string, string>;
-};
-
-type ProjectDraft = {
-  objective: string;
-  success_criteria: string;
 };
 
 type MilestoneEvidence = {
@@ -40,25 +37,6 @@ type MilestoneEvidence = {
     status: string;
   }>;
 };
-
-function toProjectDraft(project: ProjectSummary): ProjectDraft {
-  return {
-    objective: project.objective,
-    success_criteria: project.success_criteria
-  };
-}
-
-function draftChanged(draft: ProjectDraft | undefined, project: ProjectSummary) {
-  if (!draft) return false;
-  return draft.objective !== project.objective || draft.success_criteria !== project.success_criteria;
-}
-
-function mergeProjectDrafts(current: Record<string, ProjectDraft>, projects: GoalProject[]) {
-  return Object.fromEntries(projects.map((project) => {
-    const currentDraft = current[project.id];
-    return [project.id, currentDraft && draftChanged(currentDraft, project) ? currentDraft : toProjectDraft(project)];
-  }));
-}
 
 function basisLabel(project: ProjectSummary) {
   if (project.progress_basis === "milestone") return "마일스톤 기반";
@@ -103,9 +81,9 @@ async function fetchGoalProjects(): Promise<GoalProjectsPayload> {
 
 export default function GoalsPage() {
   const [projects, setProjects] = useState<GoalProject[]>([]);
-  const [drafts, setDrafts] = useState<Record<string, ProjectDraft>>({});
+  const { drafts, dirtyProjectIds, beginRead, mergeProjects, updateDraft, resetDraft, acceptSavedProject, savingProjects, setSavingProjects, selectedProjectId, setSelectedProjectId } = useGoalDrafts();
+  const [editingProjectIds, setEditingProjectIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [savingProjects, setSavingProjects] = useState<Record<string, boolean>>({});
   const [loadingMilestoneProjectId, setLoadingMilestoneProjectId] = useState<string | null>(null);
   const [expandedMilestoneId, setExpandedMilestoneId] = useState<string | null>(null);
   const [evidenceByMilestone, setEvidenceByMilestone] = useState<Record<string, MilestoneEvidence>>({});
@@ -120,35 +98,26 @@ export default function GoalsPage() {
   const [successMessage, setSuccessMessage] = useState("");
 
   const loadGoalData = useCallback(async () => {
+    const revision = beginRead();
     setIsLoading(true);
     setLoadErrorMessage("");
     try {
       const payload = await fetchGoalProjects();
       setProjects(payload.projects);
       setMilestoneErrors(payload.milestoneErrors);
-      setDrafts((current) => mergeProjectDrafts(current, payload.projects));
+      mergeProjects(payload.projects, revision);
     } catch (error) {
       setLoadErrorMessage(error instanceof Error ? error.message : "목표 데이터를 불러오지 못했습니다.");
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [beginRead, mergeProjects]);
 
   useEffect(() => {
     void loadGoalData();
   }, [loadGoalData]);
 
-  const dirtyProjectIds = useMemo(() => projects.filter((project) => draftChanged(drafts[project.id], project)).map((project) => project.id), [drafts, projects]);
-
-  useEffect(() => {
-    if (dirtyProjectIds.length === 0) return;
-    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", warnBeforeUnload);
-    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
-  }, [dirtyProjectIds.length]);
+  const selectedProject = projects.find(project => project.id === selectedProjectId) ?? projects[0];
 
   async function retryProjectMilestones(project: GoalProject) {
     setLoadingMilestoneProjectId(project.id);
@@ -186,11 +155,7 @@ export default function GoalsPage() {
       if (!response.ok) throw new Error("목표와 성취 기준을 저장하지 못했습니다.");
       const savedProject = (await response.json()) as ProjectSummary;
       setProjects((current) => current.map((item) => item.id === project.id ? { ...savedProject, milestones: item.milestones } : item));
-      setDrafts((current) => {
-        const currentDraft = current[project.id];
-        const saveCompletedBeforeFurtherEdit = currentDraft?.objective === draft.objective && currentDraft.success_criteria === draft.success_criteria;
-        return { ...current, [project.id]: saveCompletedBeforeFurtherEdit ? toProjectDraft(savedProject) : currentDraft ?? toProjectDraft(savedProject) };
-      });
+      acceptSavedProject(savedProject, draft);
       setSuccessMessage(`${project.title} 목표를 저장했습니다.`);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "저장 중 오류가 발생했습니다.");
@@ -262,21 +227,26 @@ export default function GoalsPage() {
   }
 
   return (
-    <main className="page-shell project-page">
+    <main className={`page-shell project-page ${styles.goalsPage}`}>
       <div className="dashboard-topbar">
         <div>
-          <span className="eyebrow">PROJECT GOVERNANCE</span>
           <h1>목표 · 마일스톤</h1>
-          <p className="muted">프로젝트 완료를 커밋 수가 아니라 목표, 성취 기준, 계획 WBS로 판단합니다.</p>
         </div>
       </div>
 
-      <section className="summary-grid dashboard-metrics" aria-label="목표 관리 지표">
+      {!isLoading && !loadErrorMessage ? <section className="summary-grid dashboard-metrics" aria-label="목표 관리 지표">
         <div className="metric-card"><span>관리 프로젝트</span><strong>{projects.length}</strong></div>
         <div className="metric-card"><span>마일스톤</span><strong>{projects.reduce((sum, project) => sum + project.milestone_count, 0)}</strong></div>
         <div className="metric-card"><span>평균 진척</span><strong>{averageProgress.label}</strong></div>
         <div className="metric-card"><span>산정 전</span><strong>{projects.filter((project) => project.progress_basis === "unscoped").length}</strong></div>
-      </section>
+      </section> : null}
+
+      {!isLoading && projects.length > 0 ? <div className={styles.projectPicker}>
+        <label>프로젝트<select aria-label="목표 프로젝트" value={selectedProject?.id ?? ""} onChange={event => { setSelectedProjectId(event.target.value); setExpandedMilestoneId(null); setErrorMessage(""); setSuccessMessage(""); }}>
+          {projects.map(project => <option value={project.id} key={project.id}>{project.title}{dirtyProjectIds.includes(project.id) ? " · 저장 안 됨" : ""}</option>)}
+        </select></label>
+        {dirtyProjectIds.length ? <span className="count-badge" role="status">미저장 {dirtyProjectIds.length}개 프로젝트</span> : null}
+      </div> : null}
 
       {loadErrorMessage ? (
         <div className="alert error" role="alert">
@@ -291,15 +261,16 @@ export default function GoalsPage() {
 
       {!isLoading ? (
         <div className="stacked-section">
-          {projects.map((project) => {
+          {(selectedProject ? [selectedProject] : []).map((project) => {
             const draft = drafts[project.id] ?? { objective: "", success_criteria: "" };
             const isDirty = dirtyProjectIds.includes(project.id);
             const isSavingProject = Boolean(savingProjects[project.id]);
+            const isEditing = editingProjectIds.includes(project.id) || isDirty;
             const completedMilestones = project.milestones.filter((milestone) => milestone.progress_percent === 100).length;
             const milestoneError = milestoneErrors[project.id];
             const progress = projectProgressDisplay(project);
             return (
-              <section className="panel" key={project.id}>
+              <section className={styles.projectSection} key={project.id}>
                 <div className="panel-title-row">
                   <div>
                     <h2><Link className="text-link" href={`/projects/${project.id}`}>{project.title}</Link></h2>
@@ -315,30 +286,40 @@ export default function GoalsPage() {
                   </div>
                 </div> : null}
 
-                <form className="stacked-form compact-form" onSubmit={(event) => void saveProject(event, project)}>
+                {!isEditing ? <div className={styles.goalReadout}>
+                  <dl><div><dt>프로젝트 목표</dt><dd>{draft.objective || "미정"}</dd></div><div><dt>성취 기준</dt><dd>{draft.success_criteria || "미정"}</dd></div></dl>
+                  <button className="secondary-button" type="button" onClick={() => setEditingProjectIds(current => [...current, project.id])}>목표 편집</button>
+                </div> : <form className={`stacked-form compact-form ${styles.goalForm}`} onSubmit={(event) => void saveProject(event, project)}>
                   <label>
                     프로젝트 목표
                     <textarea
+                      aria-label="프로젝트 목표"
                       value={draft.objective}
                       placeholder="이 프로젝트가 최종적으로 달성해야 하는 상태"
-                      onChange={(event) => setDrafts((current) => ({ ...current, [project.id]: { ...draft, objective: event.target.value } }))}
+                      onChange={(event) => updateDraft(project.id, { objective: event.target.value })}
                     />
                   </label>
                   <label>
                     성취 기준
                     <textarea
+                      aria-label="성취 기준"
                       value={draft.success_criteria}
                       placeholder="완료라고 판단할 수 있는 구체적인 검증 기준"
-                      onChange={(event) => setDrafts((current) => ({ ...current, [project.id]: { ...draft, success_criteria: event.target.value } }))}
+                      onChange={(event) => updateDraft(project.id, { success_criteria: event.target.value })}
                     />
                   </label>
                   <div className="form-actions">
                     {isDirty ? <span className="count-badge">저장 안 됨</span> : null}
-                    <button disabled={isSavingProject} type="submit">
+                    <button disabled={isSavingProject || !isDirty} type="submit">
                       {isSavingProject ? "저장 중" : "목표 저장"}
                     </button>
+                    <button className="secondary-button" type="button" disabled={isSavingProject} onClick={() => {
+                      if (isDirty && !window.confirm("이 프로젝트의 변경 내용을 취소하시겠습니까?")) return;
+                      resetDraft(project.id);
+                      setEditingProjectIds(current => current.filter(id => id !== project.id));
+                    }}>{isDirty ? "변경 취소" : "편집 닫기"}</button>
                   </div>
-                </form>
+                </form>}
 
                 <div className="dense-list">
                   {milestoneError ? (

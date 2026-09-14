@@ -131,7 +131,16 @@ Source of truth: `frontend/app/globals.css`.
 ### Goals / Milestone
 
 - goals page는 project objective와 success criteria 편집을 소유한다.
-- 저장은 해당 프로젝트 응답만 적용하며 다른 draft와 저장 중 추가 입력을 보존한다. 미저장 상태와 탭 닫기/새로고침 경고를 제공한다. 앱 내부 경로 이동 보호는 아직 구현하지 않았다.
+- 한 프로젝트를 선택해 목표·성취 기준과 마일스톤부터 조회한다. `목표 편집`으로 입력을 열고 미저장 프로젝트는 선택 메뉴에도 표시한다.
+- 저장은 해당 프로젝트 응답만 적용하며 다른 draft와 저장 중 추가 입력을 보존한다. 루트 `GoalDraftProvider`가 현재 탭의 메모리에 초안과 서버 기준값을 유지해 앱 내부 이동·뒤로/앞으로 이동에도 보존한다.
+- 미저장 상태의 내부 링크/모바일 메뉴는 이동 여부를 확인한다. 브라우저 history를 변조해 뒤로 가기를 막지 않는다. 탭 닫기·새로고침은 native 경고를 사용하며 강제로 이동하면 메모리 초안은 사라진다. 영구 저장소·새 탭·브라우저 재시작 복원은 지원하지 않는다.
+- 로그아웃은 API 호출 전에 확인하고 성공 응답 후 초안을 비운다. 실패 시 입력을 유지한다.
+
+### Work Log Timeline
+
+- 최신 수행일 순으로 원래 업무명을 표시하고 검색/유형 필터를 제공한다. 업무명 유사도로 WBS 제목을 대신 표시하지 않는다.
+- 추가/수정 폼은 필요할 때만 표시하며 같은 폼을 재사용한다. 업무명·수행일·유형·내용을 먼저 입력하고 결정·협업자·다음 액션·블로커·소요 시간은 상세 입력에 둔다.
+- 양식 숨김과 프로젝트 상세 탭 전환은 초안을 유지한다. 로그 저장/삭제는 해당 API 결과만 적용한다. 다른 프로젝트/전역 경로 이동까지 로그 초안을 보존하는 기능은 이번 범위에 포함하지 않는다.
 - 목표/검증센터는 프로젝트·마일스톤·저장된 검토 조회 실패를 빈 상태로 표시하지 않으며 개별 재시도를 제공한다.
 - milestone row는 title, acceptance criteria, WBS completion, progress, weight, `근거 보기`를 보여준다.
 - evidence disclosure는 WBS completion, evidence count, AI review action/result, acceptance criteria, pending WBS, recent commit/PR evidence를 보여준다.

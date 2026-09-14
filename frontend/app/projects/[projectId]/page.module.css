@@ -23,6 +23,46 @@
   box-shadow: none;
 }
 
+.projectDetailPage :global(.timeline-first-log-dashboard) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.projectDetailPage :global(.timeline-first-log-dashboard .log-timeline-panel),
+.projectDetailPage :global(.timeline-first-log-dashboard .log-form-panel) {
+  grid-column: 1 / -1;
+}
+
+.projectDetailPage :global(.timeline-first-log-dashboard .log-form-panel) { order: -1; }
+.projectDetailPage :global(.timeline-first-log-dashboard .log-timeline-panel) {
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  padding: 12px 0;
+}
+
+.projectDetailPage :global(.work-log-filter-toolbar) {
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, 0.32fr);
+  align-items: end;
+}
+
+.projectDetailPage :global(.work-log-form .work-log-detail-fields) {
+  margin-top: 2px;
+}
+
+.projectDetailPage :global(.log-timeline-panel > .panel-title-row) { flex-direction: row; flex-wrap: wrap; align-items: center; }
+.projectDetailPage :global(.log-timeline-panel .compact-actions) { display: flex; flex-wrap: wrap; width: auto; flex: 0 0 auto; gap: 8px; }
+.projectDetailPage :global(.log-timeline-item .compact-actions) { justify-content: flex-end; }
+.projectDetailPage :global(.log-timeline-panel .compact-actions button) { width: auto; }
+.projectDetailPage :global(.log-timeline-item .compact-actions button) { min-height: 32px; padding: 4px 12px; }
+.projectDetailPage :global(.log-timeline-item .danger-button) { background: none; color: var(--danger); }
+
+.projectDetailPage :global(.log-timeline-item strong),
+.projectDetailPage :global(.log-timeline-item dd) {
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 720px) {
   .projectDetailPage :global(.task-workspace) {
     gap: 8px;
@@ -122,6 +162,40 @@
     height: auto;
     min-height: var(--compact-control-height);
     max-height: none;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .projectDetailPage :global(.work-log-filter-toolbar),
+  .projectDetailPage :global(.work-log-form .form-grid.two-columns) {
+    grid-template-columns: 1fr;
+  }
+
+  .projectDetailPage :global(.log-timeline-panel .panel-title-row) {
+    align-items: stretch;
+  }
+
+  .projectDetailPage :global(.log-timeline-panel .compact-actions) {
+    width: 100%;
+  }
+
+  .projectDetailPage :global(.log-timeline-panel .compact-actions > *) {
+    flex: 1 1 120px;
+  }
+
+  .projectDetailPage :global(.log-timeline-panel .log-timeline) {
+    max-height: none;
+    overflow-y: visible;
+    padding-right: 0;
+  }
+
+  .projectDetailPage :global(.log-timeline-item) {
+    gap: 6px;
+    padding-left: 16px;
+  }
+
+  .projectDetailPage :global(.log-timeline-item small) {
     overflow: visible;
     text-overflow: clip;
     white-space: normal;

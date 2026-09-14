@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AppHeader } from "./components/AppHeader";
+import { GoalDraftProvider } from "./components/GoalDraftProvider";
 import "./globals.css";
 import "./ui-overflow-fixes.css";
 
@@ -12,6 +13,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="ko">
       <body>
+        <GoalDraftProvider>
         <div className="app-frame">
           <AppHeader authEnabled={Boolean(
             (process.env.WORKTRACE_PASSWORD_HASH ?? process.env.WORK_SUPPORT_PASSWORD_HASH)
@@ -19,6 +21,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           )} />
           {children}
         </div>
+        </GoalDraftProvider>
       </body>
     </html>
   );
