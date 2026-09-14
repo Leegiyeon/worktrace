@@ -11,7 +11,12 @@ type GitHubBranchActivity = NetworkBranch & {
   behind_by: number;
   latest_commit_at: string | null;
 };
-type Props = { projectId: string; repositoryName: string | null };
+type Props = { projectId: string; repositoryName: string | null; projectName?: string };
+
+function formatTime(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? "날짜 미확인" : new Intl.DateTimeFormat("ko-KR", { dateStyle: "short", timeStyle: "short" }).format(date);
+}
 
 function branchStatusLabel(branch: GitHubBranchActivity) {
   if (branch.is_default) return "기준 브랜치";
@@ -33,9 +38,11 @@ function commitLink(url: string | null) {
 function NetworkGraph({ branches }: { branches: GitHubBranchActivity[] }) {
   const [compact, setCompact] = useState(true);
   const [viewportWidth, setViewportWidth] = useState(720);
+  const [selectedSha, setSelectedSha] = useState<string | null>(null);
   const container = useRef<HTMLDivElement>(null);
   const graph = useMemo(() => buildBranchNetwork(branches, { compact, viewportWidth }), [branches, compact, viewportWidth]);
   const canvas = useRef<HTMLDivElement>(null);
+  const selectedNode = graph.nodes.find((node) => node.sha === selectedSha) ?? graph.nodes.find((node) => branches.some((branch) => branch.is_default && branch.head_sha === node.sha)) ?? graph.nodes.at(-1);
   useEffect(() => {
     if (!container.current) return;
     const observer = new ResizeObserver(([entry]) => setViewportWidth(Math.max(240, Math.floor(entry.contentRect.width))));
@@ -59,11 +66,11 @@ function NetworkGraph({ branches }: { branches: GitHubBranchActivity[] }) {
         {graph.edges.map((edge) => <path key={`${edge.from}-${edge.to}`} className={styles.branchLine} d={edge.path} stroke={edge.color} strokeDasharray={edge.collapsedCommits ? "4 2" : undefined}><title>{edge.collapsedCommits ? `중간 커밋 ${edge.collapsedCommits}개` : "부모 커밋 연결"}</title></path>)}
         {graph.nodes.map((node) => <g key={node.sha}>
           {node.missingParents.length > 0 ? <path d={`M ${node.x - 18} ${node.y} H ${node.x}`} stroke={node.color} strokeDasharray="3 3"><title>이전 부모 커밋은 조회 범위 밖입니다.</title></path> : null}
-          <a href={commitLink(node.url)} target="_blank" rel="noreferrer" aria-label={`${node.sha.slice(0, 7)} ${node.message}`}>
+          <g role="button" tabIndex={0} aria-pressed={selectedNode?.sha === node.sha} aria-label={`${node.sha.slice(0, 7)} ${node.message}`} onClick={() => setSelectedSha(node.sha)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedSha(node.sha); } }}>
             <title>{`${node.sha.slice(0, 7)} · ${node.message}\n${node.committed_at ?? "날짜 미확인"}${node.parents.length > 1 ? " · 병합 커밋" : ""}`}</title>
             <circle className={styles.hitTarget} cx={node.x} cy={node.y} r="12" />
             <circle className={styles.commitNode} cx={node.x} cy={node.y} r={node.parents.length > 1 ? 6 : 4} fill={node.color} />
-          </a>
+          </g>
         </g>)}
         {graph.labels.map((label) => <g className={styles.branchLabel} key={label.name}>
           <path d={`M ${label.x} ${label.y + 22} V ${label.nodeY - 7}`} stroke={label.color} strokeDasharray="2 3" />
@@ -75,8 +82,12 @@ function NetworkGraph({ branches }: { branches: GitHubBranchActivity[] }) {
         </g>)}
       </svg>
     </div>}
-    {graph.incomplete ? <p className={styles.note}>최근 커밋 일부만 표시됩니다. 조회 범위 밖의 분기·병합 관계는 생략됩니다.</p> : null}
-    {branches.some((branch) => branch.branch_list_truncated) ? <p className={styles.note}>브랜치 목록은 기준 브랜치 포함 최대 13개까지 표시됩니다.</p> : null}
+    {selectedNode ? <div className={styles.commitDetail} aria-live="polite">
+      <div className={styles.commitMeta}><code>{selectedNode.sha.slice(0, 7)}</code><span>{selectedNode.parents.length > 1 ? "병합 커밋" : "커밋"}</span>{selectedNode.committed_at ? <time dateTime={selectedNode.committed_at}>{formatTime(selectedNode.committed_at)}</time> : null}</div>
+      <p title={selectedNode.message}>{selectedNode.message.split("\n")[0] || "커밋 메시지 없음"}</p>
+      {commitLink(selectedNode.url) ? <a href={commitLink(selectedNode.url)} target="_blank" rel="noreferrer">GitHub에서 보기</a> : null}
+    </div> : null}
+    {graph.incomplete || branches.some((branch) => branch.branch_list_truncated) ? <p className={styles.note}>일부 이력 표시 · {branches.some((branch) => branch.branch_list_truncated) ? "브랜치 최대 13개 · " : ""}브랜치별 최대 100개 커밋</p> : null}
     <details className={styles.branchDetails}>
       <summary>브랜치별 상태 <span>{branches.length}</span></summary>
       <div className={styles.legend} aria-label="브랜치별 병합 상태">
@@ -90,11 +101,13 @@ function NetworkGraph({ branches }: { branches: GitHubBranchActivity[] }) {
   </div>;
 }
 
-function BranchNetworkLoader({ projectId, repositoryName }: Props) {
+function BranchNetworkLoader({ projectId, repositoryName, projectName }: Props) {
   const [branches, setBranches] = useState<GitHubBranchActivity[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null);
 
   useEffect(() => {
     if (!repositoryName) return;
@@ -104,24 +117,25 @@ function BranchNetworkLoader({ projectId, repositoryName }: Props) {
         if (!response.ok) throw new Error("브랜치 이력을 불러오지 못했습니다.");
         return (await response.json()) as GitHubBranchActivity[];
       })
-      .then((payload) => { if (!controller.signal.aborted) { setBranches(payload); setError(""); } })
+      .then((payload) => { if (!controller.signal.aborted) { setBranches(payload); setError(""); setFetchedAt(new Date().toISOString()); } })
       .catch((reason: unknown) => {
         if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "브랜치 이력을 불러오지 못했습니다.");
       })
-      .finally(() => { if (!controller.signal.aborted) setLoaded(true); });
+      .finally(() => { if (!controller.signal.aborted) { setLoaded(true); setRefreshing(false); } });
     return () => controller.abort();
   }, [projectId, repositoryName, attempt]);
 
-  return <section className={`panel ${styles.panel}`}>
+  return <section className={styles.panel} aria-busy={Boolean(repositoryName) && (!loaded || refreshing)}>
     <div className={styles.titleRow}>
-      <div><h2>브랜치 병합 네트워크</h2><small>{repositoryName ?? "연결된 저장소 없음"}</small></div>
-      {loaded && !error ? <span className="count-badge">{branches.filter((branch) => !branch.is_default).length}개 작업 브랜치</span> : null}
+      <div><h2>{projectName ?? "브랜치 병합 네트워크"}</h2><small>{repositoryName ?? "연결된 저장소 없음"}</small></div>
+      {repositoryName ? <button className={styles.refresh} type="button" disabled={!loaded || refreshing} aria-label="브랜치 새로고침" title="GitHub에서 다시 조회" onClick={() => { setError(""); setRefreshing(true); setAttempt((value) => value + 1); }}><span aria-hidden="true">&#x21bb;</span></button> : null}
     </div>
+    {fetchedAt ? <div className={styles.source}><span>GitHub API · 기준 {branches.find((branch) => branch.is_default)?.name ?? "미확인"}</span><span>{branches.length}개 브랜치 · {refreshing ? "조회 중" : `조회 ${formatTime(fetchedAt)}`}</span></div> : null}
     {!repositoryName ? <div className="empty-state">연결된 GitHub 저장소가 없습니다.</div> : null}
-    {repositoryName && !loaded ? <div className="empty-state" role="status">커밋 이력을 불러오는 중입니다.</div> : null}
-    {error ? <div className={`alert error ${styles.error}`} role="alert">{error}<button type="button" onClick={() => { setError(""); setLoaded(false); setAttempt((value) => value + 1); }}>다시 불러오기</button></div> : null}
-    {loaded && !error && repositoryName && branches.length === 0 ? <div className="empty-state">표시할 브랜치가 없습니다.</div> : null}
-    {loaded && !error && branches.length > 0 ? <NetworkGraph branches={branches} /> : null}
+    {repositoryName && (!loaded || (refreshing && !fetchedAt)) ? <div className="empty-state" role="status">커밋 이력을 불러오는 중입니다.</div> : null}
+    {error ? <div className={`alert error ${styles.error}`} role="alert">{error}{fetchedAt ? " 이전 조회 결과입니다." : ""}</div> : null}
+    {loaded && !refreshing && !error && repositoryName && branches.length === 0 ? <div className="empty-state">표시할 브랜치가 없습니다.</div> : null}
+    {loaded && branches.length > 0 ? <NetworkGraph branches={branches} /> : null}
   </section>;
 }
 

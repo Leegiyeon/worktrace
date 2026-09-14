@@ -11,6 +11,7 @@ const header = readFileSync(new URL("../app/components/AppHeader.tsx", import.me
 
 test("branch dashboard compares work branches without mutating project state", () => {
   assert.match(page, /브랜치 그래프/);
+  assert.equal(page.match(/selectedProjectIdRef\.current === selectedProjectId/g)?.length, 3);
   assert.match(graph, /ahead_by/);
   assert.match(graph, /behind_by/);
   assert.match(graph, /브랜치 병합 네트워크/);
@@ -20,6 +21,8 @@ test("branch dashboard compares work branches without mutating project state", (
   assert.doesNotMatch(graph, /polyline/);
   assert.doesNotMatch(graph, /method:\s*"PATCH"/);
   assert.doesNotMatch(graph, /method:\s*"POST"/);
+  assert.match(graph, /refreshing && !fetchedAt/);
+  assert.match(graph, /loaded && !refreshing && !error/);
 });
 
 const commit = (sha, parents = [], committed_at = "2026-09-01T00:00:00Z") => ({ sha, parents, committed_at, message: sha, url: `https://github.com/test/repo/commit/${sha}` });
@@ -73,12 +76,32 @@ test("compact network collapses only linear history and keeps all head refs", ()
   const branches = [branch("main", "c99", commits, true), branch("release", "c50", commits.slice(0, 51))];
   const compact = buildBranchNetwork(branches, { compact: true, viewportWidth: 390 });
   assert.deepEqual(compact.nodes.map((node) => node.sha), ["c0", "c50", "c99"]);
-  assert.equal(compact.width, 390);
+  assert.ok(compact.width <= 390);
   assert.ok(compact.height <= 120);
   assert.equal(compact.totalCommits, 100);
   assert.deepEqual(compact.edges.map((edge) => edge.collapsedCommits), [49, 48]);
   assert.equal(compact.labels.length, 2);
   assert.equal(buildBranchNetwork(branches).nodes.length, 100);
+});
+
+test("nonoverlapping historical merges reuse a lane without dropping any edges", () => {
+  const commits = [commit("root")];
+  let head = "root";
+  for (let index = 0; index < 20; index++) {
+    commits.push(commit(`side${index}`, [head]), commit(`main${index}`, [head]), commit(`merge${index}`, [`main${index}`, `side${index}`]));
+    head = `merge${index}`;
+  }
+  const graph = buildBranchNetwork([branch("main", head, commits, true)], { compact: true });
+  assert.equal(new Set(graph.nodes.map((node) => node.y)).size, 2);
+  assert.ok(graph.height <= 120);
+  assert.equal(graph.edges.length, 80);
+  assert.equal(graph.nodes.length, 61);
+});
+
+test("overlapping historical histories do not share a lane", () => {
+  const commits = [commit("root"), commit("left", ["root"]), commit("right", ["root"]), commit("base", ["root"]), commit("merge", ["base", "left", "right"])];
+  const graph = buildBranchNetwork([branch("main", "merge", commits, true)], { compact: true });
+  assert.notEqual(graph.nodes.find((node) => node.sha === "left").y, graph.nodes.find((node) => node.sha === "right").y);
 });
 
 test("compact network preserves forks, merge parents, and missing-history boundaries", () => {

@@ -70,17 +70,36 @@ export function buildBranchNetwork(branches, { compact = false, viewportWidth = 
     }
   }
   const visibleOrder = order.filter((sha) => visible.has(sha));
-  const spacing = compact ? Math.max(18, Math.min(40, (viewportWidth - 216) / Math.max(1, visibleOrder.length - 1))) : 24;
+  const spacing = compact ? Math.max(16, Math.min(28, (viewportWidth - 192) / Math.max(1, visibleOrder.length - 1))) : 24;
+  const indexBySha = new Map(order.map((sha, index) => [sha, index]));
+  const tracks = [];
+  for (let laneIndex = 0; laneIndex < lanes.length; laneIndex++) {
+    const lane = lanes[laneIndex];
+    const owned = order.filter((sha) => ownership.get(sha) === laneIndex);
+    // Include connecting fork/merge endpoints so reused tracks never overlap.
+    const extent = owned.flatMap((sha) => [sha, ...commits.get(sha).parents, ...children.get(sha)]).filter((sha) => indexBySha.has(sha)).map((sha) => indexBySha.get(sha));
+    const start = Math.min(...extent);
+    const end = Math.max(...extent);
+    const track = lane.labels.length === 0 ? tracks.find((candidate) => candidate.labels.length === 0 && candidate.intervals.every(([left, right]) => end <= left || start >= right)) : undefined;
+    if (track) {
+      track.intervals.push([start, end]);
+      lane.track = track;
+    } else {
+      const next = { labels: lane.labels, intervals: [[start, end]] };
+      tracks.push(next);
+      lane.track = next;
+    }
+  }
   let height = 10;
-  for (const lane of lanes) {
-    lane.top = height;
-    lane.y = height + lane.labels.length * 26 + 12;
-    height = lane.y + 18;
+  for (const track of tracks) {
+    track.top = height;
+    track.y = height + track.labels.length * 26 + 10;
+    height = track.y + 14;
   }
   const nodes = visibleOrder.map((sha, index) => {
     const commit = commits.get(sha);
     const lane = lanes[ownership.get(sha)];
-    return { ...commit, x: 20 + index * spacing, y: lane.y, color: lane.color, missingParents: commit.parents.filter((parent) => !commits.has(parent)) };
+    return { ...commit, x: 20 + index * spacing, y: lane.track.y, color: lane.color, missingParents: commit.parents.filter((parent) => !commits.has(parent)) };
   });
   const bySha = new Map(nodes.map((node) => [node.sha, node]));
   const edges = nodes.flatMap((node) => node.parents.filter((sha) => commits.has(sha)).map((immediateParent) => {
@@ -95,6 +114,6 @@ export function buildBranchNetwork(branches, { compact = false, viewportWidth = 
     const mid = (parent.x + node.x) / 2;
     return { from: sha, to: node.sha, collapsedCommits, color: node.parents[0] === immediateParent ? node.color : parent.color, path: `M ${parent.x} ${parent.y} C ${mid} ${parent.y}, ${mid} ${node.y}, ${node.x} ${node.y}` };
   }));
-  const labels = lanes.flatMap((lane) => lane.labels.map((branch, index) => ({ name: branch.name, sha: branch.head_sha, x: bySha.get(branch.head_sha).x, y: lane.top + index * 26, nodeY: lane.y, color: colors.get(branch.name) })));
-  return { nodes, edges, labels, totalCommits: order.length, width: Math.max(viewportWidth, 216 + Math.max(0, nodes.length - 1) * spacing), height: Math.max(80, height), incomplete: branches.some((branch) => branch.history_truncated || !bySha.has(branch.head_sha)) || nodes.some((node) => node.missingParents.length > 0) };
+  const labels = lanes.flatMap((lane) => lane.labels.map((branch, index) => ({ name: branch.name, sha: branch.head_sha, x: bySha.get(branch.head_sha).x, y: lane.track.top + index * 26, nodeY: lane.track.y, color: colors.get(branch.name) })));
+  return { nodes, edges, labels, totalCommits: order.length, width: Math.max(240, 192 + Math.max(0, nodes.length - 1) * spacing), height: Math.max(64, height), incomplete: branches.some((branch) => branch.history_truncated || !bySha.has(branch.head_sha)) || nodes.some((node) => node.missingParents.length > 0) };
 }
