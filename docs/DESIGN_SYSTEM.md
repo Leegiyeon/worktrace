@@ -190,6 +190,10 @@ Source of truth: `frontend/app/globals.css`.
 
 - project CRUD, WBS/tasks, work logs, outcomes, repository connection/status, commits, deliveries, branch graph, career assets를 소유한다.
 - record type별 관리 surface는 중복하지 않는다.
+- 성과는 후보/검토 중/확정 중 하나의 목록만 표시하고, 선택 시 목록 자리에 검토 폼을 연다. 상태 건수는 단계 선택에 통합해 별도 지표 카드를 반복하지 않는다.
+- 근거 로그는 검색·체크 선택·선택한 항목 필터와 원문 펼침을 제공한다. 성과 내용/근거 수정은 확정 체크를 해제하며, 사용자가 다시 확인한 값만 `resume_ready=true`로 저장한다. 기존 문서 근거 연결은 편집 시 지우지 않는다.
+- 경력 자산은 생성일 최신 버전을 기본으로 하나만 표시한다. 버전 선택과 생성 조건은 결과 위 도구줄에 통합하고, 편집은 요청 시에만 연다. 편집 중 복사는 현재 초안이며 저장/생성 실패는 초안을 보존한다.
+- 성과의 목록/같은 프로젝트 탭 전환은 작성 값을 보존하고, 다른 성과로 대체/작성 취소 시 변경 유실을 확인한다. 경력 자산의 버전 전환/생성/편집 취소도 변경 유실을 확인한다. 전역 경로 이동·브라우저 재시작 보존 기능과는 구분한다.
 
 ### Goals / Milestones
 

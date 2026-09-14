@@ -63,6 +63,98 @@
   overflow-wrap: anywhere;
 }
 
+.outcomeWorkspace {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.outcomeHeader,
+.outcomeActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.outcomeHeader { justify-content: space-between; }
+.outcomeHeader > strong { flex: 1 1 180px; }
+.outcomeHeader h2,
+.outcomeHeader h3 { margin: 0; font-size: 16px; }
+.outcomeHeader button,
+.outcomeActions button { flex: 0 0 auto; width: auto; }
+.outcomeActions { justify-content: flex-end; }
+.outcomeActions :global(.danger-button) { background: none; color: var(--danger); }
+
+.outcomeStages {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-bottom: 1px solid var(--border);
+}
+
+.outcomeStages button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--muted);
+  box-shadow: none;
+  padding: 6px;
+  gap: 6px;
+}
+
+.outcomeStages button[aria-pressed="true"] {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  background: var(--surface);
+}
+
+.outcomeStages span { font-size: 12px; font-variant-numeric: tabular-nums; }
+.outcomeList { display: grid; gap: 0; min-width: 0; }
+.outcomeRow { display: grid; gap: 8px; padding: 14px 0; border-bottom: 1px solid var(--border); min-width: 0; }
+.outcomeRow p { margin: 0; font-size: 14px; white-space: pre-wrap; }
+.outcomeWorkspace p,
+.outcomeWorkspace strong,
+.outcomeWorkspace small,
+.outcomeWorkspace li,
+.outcomeWorkspace dd { overflow-wrap: anywhere; }
+.outcomeWorkspace small,
+.outcomeHint { color: var(--muted); font-size: 12px; }
+.outcomeWorkspace summary { cursor: pointer; font-size: 13px; color: var(--muted); padding: 6px 0; }
+.outcomeEditor { display: grid; gap: 12px; min-width: 0; }
+.outcomeFields { display: grid; gap: 14px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.outcomeFields label:not(.outcomeCheck) { display: grid; gap: 6px; min-width: 0; font-size: 13px; font-weight: 600; }
+.outcomeFields input:not([type="checkbox"]),
+.outcomeFields textarea,
+.outcomeFields select { width: 100%; min-width: 0; }
+.outcomeFields textarea { min-height: 88px; }
+.outcomePair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.evidencePicker { display: grid; gap: 8px; border: 0; border-top: 1px solid var(--border); padding: 12px 0 0; margin: 0; min-width: 0; }
+.evidencePicker legend { font-size: 14px; font-weight: 600; }
+.evidencePicker legend span { margin-left: 8px; color: var(--muted); font-size: 12px; }
+.evidenceToolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.evidenceToolbar > input { flex: 1 1 200px; }
+.outcomeFields .outcomeCheck { display: flex; flex-direction: row; align-items: flex-start; gap: 8px; font-size: 13px; font-weight: 500; min-width: 0; }
+.outcomeCheck input[type="checkbox"] { appearance: auto; width: 16px; height: 16px; min-height: 16px; flex: 0 0 16px; margin: 2px 0; accent-color: var(--primary); }
+.outcomeCheck span { display: grid; gap: 4px; min-width: 0; }
+.evidenceList { max-height: 320px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; border-bottom: 1px solid var(--border); }
+.evidenceItem { display: grid; gap: 2px; padding: 10px 4px; border-top: 1px solid var(--border); }
+.evidenceItem details { padding-left: 24px; }
+.evidenceItem dl { display: grid; gap: 8px; margin: 4px 0; font-size: 13px; }
+.evidenceItem dt { color: var(--muted); }
+.evidenceItem dd { margin: 4px 0 0; white-space: pre-wrap; }
+.outcomeHint { margin: 0; }
+
+@media (max-width: 480px) {
+  .outcomePair { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .outcomeHeader > small { flex: 1 1 100%; }
+  .outcomeActions { margin-left: auto; }
+}
+
 @media (max-width: 720px) {
   .projectDetailPage :global(.task-workspace) {
     gap: 8px;

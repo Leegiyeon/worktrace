@@ -41,6 +41,7 @@ type PageProps = {
 type DetailTab = "overview" | "tasks" | "logs" | "outcomes" | "career";
 type TaskViewMode = "board" | "list" | "calendar";
 type DetailLoadFailure = "logs" | "outcomes" | "career" | "commits" | "githubStatus" | "milestones";
+type OutcomeStage = "candidates" | "review" | "confirmed";
 
 type TaskForm = {
   title: string;
@@ -357,6 +358,9 @@ export default function ProjectDetailPage({ params }: PageProps) {
   const [taskForm, setTaskForm] = useState<TaskForm>(initialTaskForm);
   const [logForm, setLogForm] = useState<WorkLogForm>(() => createInitialWorkLogForm());
   const [outcomeForm, setOutcomeForm] = useState<OutcomeForm>(() => createInitialOutcomeForm());
+  const [outcomeBaseline, setOutcomeBaseline] = useState<OutcomeForm>(() => createInitialOutcomeForm());
+  const [isOutcomeFormVisible, setIsOutcomeFormVisible] = useState(false);
+  const [outcomeStage, setOutcomeStage] = useState<OutcomeStage>("review");
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [isTaskFormVisible, setIsTaskFormVisible] = useState(false);
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
@@ -801,6 +805,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
 
   async function handleSaveOutcome(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isSavingOutcome) return;
     setSuccessMessage("");
     if (!outcomeForm.title.trim()) {
       setErrorMessage("개선 항목을 입력하세요.");
@@ -808,6 +813,11 @@ export default function ProjectDetailPage({ params }: PageProps) {
     }
     if (outcomeForm.outcome_type === "quantitative" && !outcomeForm.metric_value.trim()) {
       setErrorMessage("정량 성과는 수치를 입력하세요.");
+      return;
+    }
+    const existingOutcome = outcomes.find((outcome) => outcome.id === editingOutcomeId);
+    if (outcomeForm.resume_ready && !outcomeForm.evidence_work_log_ids.some((id) => workLogs.some((log) => log.id === id)) && !existingOutcome?.evidence_document_ids.length) {
+      setErrorMessage("이력서 반영을 확정하려면 근거를 연결하세요.");
       return;
     }
 
@@ -820,10 +830,10 @@ export default function ProjectDetailPage({ params }: PageProps) {
       metric_value: outcomeForm.metric_value.trim() ? outcomeForm.metric_value.trim() : null,
       metric_unit: outcomeForm.metric_unit.trim(),
       evidence_work_log_ids: outcomeForm.evidence_work_log_ids,
-      evidence_document_ids: [],
+      evidence_document_ids: existingOutcome?.evidence_document_ids ?? [],
       resume_ready: outcomeForm.resume_ready
     };
-    const success = editingOutcomeId ? "성과 수정 완료" : "성과 추가 완료";
+    const success = outcomeForm.resume_ready ? "이력서 반영 확정 완료" : "검토 중 성과 저장 완료";
 
     setIsSavingOutcome(true);
     setErrorMessage("");
@@ -841,9 +851,15 @@ export default function ProjectDetailPage({ params }: PageProps) {
         const detail = await response.json().catch(() => null);
         throw new Error(parseApiErrorMessage(detail));
       }
+      const savedOutcome = (await response.json()) as ProjectOutcome;
+      setOutcomes((current) => editingOutcomeId
+        ? current.map((outcome) => outcome.id === savedOutcome.id ? savedOutcome : outcome)
+        : [savedOutcome, ...current]);
+      setOutcomeStage(savedOutcome.resume_ready ? "confirmed" : "review");
+      setIsOutcomeFormVisible(false);
       setOutcomeForm(createInitialOutcomeForm());
+      setOutcomeBaseline(createInitialOutcomeForm());
       setEditingOutcomeId(null);
-      await loadProject();
       setSuccessMessage(success);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "성과를 저장하지 못했습니다.");
@@ -852,10 +868,26 @@ export default function ProjectDetailPage({ params }: PageProps) {
     }
   }
 
+  function confirmOutcomeReplacement(message = "작성 중인 성과를 버리고 다른 성과를 검토할까요?") {
+    if (isSavingOutcome) return false;
+    return JSON.stringify(outcomeForm) === JSON.stringify(outcomeBaseline)
+      || window.confirm(message);
+  }
+
+  function cancelOutcomeEdit() {
+    if (!confirmOutcomeReplacement("작성 중인 성과 변경을 버릴까요?")) return;
+    setOutcomeForm(createInitialOutcomeForm());
+    setOutcomeBaseline(createInitialOutcomeForm());
+    setEditingOutcomeId(null);
+    setIsOutcomeFormVisible(false);
+  }
+
   function startEditOutcome(outcome: ProjectOutcome) {
+    if (!confirmOutcomeReplacement()) return;
     setSuccessMessage("");
+    setErrorMessage("");
     setEditingOutcomeId(outcome.id);
-    setOutcomeForm({
+    const form: OutcomeForm = {
       title: outcome.title,
       outcome_type: outcome.outcome_type,
       before_state: outcome.before_state,
@@ -865,13 +897,19 @@ export default function ProjectDetailPage({ params }: PageProps) {
       metric_unit: outcome.metric_unit,
       evidence_work_log_ids: outcome.evidence_work_log_ids,
       resume_ready: outcome.resume_ready
-    });
+    };
+    setOutcomeForm(form);
+    setOutcomeBaseline(form);
+    setIsOutcomeFormVisible(true);
     setActiveDetailTab("outcomes");
   }
 
   function applyOutcomeCandidate(candidate: OutcomeCandidate) {
+    if (!confirmOutcomeReplacement()) return;
     setSuccessMessage("");
+    setErrorMessage("");
     setEditingOutcomeId(null);
+    setOutcomeBaseline(createInitialOutcomeForm());
     setOutcomeForm({
       title: candidate.title,
       outcome_type: candidate.outcome_type,
@@ -883,11 +921,14 @@ export default function ProjectDetailPage({ params }: PageProps) {
       evidence_work_log_ids: candidate.evidence_work_log_ids,
       resume_ready: false
     });
+    setIsOutcomeFormVisible(true);
     setActiveDetailTab("outcomes");
   }
 
   async function deleteOutcome(outcome: ProjectOutcome) {
+    if (isSavingOutcome) return;
     if (!window.confirm("성과를 삭제할까요?")) return;
+    setIsSavingOutcome(true);
     setErrorMessage("");
     setSuccessMessage("");
     try {
@@ -899,11 +940,15 @@ export default function ProjectDetailPage({ params }: PageProps) {
       if (editingOutcomeId === outcome.id) {
         setEditingOutcomeId(null);
         setOutcomeForm(createInitialOutcomeForm());
+        setOutcomeBaseline(createInitialOutcomeForm());
+        setIsOutcomeFormVisible(false);
       }
-      await loadProject();
+      setOutcomes((current) => current.filter((item) => item.id !== outcome.id));
       setSuccessMessage("성과 삭제 완료");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "성과를 삭제하지 못했습니다.");
+    } finally {
+      setIsSavingOutcome(false);
     }
   }
 
@@ -922,10 +967,13 @@ export default function ProjectDetailPage({ params }: PageProps) {
         const detail = await response.json().catch(() => null);
         throw new Error(parseApiErrorMessage(detail, "경력 자산을 생성하지 못했습니다."));
       }
+      const generatedAsset = (await response.json()) as CareerAsset;
+      setCareerAssets((current) => [generatedAsset, ...current.filter((asset) => asset.id !== generatedAsset.id)]);
       setCareerMessage("경력 자산 생성 완료");
-      await loadProject();
+      return generatedAsset;
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "경력 자산을 생성하지 못했습니다.");
+      return null;
     } finally {
       setIsGeneratingCareer(false);
     }
@@ -1128,13 +1176,13 @@ export default function ProjectDetailPage({ params }: PageProps) {
 
           {activeTab === "outcomes" ? (
             <div aria-labelledby="tab-outcomes" id="panel-outcomes" role="tabpanel">
-              {loadFailures.includes("outcomes") || loadFailures.includes("logs") ? <section className="panel"><div className="empty-state">성과와 근거 로그를 불러오지 못했습니다.</div></section> : <OutcomePanel deleteOutcome={deleteOutcome} editingOutcomeId={editingOutcomeId} isSavingOutcome={isSavingOutcome} logs={workLogs} outcomeForm={outcomeForm} outcomes={outcomes} quantitativeOutcomes={dashboard.quantitativeOutcomes} resumeReadyOutcomes={dashboard.resumeReadyOutcomes} setOutcomeForm={setOutcomeForm} startEditOutcome={startEditOutcome} tasks={tasks} onApplyCandidate={applyOutcomeCandidate} onCancel={() => { setEditingOutcomeId(null); setOutcomeForm(createInitialOutcomeForm()); }} onSubmit={handleSaveOutcome} />}
+              {isLoading ? <div role="status">성과를 불러오는 중</div> : loadFailures.includes("outcomes") || loadFailures.includes("logs") ? <section className="panel"><div className="empty-state">성과와 근거 로그를 불러오지 못했습니다.</div></section> : <OutcomePanel deleteOutcome={deleteOutcome} editingOutcomeId={editingOutcomeId} isSavingOutcome={isSavingOutcome} isOutcomeFormVisible={isOutcomeFormVisible} onToggleForm={() => setIsOutcomeFormVisible((visible) => !visible)} stage={outcomeStage} onStageChange={(stage) => { setOutcomeStage(stage); setIsOutcomeFormVisible(false); }} hasDraft={Boolean(editingOutcomeId) || JSON.stringify(outcomeForm) !== JSON.stringify(outcomeBaseline)} logs={workLogs} outcomeForm={outcomeForm} outcomes={outcomes} setOutcomeForm={setOutcomeForm} startEditOutcome={startEditOutcome} tasks={tasks} onApplyCandidate={applyOutcomeCandidate} onCancel={cancelOutcomeEdit} onSubmit={handleSaveOutcome} />}
             </div>
           ) : null}
 
           {activeTab === "career" ? (
             <div aria-labelledby="tab-career" id="panel-career" role="tabpanel">
-              {loadFailures.includes("career") ? <section className="panel"><div className="empty-state">경력 자산을 불러오지 못했습니다.</div></section> : <CareerPanel projectId={projectId} careerAssets={careerAssets} careerMessage={careerMessage} isGeneratingCareer={isGeneratingCareer} onAssetUpdated={handleCareerAssetUpdated} onGenerate={handleGenerateCareerAsset} />}
+              {isLoading ? <div role="status">경력 자산을 불러오는 중</div> : loadFailures.includes("career") ? <section className="panel"><div className="empty-state">경력 자산을 불러오지 못했습니다.</div></section> : <CareerPanel projectId={projectId} careerAssets={careerAssets} careerMessage={careerMessage} isGeneratingCareer={isGeneratingCareer} onAssetUpdated={handleCareerAssetUpdated} onGenerate={handleGenerateCareerAsset} />}
             </div>
           ) : null}
         </>
@@ -1469,11 +1517,14 @@ function OutcomePanel({
   deleteOutcome,
   editingOutcomeId,
   isSavingOutcome,
+  isOutcomeFormVisible,
+  onToggleForm,
+  stage,
+  onStageChange,
+  hasDraft,
   logs,
   outcomeForm,
   outcomes,
-  quantitativeOutcomes,
-  resumeReadyOutcomes,
   setOutcomeForm,
   startEditOutcome,
   tasks,
@@ -1484,11 +1535,14 @@ function OutcomePanel({
   deleteOutcome: (outcome: ProjectOutcome) => Promise<void>;
   editingOutcomeId: string | null;
   isSavingOutcome: boolean;
+  isOutcomeFormVisible: boolean;
+  onToggleForm: () => void;
+  stage: OutcomeStage;
+  onStageChange: (stage: OutcomeStage) => void;
+  hasDraft: boolean;
   logs: WorkLogItem[];
   outcomeForm: OutcomeForm;
   outcomes: ProjectOutcome[];
-  quantitativeOutcomes: number;
-  resumeReadyOutcomes: number;
   setOutcomeForm: (form: OutcomeForm) => void;
   startEditOutcome: (outcome: ProjectOutcome) => void;
   tasks: ProjectTask[];
@@ -1496,95 +1550,114 @@ function OutcomePanel({
   onCancel: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const [evidenceQuery, setEvidenceQuery] = useState("");
+  const [selectedOnly, setSelectedOnly] = useState(false);
+  const titleInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (isOutcomeFormVisible) titleInput.current?.focus();
+  }, [isOutcomeFormVisible, editingOutcomeId]);
   const sortedOutcomes = [...outcomes].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
   const sortedLogs = [...logs].sort((a, b) => b.log_date.localeCompare(a.log_date));
   const outcomeCandidates = buildOutcomeCandidates(logs, tasks, outcomes);
+  const visibleOutcomes = sortedOutcomes.filter((outcome) => outcome.resume_ready === (stage === "confirmed"));
+  const confirmedCount = outcomes.filter((outcome) => outcome.resume_ready).length;
+  const documentEvidence = outcomes.find((outcome) => outcome.id === editingOutcomeId)?.evidence_document_ids ?? [];
+  const selectedIds = outcomeForm.evidence_work_log_ids;
+  const missingIds = selectedIds.filter((id) => !logs.some((log) => log.id === id));
+  const canConfirm = selectedIds.some((id) => logs.some((log) => log.id === id)) || documentEvidence.length > 0;
+  const query = evidenceQuery.trim().toLocaleLowerCase();
+  const visibleLogs = sortedLogs.filter((log) => (!selectedOnly || selectedIds.includes(log.id))
+    && [log.title, log.content, log.log_date, log.decisions, log.collaborators, log.next_actions, log.blockers].some((value) => value.toLocaleLowerCase().includes(query)));
+  const changeForm = (updates: Partial<OutcomeForm>) => setOutcomeForm({ ...outcomeForm, ...updates, resume_ready: false });
 
   return (
-    <section className="outcome-dashboard">
-      <section className="panel outcome-candidate-panel">
-        <div className="panel-title-row">
-          <h2>성과 후보</h2>
-          <span className="count-badge">{outcomeCandidates.length}개</span>
-        </div>
+    <section className={styles.outcomeWorkspace} aria-busy={isSavingOutcome}>
+      <div className={styles.outcomeHeader}>
+        <h2>성과</h2>
+        <button className="secondary-button" type="button" onClick={onToggleForm} disabled={isSavingOutcome} aria-expanded={isOutcomeFormVisible} aria-controls="outcome-review-form">
+          {isOutcomeFormVisible ? "목록으로" : hasDraft ? "작성 계속" : "성과 추가"}
+        </button>
+      </div>
+      <div className={styles.outcomeStages} role="group" aria-label="성과 단계">
+        {([
+          ["candidates", "후보", outcomeCandidates.length],
+          ["review", "검토 중", outcomes.length - confirmedCount],
+          ["confirmed", "확정", confirmedCount]
+        ] as const).map(([value, label, count]) => <button key={value} type="button" aria-pressed={stage === value} disabled={isSavingOutcome} onClick={() => onStageChange(value)}>{label}<span>{count}</span></button>)}
+      </div>
+
+      {isOutcomeFormVisible && (
+        <section className={styles.outcomeEditor} id="outcome-review-form">
+          <div className={styles.outcomeHeader}><h3>{editingOutcomeId ? "성과 수정" : "성과 검토"}</h3><button className="secondary-button" type="button" onClick={onCancel} disabled={isSavingOutcome}>작성 취소</button></div>
+          <form onSubmit={onSubmit}>
+            <fieldset disabled={isSavingOutcome} className={styles.outcomeFields}>
+              <label>개선 항목<input ref={titleInput} required maxLength={180} value={outcomeForm.title} onChange={(event) => changeForm({ title: event.target.value })} /></label>
+              <div className={styles.outcomePair}>
+                <label>개선 전<textarea aria-label="개선 전" value={outcomeForm.before_state} onChange={(event) => changeForm({ before_state: event.target.value })} /></label>
+                <label>개선 후<textarea aria-label="개선 후" value={outcomeForm.after_state} onChange={(event) => changeForm({ after_state: event.target.value })} /></label>
+              </div>
+              <div className={styles.outcomePair}>
+                <label>유형<select aria-label="성과 유형" value={outcomeForm.outcome_type} onChange={(event) => changeForm({ outcome_type: event.target.value as OutcomeType, metric_value: event.target.value === "qualitative" ? "" : outcomeForm.metric_value })}>{Object.entries(outcomeTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                <label>측정 지표<input value={outcomeForm.metric_name} onChange={(event) => changeForm({ metric_name: event.target.value })} /></label>
+              </div>
+              {outcomeForm.outcome_type === "quantitative" ? <div className={styles.outcomePair}>
+                <label>수치<input required inputMode="decimal" value={outcomeForm.metric_value} onChange={(event) => changeForm({ metric_value: event.target.value })} /></label>
+                <label>단위<input value={outcomeForm.metric_unit} onChange={(event) => changeForm({ metric_unit: event.target.value })} /></label>
+              </div> : null}
+
+              <fieldset className={styles.evidencePicker}>
+                <legend>근거 로그 <span>{selectedIds.length}개 선택</span></legend>
+                <div className={styles.evidenceToolbar}>
+                  <input type="search" aria-label="근거 로그 검색" placeholder="제목·내용·날짜 검색" value={evidenceQuery} onChange={(event) => setEvidenceQuery(event.target.value)} />
+                  <label className={styles.outcomeCheck}><input type="checkbox" aria-label="선택한 근거만" checked={selectedOnly} onChange={(event) => setSelectedOnly(event.target.checked)} />선택한 근거만</label>
+                </div>
+                <div className={styles.evidenceList}>
+                  {visibleLogs.length === 0 ? <div className="empty-state">{logs.length === 0 ? "연결할 업무 로그가 없습니다." : "조건에 맞는 근거가 없습니다."}</div> : null}
+                  {visibleLogs.map((log) => <div className={styles.evidenceItem} key={log.id}>
+                    <label className={styles.outcomeCheck}>
+                      <input type="checkbox" aria-label={`근거 선택: ${log.title}`} checked={selectedIds.includes(log.id)} onChange={(event) => changeForm({ evidence_work_log_ids: event.target.checked ? [...selectedIds, log.id] : selectedIds.filter((id) => id !== log.id) })} />
+                      <span><strong>{log.title}</strong><small>{log.log_date} · {workTypeLabels[log.work_type]}</small></span>
+                    </label>
+                    <details><summary>근거 내용</summary><dl>
+                      <div><dt>수행 내용</dt><dd>{log.content || "-"}</dd></div>
+                      {([ ["결정 사항", log.decisions], ["협업자", log.collaborators], ["다음 액션", log.next_actions], ["블로커", log.blockers] ] as const).filter(([, value]) => value).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
+                    </dl></details>
+                  </div>)}
+                </div>
+                {missingIds.map((id) => <label key={id} className={styles.outcomeCheck}><input type="checkbox" checked onChange={() => changeForm({ evidence_work_log_ids: selectedIds.filter((value) => value !== id) })} />조회되지 않은 근거 ({id.slice(0, 8)})</label>)}
+              </fieldset>
+              {documentEvidence.length > 0 ? <details><summary>기존 문서 근거 {documentEvidence.length}개</summary><ul>{documentEvidence.map((id) => <li key={id}>{id}</li>)}</ul></details> : null}
+              <label className={styles.outcomeCheck}><input type="checkbox" checked={outcomeForm.resume_ready} disabled={!canConfirm && !outcomeForm.resume_ready} onChange={(event) => setOutcomeForm({ ...outcomeForm, resume_ready: event.target.checked })} />근거를 확인했으며 이력서 반영을 확정합니다</label>
+              {!canConfirm ? <p className={styles.outcomeHint}>근거 미연결 · 검토 중으로만 저장 가능</p> : null}
+              <div className={styles.outcomeActions}><button className="primary-button" type="submit">{isSavingOutcome ? "저장 중" : outcomeForm.resume_ready ? "확정 저장" : "검토 저장"}</button></div>
+            </fieldset>
+          </form>
+        </section>
+      )}
+
+      {!isOutcomeFormVisible && stage === "candidates" ? <section aria-label="성과 후보">
         {outcomeCandidates.length === 0 ? <div className="empty-state">근거 로그 기반 후보 없음</div> : null}
-        {outcomeCandidates.length > 0 ? (
-          <div className="outcome-candidate-grid">
-            {outcomeCandidates.map((candidate) => (
-              <article className="candidate-card outcome-candidate-card" key={candidate.id}>
-                <div className="panel-title-row">
-                  <strong>{candidate.title}</strong>
-                  <span className="meta-pill">{candidate.source === "task" ? "완료 업무" : "업무 로그"}</span>
-                </div>
-                <p>{candidate.after_state || "저장된 근거를 성과로 정리합니다."}</p>
-                <div className="outcome-candidate-facts">
-                  <div><span>근거 로그</span><b>{candidate.evidence_work_log_ids.length}개</b></div>
-                  <div><span>수치</span><b>사용자 입력</b></div>
-                  <div><span>이력서</span><b>보류</b></div>
-                </div>
-                <div className="outcome-candidate-evidence">
-                  {candidate.evidence.slice(0, 3).map((item) => <span key={item}>{item}</span>)}
-                </div>
-                <div className="form-actions compact-actions">
-                  <button className="secondary-button" type="button" onClick={() => onApplyCandidate(candidate)}>양식에 적용</button>
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : null}
-      </section>
+        <div className={styles.outcomeList}>
+          {outcomeCandidates.map((candidate) => <article className={styles.outcomeRow} key={candidate.id}>
+            <div className={styles.outcomeHeader}><strong>{candidate.title}</strong><span className="meta-pill">{candidate.source === "task" ? "완료 업무" : "업무 로그"}</span></div>
+            <p>{candidate.after_state}</p>
+            <div className={styles.outcomeHeader}><small>근거 로그 {candidate.evidence_work_log_ids.length}개</small><button className="secondary-button" type="button" disabled={isSavingOutcome} onClick={() => onApplyCandidate(candidate)}>검토 시작</button></div>
+          </article>)}
+        </div>
+      </section> : null}
 
-      <section className="panel log-form-panel outcome-form-panel">
-        <div className="panel-title-row"><h2>{editingOutcomeId ? "성과 수정" : "성과 추가"}</h2>{editingOutcomeId ? <button className="secondary-button" type="button" onClick={onCancel}>취소</button> : <span className="meta-pill">필수: 개선 항목</span>}</div>
-        <form className="stacked-form compact-form" onSubmit={onSubmit}>
-          <div className="form-grid three-columns">
-            <label>유형<select value={outcomeForm.outcome_type} onChange={(event) => setOutcomeForm({ ...outcomeForm, outcome_type: event.target.value as OutcomeType, metric_value: event.target.value === "qualitative" ? "" : outcomeForm.metric_value })}>{Object.entries(outcomeTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-            <label>측정 지표<input placeholder="예: 처리 시간" value={outcomeForm.metric_name} onChange={(event) => setOutcomeForm({ ...outcomeForm, metric_name: event.target.value })} /></label>
-            <label>이력서 반영<select value={outcomeForm.resume_ready ? "yes" : "no"} onChange={(event) => setOutcomeForm({ ...outcomeForm, resume_ready: event.target.value === "yes" })}><option value="no">보류</option><option value="yes">가능</option></select></label>
-          </div>
-          <div className="form-grid three-columns">
-            <label>개선 항목<input placeholder="예: 주간 현황 취합 자동화" value={outcomeForm.title} onChange={(event) => setOutcomeForm({ ...outcomeForm, title: event.target.value })} /></label>
-            <label>수치<input disabled={outcomeForm.outcome_type === "qualitative"} inputMode="decimal" placeholder={outcomeForm.outcome_type === "quantitative" ? "사용자 확정값" : "정성 성과"} value={outcomeForm.metric_value} onChange={(event) => setOutcomeForm({ ...outcomeForm, metric_value: event.target.value })} /></label>
-            <label>단위<input placeholder="예: 분, 건, %" value={outcomeForm.metric_unit} onChange={(event) => setOutcomeForm({ ...outcomeForm, metric_unit: event.target.value })} /></label>
-          </div>
-          <div className="form-grid two-columns">
-            <label>개선 전<textarea placeholder="Before" value={outcomeForm.before_state} onChange={(event) => setOutcomeForm({ ...outcomeForm, before_state: event.target.value })} /></label>
-            <label>개선 후<textarea placeholder="After" value={outcomeForm.after_state} onChange={(event) => setOutcomeForm({ ...outcomeForm, after_state: event.target.value })} /></label>
-          </div>
-          <label>근거 로그
-            <select multiple value={outcomeForm.evidence_work_log_ids} onChange={(event) => setOutcomeForm({ ...outcomeForm, evidence_work_log_ids: Array.from(event.target.selectedOptions, (option) => option.value) })}>
-              {sortedLogs.map((log) => <option key={log.id} value={log.id}>{log.log_date} · {workTypeLabels[log.work_type]} · {log.title}</option>)}
-            </select>
-          </label>
-          <div className="form-actions"><button type="submit" disabled={isSavingOutcome}>{isSavingOutcome ? "저장 중" : editingOutcomeId ? "수정 저장" : "성과 추가"}</button></div>
-        </form>
-      </section>
-
-      <section className="summary-grid inline outcome-metrics" aria-label="성과 지표">
-        <div className="metric-card"><span>전체</span><strong>{outcomes.length}</strong></div>
-        <div className="metric-card"><span>정량</span><strong>{quantitativeOutcomes}</strong></div>
-        <div className="metric-card"><span>정성</span><strong>{outcomes.length - quantitativeOutcomes}</strong></div>
-        <div className="metric-card"><span>이력서 가능</span><strong>{resumeReadyOutcomes}</strong></div>
-      </section>
-
-      <section className="outcome-card-grid">
-        {sortedOutcomes.length === 0 ? <div className="empty-state">성과 없음</div> : null}
-        {sortedOutcomes.map((outcome) => (
-          <article className="candidate-card outcome-card" key={outcome.id}>
-            <div className="panel-title-row"><strong>{outcome.title}</strong>{outcome.resume_ready ? <span className="meta-pill priority-medium">이력서 가능</span> : <span className="meta-pill">보류</span>}</div>
-            <div className="outcome-facts">
-              <div><span>Before</span><b>{outcome.before_state || "-"}</b></div>
-              <div><span>After</span><b>{outcome.after_state || "-"}</b></div>
-              <div><span>지표</span><b>{outcome.metric_name || "-"}</b></div>
-              <div><span>수치</span><b>{outcome.metric_value ?? "-"}</b></div>
-              <div><span>단위</span><b>{outcome.metric_unit || "-"}</b></div>
-              <div><span>근거 로그</span><b>{outcomeEvidence(outcome, logs)}</b></div>
-            </div>
-            <div className="form-actions compact-actions"><button className="secondary-button" type="button" onClick={() => startEditOutcome(outcome)}>수정</button><button className="danger-button" type="button" onClick={() => void deleteOutcome(outcome)}>삭제</button></div>
-          </article>
-        ))}
-      </section>
-
+      {!isOutcomeFormVisible && stage !== "candidates" ? <section className={styles.outcomeList} aria-label={stage === "confirmed" ? "확정 성과" : "검토 중 성과"}>
+        {visibleOutcomes.length === 0 ? <div className="empty-state">{stage === "confirmed" ? "확정 성과 없음" : "검토 중 성과 없음"}</div> : null}
+        {visibleOutcomes.map((outcome) => <article className={styles.outcomeRow} key={outcome.id}>
+          <div className={styles.outcomeHeader}><strong>{outcome.title}</strong><span className="meta-pill">{outcome.resume_ready ? "이력서 반영 확정" : "검토 중"}</span></div>
+          <p>{outcome.after_state || "개선 후 내용 없음"}</p>
+          <div className={styles.outcomeHeader}><small>{outcomeTypeLabels[outcome.outcome_type]} · {outcomeMetric(outcome)} · 근거 로그 {outcome.evidence_work_log_ids.length}개</small><div className={styles.outcomeActions}>
+            <button className="secondary-button" type="button" disabled={isSavingOutcome} onClick={() => startEditOutcome(outcome)}>검토·수정</button>
+            <button className="danger-button" type="button" disabled={isSavingOutcome} onClick={() => void deleteOutcome(outcome)}>삭제</button>
+          </div></div>
+          <details><summary>성과 근거</summary><p>{outcomeEvidence(outcome, logs)}</p>{outcome.before_state ? <p>개선 전: {outcome.before_state}</p> : null}{outcome.evidence_document_ids.length ? <p>문서 근거 {outcome.evidence_document_ids.length}개</p> : null}</details>
+        </article>)}
+      </section> : null}
     </section>
   );
 }

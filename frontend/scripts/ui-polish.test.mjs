@@ -100,7 +100,7 @@ test("page workflows avoid duplicate navigation and record management surfaces",
   assert.doesNotMatch(detailPage, /className="panel log-table-panel"/);
   assert.doesNotMatch(detailPage, /className="panel outcome-table-panel"/);
   assert.match(detailPage, /className="panel log-timeline-panel"/);
-  assert.match(detailPage, /className="outcome-card-grid"/);
+  assert.match(detailPage, /className={styles.outcomeList}/);
   assert.doesNotMatch(reportsPage, /리포트 없음/);
   assert.match(careerPanel, /저장된 경력 자산 없음/);
 });
