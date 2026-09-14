@@ -45,7 +45,6 @@ export default function BranchesPage() {
         <div>
           <span className="eyebrow">GITHUB BRANCH ACTIVITY</span>
           <h1>브랜치 그래프</h1>
-          <p className="muted">프로젝트별 기준 브랜치와 작업 브랜치의 고유 커밋, 분기 상태, 최근 30일 작업 흐름을 비교합니다.</p>
         </div>
       </div>
       {error ? <div className="alert error" role="alert">{error}</div> : null}

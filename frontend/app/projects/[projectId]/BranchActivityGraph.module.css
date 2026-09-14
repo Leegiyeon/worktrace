@@ -1,129 +1,30 @@
-.panel {
-  display: grid;
-  gap: 16px;
-  min-width: 0;
-}
-
-.titleRow {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-}
-
-.titleRow > div {
-  min-width: 0;
-}
-
-.titleRow h2 {
-  margin: 0 0 4px;
-}
-
-.titleRow small,
-.heading small,
-.note {
-  color: var(--muted);
-}
-
-.list {
-  display: grid;
-  gap: 12px;
-  min-width: 0;
-}
-
-.row {
-  display: grid;
-  gap: 10px;
-  min-width: 0;
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface-muted);
-}
-
-.heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-}
-
-.heading > div:first-child {
-  min-width: 0;
-}
-
-.heading strong,
-.heading small {
-  display: block;
-  overflow-wrap: anywhere;
-}
-
-.badges {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
-  flex: 0 0 auto;
-}
-
-.track {
-  height: 8px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--border);
-}
-
-.track > span {
-  display: block;
-  height: 100%;
-  min-width: 0;
-  border-radius: inherit;
-  background: var(--accent-blue);
-}
-
-.sparkWrap {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 10px;
-  min-width: 0;
-}
-
-.sparkline {
-  display: block;
-  width: 100%;
-  height: 58px;
-  overflow: visible;
-}
-
-.sparkline polyline {
-  fill: none;
-  stroke: var(--accent-blue);
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
-}
-
-.note {
-  margin: 0;
-  font-size: var(--text-sm);
-}
-
+.panel { display: grid; gap: 16px; min-width: 0; }
+.titleRow { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; min-width: 0; }
+.titleRow > div { min-width: 0; overflow-wrap: anywhere; }
+.titleRow h2 { margin: 0 0 4px; }
+.titleRow small, .legendItem small, .note { color: var(--muted); }
+.canvas { min-width: 0; max-height: 520px; overflow: auto; border-block: 1px solid var(--border); background: var(--surface-muted); }
+.canvas:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.network { display: block; max-width: none; font-family: inherit; }
+.branchLine { fill: none; stroke-width: 2; stroke-linecap: round; }
+.commitNode { stroke: var(--surface, #fff); stroke-width: 1.5; }
+.hitTarget { fill: transparent; }
+.network a:focus .commitNode, .network a:hover .commitNode { stroke: #24292f; stroke-width: 3; }
+.headLabel { display: inline-flex; align-items: center; gap: 6px; max-width: 266px; padding: 3px 8px; height: 25px; box-sizing: border-box; border: 1px solid; border-radius: 4px; background: var(--surface, #fff); font-size: 12px; font-weight: 600; line-height: 17px; white-space: nowrap; }
+.labelText { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.legend { display: grid; border-bottom: 1px solid var(--border); }
+.legendItem { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 54px; padding: 8px 2px; border-bottom: 1px solid var(--border); }
+.legendItem:last-child { border-bottom: 0; }
+.legendItem strong, .legendItem small { display: block; overflow-wrap: anywhere; }
+.legendItem strong { font-size: var(--text-sm); }
+.legendItem small { margin-top: 2px; }
+.swatch { display: inline-block; flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; }
+.distance { color: var(--text-secondary); font-size: var(--text-sm); white-space: nowrap; }
+.note { margin: 0; font-size: var(--text-sm); }
+.error { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 @media (max-width: 720px) {
-  .titleRow,
-  .heading {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .badges {
-    justify-content: flex-start;
-  }
-
-  .sparkWrap {
-    grid-template-columns: 1fr;
-  }
+  .titleRow { align-items: stretch; flex-direction: column; }
+  .legendItem { grid-template-columns: 10px minmax(0, 1fr); }
+  .distance { grid-column: 2; }
+  .error { align-items: flex-start; flex-direction: column; }
 }

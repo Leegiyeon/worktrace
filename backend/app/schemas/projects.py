@@ -151,6 +151,14 @@ class BranchActivityPoint(BaseModel):
     commits: int = 0
 
 
+class GitHubBranchCommitNode(BaseModel):
+    sha: str
+    parents: list[str] = Field(default_factory=list)
+    message: str = ""
+    committed_at: str | None = None
+    url: str = ""
+
+
 class GitHubBranchActivity(BaseModel):
     name: str
     is_default: bool = False
@@ -159,6 +167,10 @@ class GitHubBranchActivity(BaseModel):
     status: str = "unknown"
     latest_commit_at: str | None = None
     activity: list[BranchActivityPoint] = Field(default_factory=list)
+    head_sha: str | None = None
+    commits: list[GitHubBranchCommitNode] = Field(default_factory=list)
+    history_truncated: bool = False
+    branch_list_truncated: bool = False
 
 
 class GitHubDelivery(BaseModel):
