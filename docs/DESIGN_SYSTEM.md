@@ -8,10 +8,14 @@ worktrace UI는 실무형 개인 프로젝트 관리 도구를 기준으로 한�
 
 - Framework: Next.js App Router, React, TypeScript, global CSS, route/component CSS module.
 - 주요 route: `/`, `/projects`, `/projects/[projectId]`, `/goals`, `/verifications`, `/branches`, `/insights`, `/reports`, `/login`.
-- 전역 navigation: logo는 dashboard(`/`)로 이동하고, header는 프로젝트, 목표·마일스톤, 검증센터, 브랜치 그래프, 인사이트, 리포트를 노출한다. `/login`에서는 header를 숨긴다.
+- 전역 navigation: logo는 dashboard(`/`)로 이동하고, header는 프로젝트, 목표·마일스톤, 완료 검토, 브랜치 그래프, 인사이트, 리포트를 노출한다. `/login`에서는 header를 숨긴다.
 - 브랜치 그래프: 한 번에 하나의 selected project만 검사한다. native `프로젝트` select와 프로젝트 링크를 같은 toolbar에 두고, selected repository만 fetch한다.
 - 진행률: `counts_toward_progress=true`인 WBS만 계산한다. 산정 대상이 있고 모두 마일스톤에 배정되면 가중 평균을 사용한다. 미배정 업무가 하나라도 있으면 전체 WBS 완료 비율을 사용하며, 산정 대상이 없으면 `산정 전`으로 표시한다.
-- 검증센터: AI 검토는 판단 보조다. stale/current review를 구분하고, `성취 기준 확인 · 검증 완료`는 사용자의 별도 명시 확인 flow다.
+- 완료 검토(`/verifications`): 프로젝트 한 개를 선택하여 성취 기준·남은 WBS·실제 근거와 저장된 확인 상태를 먼저 본다. AI 검토는 요청 시 실행하는 판단 보조이며 테스트 실행이나 서비스 상태 감시가 아니다. stale/current review를 구분하고, `성취 기준 확인 · 검증 완료`는 사용자의 별도 명시 확인 flow다.
+- 데이터 출처: 공통 progress formatter는 자동 구성 WBS 포함 시 `참고 N%`, 출처 필드 누락 시 `기준 미확인`을 표시한다. 두 경우 모두 평균에서 제외한다. 프로젝트 상태와 계산된 WBS 비율을 동일시하지 않는다. 상세에서는 `수치 산정 근거`를 펼쳐 분모·분자·출처·계산식을 확인한다.
+- AI confidence는 객관적 정확도 백분율로 노출하지 않는다. 수정일 기반 목록은 완료일로 표기하지 않고, 조회된 커밋 수를 전체 저장 건수로 표현하지 않는다.
+- 브랜드: `frontend/public/brand/worktrace-mark.svg`가 단일 원본이다. 녹색 `#126B5C` 바탕의 흰 W 경로와 금색 `#F2BE5C` 최신 지점을 사용한다. 헤더 34px, 로그인 40px로 고정하고 모바일에서는 심볼만 유지한다. 아이콘 색을 전체 UI 팔레트로 확장하지 않는다.
+- favicon은 같은 원본에서 생성한 16/32/48px ICO, SVG, 180px Apple 아이콘을 사용한다. 로그인 전에도 이 자산만 공개하고 인증된 API의 접근 정책은 바꾸지 않는다.
 - Page chrome: 여러 기존 화면은 `.dashboard-topbar`를 아직 사용한다. 브랜치 그래프 화면은 장식 card/eyebrow 없이 compact header를 사용한다.
 
 ## 2. UI 원칙
