@@ -160,7 +160,7 @@ export default function InsightsPage() {
         <>
           <section className="summary-grid dashboard-metrics" aria-label="프로젝트 분석 기준">
             <div className="metric-card"><span>진척</span><strong>{progressLabel(selectedProject)}</strong></div>
-            <div className="metric-card"><span>산정 기준</span><strong>{basisLabel(selectedProject)}</strong></div>
+            <div className="metric-card"><span>산정 기준</span><strong className="metric-text">{basisLabel(selectedProject)}</strong></div>
             <div className="metric-card"><span>잔여 WBS</span><strong>{pendingTasks.length}</strong></div>
             <div className="metric-card"><span>마일스톤</span><strong>{selectedProject.milestone_count}</strong></div>
           </section>

@@ -67,9 +67,9 @@ Source of truth: `frontend/app/globals.css`.
 
 - logo는 `aria-label="worktrace 대시보드로 이동"`을 가진 dashboard link다.
 - top-level route link는 active 상태에서 `aria-current="page"`를 사용한다.
-- 좁은 화면에서 header nav는 wrapping 대신 horizontal scroll을 허용한다.
+- 760px 이하에서는 header nav를 `화면 이동` native select로 바꾼다. 대시보드와 모든 최상위 화면을 선택할 수 있고 프로젝트 상세는 프로젝트로 표시한다.
 - 설계 의도: inspector/tool 성격의 화면에는 decorative eyebrow나 큰 topbar card를 새로 추가하지 않는다.
-- 구현 상태: dashboard, projects, goals, verifications, insights, reports 일부는 `.dashboard-topbar`를 계속 사용한다. 이를 없어진 패턴으로 문서화하지 않는다.
+- 구현 상태: `.dashboard-topbar`는 유지하되 배경·테두리·그림자를 없앤 공통 제목 행이다. `.dashboard-metrics`는 데스크톱 4열, 640px 이하 2열의 구분선 요약이다.
 
 ## 5. Layout Pattern
 
@@ -81,9 +81,10 @@ Source of truth: `frontend/app/globals.css`.
 
 ### Grid / Table / List
 
-- dashboard는 named grid area를 사용한다.
+- dashboard는 데스크톱 2열, 모바일 1열의 named grid area를 사용한다. 프로젝트 현황과 이슈를 우선하며 지연 업무는 이슈 목록에 통합한다.
+- 프로젝트와 이슈 행은 전체 로드 결과를 유지하고 각각 최대 360px(모바일 300px) 안에서 스크롤한다. 목록이 길면 키보드 포커스도 제공한다.
 - metric row는 `.summary-grid`와 `.metric-card`를 사용한다.
-- table은 `.data-table-wrap`으로 horizontal overflow를 관리한다.
+- 일반 table은 `.data-table-wrap`으로 horizontal overflow를 관리한다. WBS는 720px 이하에서 제목 한 행과 2열 필드로 전환한다. 이 규칙을 다른 탭 테이블에 적용하지 않는다.
 - dense list는 desktop에서 한 줄 비교를 우선하고 mobile에서 column으로 접는다.
 - 긴 title, evidence, repository name, URL, commit message는 wrap 또는 clamp 처리한다.
 
@@ -108,6 +109,8 @@ Source of truth: `frontend/app/globals.css`.
 - table/nav control은 필요하면 32px compact 높이를 쓴다.
 - 목표, 성취 기준, 근거, 성과처럼 긴 값은 textarea를 우선한다.
 - button label은 결과 중심으로 쓴다: `프로젝트 추가`, `목표 저장`, `AI 검토`, `성취 기준 확인 · 검증 완료`, `리포트 생성`.
+- 프로젝트 생성과 WBS 추가/수정은 필요할 때만 폼을 연다. WBS 편집은 항목명으로 포커스를 이동하며 양식을 숨겨도 같은 페이지의 초안을 보존한다.
+- WBS 기본 보기는 목록이며 탭·보기·필터·정렬은 URL을 따른다. 프로젝트 목록의 검색·상태·정렬도 URL에 보존한다. 새로고침 시 입력 초안까지 보존하는 기능은 아니다.
 
 ### Alert / Status
 

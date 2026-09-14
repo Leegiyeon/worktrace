@@ -7,6 +7,7 @@ import type { ProjectSummary, ProjectTask, TaskStatus, WorkLogItem, WorkType } f
 import { projectStatusLabels, taskPriorityLabels, taskStatusLabels, workTypeLabels } from "./projects/types";
 import { projectProgressDisplay, scopedProjectAverage, wbsActivityCounts } from "./projects/progress-display";
 import { parseApiErrorMessage } from "./reports/api-error";
+import styles from "./page.module.css";
 
 const taskStatusOrder: TaskStatus[] = ["planned", "in_progress", "done", "on_hold"];
 const activeStatuses = new Set(["idea", "review", "in_progress"]);
@@ -109,6 +110,7 @@ export default function HomePage() {
   const [quickCaptureMessage, setQuickCaptureMessage] = useState("");
   const [aiMemoText, setAiMemoText] = useState("");
   const [draftConfidence, setDraftConfidence] = useState<number | null>(null);
+  const [issueFilter, setIssueFilter] = useState("all");
 
   const loadDashboard = useCallback(async () => {
     setIsLoading(true);
@@ -163,7 +165,6 @@ export default function HomePage() {
     const activeProjects = projects.filter((project) => activeStatuses.has(project.status));
     const remainingTasks = projects.reduce((sum, project) => sum + project.remaining_tasks, 0);
     const averageProgress = scopedProjectAverage(projects);
-    const delayedTasks = allTasks.filter(isDelayed).sort((a, b) => (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999"));
     const completedThisWeek = allTasks
       .filter((task) => isCompletedThisWeek(task, weekStart))
       .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
@@ -190,13 +191,14 @@ export default function HomePage() {
       attentionTasks,
       averageProgress,
       completedThisWeek,
-      delayedTasks,
       maxStatusCount,
       remainingTasks,
       weeklyLogs,
       taskStatusCounts,
     };
   }, [projectTasks, projects, recentWorkLogs]);
+
+  const visibleIssues = dashboard.attentionTasks.filter((task) => issueFilter === "all" || managementIssueLabel(task) === issueFilter);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -333,18 +335,18 @@ export default function HomePage() {
         <div className="metric-card"><span>이번 주 로그</span><strong>{logsUnavailable ? "-" : dashboard.weeklyLogs.length}</strong></div>
       </section>
 
-      <section className="dashboard-grid" aria-label="프로젝트 관리 대시보드">
+      <section className={`dashboard-grid ${styles.layout}`} aria-label="프로젝트 관리 대시보드">
         <section className="panel dashboard-main-panel">
           <div className="panel-title-row">
             <h2>프로젝트별 WBS 현황</h2>
             <span className="count-badge">{projects.length}개</span>
           </div>
           {isLoading ? <div className="empty-state">로딩 중</div> : null}
-          {!isLoading && projects.length === 0 ? (
+          {!isLoading && !errorMessage && projects.length === 0 ? (
             <div className="empty-state"><span>프로젝트 없음</span><Link className="primary-link" href="/projects">추가</Link></div>
           ) : null}
-          <div className="progress-chart-list">
-            {projects.slice(0, 5).map((project) => {
+          <div className={`progress-chart-list ${styles.projectRows}`} tabIndex={projects.length > 5 ? 0 : undefined} role="region" aria-label="프로젝트별 현황">
+            {projects.map((project) => {
               const issueCount = (projectTasks[project.id] ?? []).filter(isManagementIssue).length;
               const progress = projectProgressDisplay(project);
               return <Link className="progress-row" href={`/projects/${project.id}`} key={project.id}>
@@ -484,13 +486,19 @@ export default function HomePage() {
         <section className="panel attention-panel">
           <div className="panel-title-row">
             <h2>이슈 현황</h2>
-            <span className="count-badge">{tasksUnavailable ? "-" : `${dashboard.attentionTasks.length}개`}</span>
+            <select aria-label="이슈 유형" value={issueFilter} onChange={(event) => setIssueFilter(event.target.value)}>
+              <option value="all">전체 이슈 {tasksUnavailable ? "" : dashboard.attentionTasks.length}</option>
+              <option value="기한 초과">기한 초과</option>
+              <option value="보류">보류</option>
+              <option value="우선 확인">우선 확인</option>
+            </select>
           </div>
           {tasksUnavailable ? <div className="empty-state">업무를 불러오지 못했습니다.</div> : null}
           {!tasksUnavailable && dashboard.attentionTasks.length === 0 ? <div className="empty-state">관리 이슈 없음</div> : null}
-          <div className="attention-queue">
-            {!tasksUnavailable ? dashboard.attentionTasks.slice(0, 8).map((task) => (
-              <Link className="attention-row" href={`/projects/${task.project_id}`} key={task.id}>
+          {!tasksUnavailable && dashboard.attentionTasks.length > 0 && visibleIssues.length === 0 ? <div className="empty-state">조건에 맞는 이슈가 없습니다.</div> : null}
+          <div className="attention-queue" tabIndex={visibleIssues.length > 5 ? 0 : undefined} role="region" aria-label="처리할 이슈">
+            {!tasksUnavailable ? visibleIssues.map((task) => (
+              <Link className="attention-row" href={`/projects/${task.project_id}?tab=tasks&view=list`} key={task.id}>
                 <span>
                   <strong>{task.title}</strong>
                   <small>{task.project_title}</small>
@@ -504,7 +512,7 @@ export default function HomePage() {
 
         <section className="panel status-graph-panel">
           <div className="panel-title-row">
-            <h2>WBS 상태 분포</h2>
+            <h2>전체 활동 상태</h2>
             <span className="count-badge">{tasksUnavailable ? "-" : `산정 ${dashboard.activityCounts.countedWbs} / 전체 ${dashboard.activityCounts.allActivities}`}</span>
           </div>
           {tasksUnavailable ? <div className="empty-state">업무 상태를 불러오지 못했습니다.</div> : null}
@@ -528,28 +536,10 @@ export default function HomePage() {
           {!logsUnavailable && recentWorkLogs.length === 0 ? <div className="empty-state">로그 없음</div> : null}
           <div className="dense-list">
             {!logsUnavailable ? recentWorkLogs.slice(0, 7).map((log) => (
-              <Link className="dense-list-row" href={log.project_id ? `/projects/${log.project_id}` : "/projects"} key={log.id}>
+              <Link className="dense-list-row" href={log.project_id ? `/projects/${log.project_id}?tab=logs` : "/projects"} key={log.id}>
                 <span>{log.title}</span>
                 <small>{log.project_title || "미지정"} · {workTypeLabels[log.work_type]}</small>
                 <b>{log.log_date}</b>
-              </Link>
-            )) : null}
-          </div>
-        </section>
-
-        <section className="panel delayed-panel">
-          <div className="panel-title-row">
-            <h2>지연 업무</h2>
-            <span className="count-badge danger-count">{tasksUnavailable ? "-" : `${dashboard.delayedTasks.length}개`}</span>
-          </div>
-          {tasksUnavailable ? <div className="empty-state">지연 업무를 확인하지 못했습니다.</div> : null}
-          {!tasksUnavailable && dashboard.delayedTasks.length === 0 ? <div className="empty-state">지연 없음</div> : null}
-          <div className="dense-list">
-            {!tasksUnavailable ? dashboard.delayedTasks.slice(0, 6).map((task) => (
-              <Link className="dense-list-row" href={`/projects/${task.project_id}`} key={task.id}>
-                <span>{task.title}</span>
-                <small>{task.project_title}</small>
-                <b>{task.due_date}</b>
               </Link>
             )) : null}
           </div>

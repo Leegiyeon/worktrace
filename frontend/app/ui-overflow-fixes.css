@@ -7,6 +7,13 @@ h1, h2, h3, p, li, small, strong, .text-link, .dense-list-row a, .dense-list-row
 .app-nav { flex: 1 1 auto; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: none; }
 .app-nav::-webkit-scrollbar { display: none; }
 .app-logo { flex: 0 0 auto; }
+.app-mobile-nav { display: none; min-width: 0; }
+.dashboard-topbar { border: 0; border-radius: 0; background: none; box-shadow: none; padding: 4px 0; min-height: 40px; align-items: center; }
+.summary-grid.dashboard-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; padding-block: 4px; border-block: 1px solid var(--border); }
+.summary-grid.dashboard-metrics > .metric-card { min-height: 64px; padding: 8px 12px; border: 0; border-left: 1px solid var(--border); border-radius: 0; background: none; box-shadow: none; transform: none; }
+.summary-grid.dashboard-metrics > .metric-card:first-child { border-left: 0; }
+.summary-grid.dashboard-metrics .metric-card strong { font-size: 20px; }
+.summary-grid.dashboard-metrics .metric-card .metric-text { font-size: var(--text-md); word-break: keep-all; }
 button, .primary-link, .primary-button, .secondary-button, .danger-button, .header-logout { height: auto; min-height: var(--control-height); max-height: none; max-width: 100%; white-space: normal; text-align: center; }
 .app-nav a, .header-logout, .tab-nav button, .view-switcher button, .data-table select, .table-link-button { white-space: nowrap; }
 .form-actions, .compact-actions, .table-actions, .panel-title-row, .report-result-header { max-width: 100%; }
@@ -32,3 +39,15 @@ button, .primary-link, .primary-button, .secondary-button, .danger-button, .head
 @media (max-width: 760px) { .app-header-inner { gap: 8px; } .app-header-actions { max-width: calc(100% - 42px); } .panel-title-row > .form-actions { flex: 1 1 100%; width: 100%; } }
 @media (max-width: 640px) { .dense-list-row, .project-page .dense-list > article > .dense-list-row { grid-template-columns: minmax(0, 1fr); } .dense-list-row > b, .project-page .dense-list > article > .dense-list-row > span, .project-page .dense-list > article > .dense-list-row > b, .project-page .dense-list > article > .dense-list-row > button { grid-row: auto; justify-self: stretch; text-align: left; } .project-page .dense-list > article > .dense-list-row > button, .verification-actions > *, .panel-title-row > .form-actions > * { width: 100%; } .verification-actions { align-items: stretch; } .verification-actions > * { flex: 1 1 100%; } }
 @media (max-width: 420px) { .page-shell { padding-inline: 10px; } .panel, .verification-card { padding: 12px; } .app-header-inner { padding-inline: 8px; } .app-nav a, .header-logout { padding-inline: 8px; } .count-badge, .meta-pill, .status-pill { max-width: 100%; white-space: normal; text-align: center; } }
+@media (max-width: 760px) {
+  .app-header-actions .app-nav { display: none; }
+  .app-mobile-nav { display: block; flex: 1; }
+  .app-mobile-nav select { width: 100%; font-size: var(--text-base); }
+  .app-header-inner .app-header-actions { flex: 1; }
+}
+@media (max-width: 640px) {
+  .summary-grid.dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .summary-grid.dashboard-metrics > .metric-card:nth-child(odd) { border-left: 0; }
+  .summary-grid.dashboard-metrics > .metric-card:nth-child(n + 3) { border-top: 1px solid var(--border); }
+  .dashboard-topbar { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 8px; }
+}

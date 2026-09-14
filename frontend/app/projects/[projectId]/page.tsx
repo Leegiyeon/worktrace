@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { FormEvent, use, useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { FormEvent, use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { parseApiErrorMessage } from "../../reports/api-error";
 import { CareerPanel } from "./CareerPanel";
+import styles from "./page.module.css";
 import type {
   CareerAsset,
   CareerTargetRole,
@@ -98,6 +99,9 @@ const tabs: { id: DetailTab; label: string }[] = [
 
 const taskStatusOrder: TaskStatus[] = ["planned", "in_progress", "done", "on_hold"];
 const priorityOrder: Record<TaskPriority, number> = { high: 1, medium: 2, low: 3 };
+const taskViewModes: TaskViewMode[] = ["board", "list", "calendar"];
+const taskSortKeys = ["due_date", "priority", "created_at", "status", "progress_scope"] as const;
+type TaskSortKey = (typeof taskSortKeys)[number];
 const initialTaskForm: TaskForm = {
   title: "",
   description: "",
@@ -107,6 +111,30 @@ const initialTaskForm: TaskForm = {
   milestone_id: "",
   counts_toward_progress: true
 };
+
+function isDetailTab(value: string | null): value is DetailTab {
+  return tabs.some((tab) => tab.id === value);
+}
+
+function isTaskViewMode(value: string | null): value is TaskViewMode {
+  return taskViewModes.some((mode) => mode === value);
+}
+
+function isTaskStatusFilter(value: string | null): value is TaskStatus | "all" {
+  return value === "all" || taskStatusOrder.some((status) => status === value);
+}
+
+function isTaskPriorityFilter(value: string | null): value is TaskPriority | "all" {
+  return value === "all" || Object.keys(taskPriorityLabels).some((priority) => priority === value);
+}
+
+function isIssueFilter(value: string | null): value is "all" | "issue" | "normal" {
+  return value === "all" || value === "issue" || value === "normal";
+}
+
+function isTaskSortKey(value: string | null): value is TaskSortKey {
+  return taskSortKeys.some((key) => key === value);
+}
 
 const initialProjectForm: ProjectForm = {
   title: "",
@@ -300,9 +328,21 @@ function buildOutcomeCandidates(logs: WorkLogItem[], tasks: ProjectTask[], outco
 
 export default function ProjectDetailPage({ params }: PageProps) {
   const { projectId } = use(params);
+  const pathname = usePathname();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<DetailTab>("overview");
-  const [taskViewMode, setTaskViewMode] = useState<TaskViewMode>("board");
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const viewParam = searchParams.get("view");
+  const statusParam = searchParams.get("status");
+  const priorityParam = searchParams.get("priority");
+  const issueParam = searchParams.get("issue");
+  const sortParam = searchParams.get("sort");
+  const activeTab: DetailTab = isDetailTab(tabParam) ? tabParam : "overview";
+  const taskViewMode: TaskViewMode = isTaskViewMode(viewParam) ? viewParam : "list";
+  const taskStatusFilter: TaskStatus | "all" = isTaskStatusFilter(statusParam) ? statusParam : "all";
+  const taskPriorityFilter: TaskPriority | "all" = isTaskPriorityFilter(priorityParam) ? priorityParam : "all";
+  const taskIssueFilter: "all" | "issue" | "normal" = isIssueFilter(issueParam) ? issueParam : "all";
+  const taskSortKey: TaskSortKey = isTaskSortKey(sortParam) ? sortParam : "due_date";
   const [project, setProject] = useState<ProjectSummary | null>(null);
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [milestones, setMilestones] = useState<ProjectMilestone[]>([]);
@@ -318,6 +358,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
   const [logForm, setLogForm] = useState<WorkLogForm>(() => createInitialWorkLogForm());
   const [outcomeForm, setOutcomeForm] = useState<OutcomeForm>(() => createInitialOutcomeForm());
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [isTaskFormVisible, setIsTaskFormVisible] = useState(false);
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
   const [editingOutcomeId, setEditingOutcomeId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -332,6 +373,43 @@ export default function ProjectDetailPage({ params }: PageProps) {
   const [successMessage, setSuccessMessage] = useState("");
   const [loadFailures, setLoadFailures] = useState<DetailLoadFailure[]>([]);
   const [careerMessage, setCareerMessage] = useState("");
+
+  const updateProjectDetailUrl = useCallback((updates: Partial<Record<"tab" | "view" | "status" | "priority" | "issue" | "sort", string>>) => {
+    const nextParams = new URLSearchParams(searchParams.toString());
+    for (const [key, value] of Object.entries(updates)) {
+      if (!value || (key === "tab" && value === "overview") || (key === "view" && value === "list") || value === "all" || (key === "sort" && value === "due_date")) {
+        nextParams.delete(key);
+      } else {
+        nextParams.set(key, value);
+      }
+    }
+    const queryString = nextParams.toString();
+    router.push(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  function setActiveDetailTab(tab: DetailTab) {
+    updateProjectDetailUrl({ tab });
+  }
+
+  function setTaskView(view: TaskViewMode) {
+    updateProjectDetailUrl({ tab: "tasks", view });
+  }
+
+  function showNewTaskForm() {
+    setSuccessMessage("");
+    setIsTaskFormVisible(true);
+    updateProjectDetailUrl({ tab: "tasks" });
+  }
+
+  function hideTaskForm() {
+    setIsTaskFormVisible(false);
+  }
+
+  function cancelTaskForm() {
+    setEditingTaskId(null);
+    setTaskForm(initialTaskForm);
+    setIsTaskFormVisible(false);
+  }
 
   const groupedTasks = useMemo(() => {
     return taskStatusOrder.map((status) => ({
@@ -551,6 +629,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
       }
       setTaskForm(initialTaskForm);
       setEditingTaskId(null);
+      setIsTaskFormVisible(false);
       await loadProject();
       setSuccessMessage(success);
     } catch (error) {
@@ -572,8 +651,8 @@ export default function ProjectDetailPage({ params }: PageProps) {
       milestone_id: task.milestone_id ?? "",
       counts_toward_progress: task.counts_toward_progress
     });
-    setTaskViewMode("board");
-    setActiveTab("tasks");
+    setIsTaskFormVisible(true);
+    setActiveDetailTab("tasks");
   }
 
   async function updateStatus(task: ProjectTask, status: TaskStatus) {
@@ -604,6 +683,11 @@ export default function ProjectDetailPage({ params }: PageProps) {
       if (!response.ok) {
         const detail = await response.json().catch(() => null);
         throw new Error(parseApiErrorMessage(detail));
+      }
+      if (editingTaskId === task.id) {
+        setEditingTaskId(null);
+        setIsTaskFormVisible(false);
+        setTaskForm(initialTaskForm);
       }
       await loadProject();
       setSuccessMessage("업무 삭제 완료");
@@ -667,7 +751,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
       duration_minutes: String(log.duration_minutes),
       blockers: log.blockers
     });
-    setActiveTab("logs");
+    setActiveDetailTab("logs");
   }
 
   async function deleteLog(log: WorkLogItem) {
@@ -758,7 +842,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
       evidence_work_log_ids: outcome.evidence_work_log_ids,
       resume_ready: outcome.resume_ready
     });
-    setActiveTab("outcomes");
+    setActiveDetailTab("outcomes");
   }
 
   function applyOutcomeCandidate(candidate: OutcomeCandidate) {
@@ -775,7 +859,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
       evidence_work_log_ids: candidate.evidence_work_log_ids,
       resume_ready: false
     });
-    setActiveTab("outcomes");
+    setActiveDetailTab("outcomes");
   }
 
   async function deleteOutcome(outcome: ProjectOutcome) {
@@ -828,7 +912,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
   }
 
   return (
-    <main className="page-shell project-page project-detail-page">
+    <main className={`page-shell project-page project-detail-page ${styles.projectDetailPage}`}>
       <div className="dashboard-topbar compact-topbar">
         <div>
           <Link className="text-link" href="/projects">← 프로젝트</Link>
@@ -860,13 +944,6 @@ export default function ProjectDetailPage({ params }: PageProps) {
 
       {project ? (
         <>
-          <section className="summary-grid dashboard-metrics" aria-label="프로젝트 지표">
-            <div className="metric-card"><span>진척도</span><strong>{projectProgressDisplay(project).label}</strong></div>
-            <div className="metric-card"><span>산정 WBS / 전체 활동</span><strong>{dashboard.activityCounts.countedWbs} / {dashboard.activityCounts.allActivities}</strong></div>
-            <div className="metric-card"><span>커밋 근거</span><strong>{loadFailures.includes("commits") ? "-" : commits.length}</strong></div>
-            <div className="metric-card"><span>성과</span><strong>{loadFailures.includes("outcomes") ? "-" : outcomes.length}</strong></div>
-          </section>
-
           <nav className="tab-nav" aria-label="프로젝트 상세 탭" role="tablist">
             {tabs.map((tab) => (
               <button
@@ -877,7 +954,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
                 key={tab.id}
                 role="tab"
                 type="button"
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => setActiveDetailTab(tab.id)}
               >
                 {tab.label}
               </button>
@@ -886,6 +963,12 @@ export default function ProjectDetailPage({ params }: PageProps) {
 
           {activeTab === "overview" ? (
             <section aria-labelledby="tab-overview" className="overview-dashboard" id="panel-overview" role="tabpanel">
+              <section className="summary-grid dashboard-metrics" aria-label="프로젝트 지표">
+                <div className="metric-card"><span>진척도</span><strong>{projectProgressDisplay(project).label}</strong></div>
+                <div className="metric-card"><span>산정 WBS / 전체 활동</span><strong>{dashboard.activityCounts.countedWbs} / {dashboard.activityCounts.allActivities}</strong></div>
+                <div className="metric-card"><span>커밋 근거</span><strong>{loadFailures.includes("commits") ? "-" : commits.length}</strong></div>
+                <div className="metric-card"><span>성과</span><strong>{loadFailures.includes("outcomes") ? "-" : outcomes.length}</strong></div>
+              </section>
               <section className="panel">
                 <div className="panel-title-row"><h2>진척</h2><span className="count-badge">{projectStatusLabels[project.status]}</span></div>
                 <div className="overview-bars">
@@ -976,22 +1059,25 @@ export default function ProjectDetailPage({ params }: PageProps) {
 
           {activeTab === "tasks" ? (
             <section aria-labelledby="tab-tasks" className="task-workspace" id="panel-tasks" role="tabpanel">
-              <div className="view-switcher" aria-label="업무 보기 방식">
-                {(["board", "list", "calendar"] as TaskViewMode[]).map((mode) => (
-                  <button
-                    aria-pressed={taskViewMode === mode}
-                    className={taskViewMode === mode ? "active" : ""}
-                    key={mode}
-                    type="button"
-                    onClick={() => setTaskViewMode(mode)}
-                  >
-                    {{ board: "보드", list: "목록", calendar: "캘린더" }[mode]}
-                  </button>
-                ))}
+              <div className={styles.taskCommandBar}>
+                <div className="view-switcher" aria-label="업무 보기 방식">
+                  {taskViewModes.map((mode) => (
+                    <button
+                      aria-pressed={taskViewMode === mode}
+                      className={taskViewMode === mode ? "active" : ""}
+                      key={mode}
+                      type="button"
+                      onClick={() => setTaskView(mode)}
+                    >
+                      {{ board: "보드", list: "목록", calendar: "캘린더" }[mode]}
+                    </button>
+                  ))}
+                </div>
+                {!isTaskFormVisible ? <button className="primary-button" type="button" onClick={showNewTaskForm}>{editingTaskId ? "편집 양식 열기" : "WBS 항목 추가"}</button> : null}
               </div>
+              {isTaskFormVisible ? <TaskFormPanel editingTaskId={editingTaskId} isSavingTask={isSavingTask} milestones={milestones} milestonesUnavailable={loadFailures.includes("milestones")} taskForm={taskForm} setTaskForm={setTaskForm} onSubmit={handleSaveTask} onCancel={cancelTaskForm} onHide={hideTaskForm} /> : null}
               {taskViewMode === "board" ? (
                 <section className="board-layout">
-                  <TaskFormPanel editingTaskId={editingTaskId} isSavingTask={isSavingTask} milestones={milestones} milestonesUnavailable={loadFailures.includes("milestones")} taskForm={taskForm} setTaskForm={setTaskForm} onSubmit={handleSaveTask} onCancel={() => { setEditingTaskId(null); setTaskForm(initialTaskForm); }} />
                   <section className="task-board" aria-label="업무 보드">
                     {groupedTasks.map((group) => (
                       <div className="panel task-column" key={group.status}>
@@ -1004,7 +1090,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
                 </section>
               ) : null}
               {taskViewMode === "list" ? (
-                <section className="panel"><TaskTable startEdit={startEdit} tasks={dashboard.sortedTasks} updateStatus={updateStatus} /></section>
+                <section className="panel"><TaskTable issueFilter={taskIssueFilter} priorityFilter={taskPriorityFilter} setIssueFilter={(issue) => updateProjectDetailUrl({ tab: "tasks", issue })} setPriorityFilter={(priority) => updateProjectDetailUrl({ tab: "tasks", priority })} setSortKey={(sort) => updateProjectDetailUrl({ tab: "tasks", sort })} setStatusFilter={(status) => updateProjectDetailUrl({ tab: "tasks", status })} sortKey={taskSortKey} startEdit={startEdit} statusFilter={taskStatusFilter} tasks={dashboard.sortedTasks} updateStatus={updateStatus} /></section>
               ) : null}
               {taskViewMode === "calendar" ? <CalendarPanel tasks={tasks} /> : null}
             </section>
@@ -1043,15 +1129,26 @@ function MiniOutcomeList({ outcomes }: { outcomes: ProjectOutcome[] }) {
   return <div className="compact-list">{outcomes.map((outcome) => <div className="dense-list-row" key={outcome.id}><span>{outcome.title}</span><small>{outcomeMetric(outcome)}</small><b>{outcome.resume_ready ? "가능" : "보류"}</b></div>)}</div>;
 }
 
-function TaskFormPanel({ editingTaskId, isSavingTask, milestones, milestonesUnavailable, taskForm, setTaskForm, onSubmit, onCancel }: { editingTaskId: string | null; isSavingTask: boolean; milestones: ProjectMilestone[]; milestonesUnavailable: boolean; taskForm: TaskForm; setTaskForm: (form: TaskForm) => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; onCancel: () => void }) {
+function TaskFormPanel({ editingTaskId, isSavingTask, milestones, milestonesUnavailable, taskForm, setTaskForm, onSubmit, onCancel, onHide }: { editingTaskId: string | null; isSavingTask: boolean; milestones: ProjectMilestone[]; milestonesUnavailable: boolean; taskForm: TaskForm; setTaskForm: (form: TaskForm) => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; onCancel: () => void; onHide: () => void }) {
   const selectedMilestoneMissing = taskForm.milestone_id && !milestones.some((milestone) => milestone.id === taskForm.milestone_id);
+  const titleInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    titleInput.current?.focus();
+  }, [editingTaskId]);
 
   return (
     <section className="panel task-form-panel">
-      <div className="panel-title-row"><h2>{editingTaskId ? "WBS 항목 수정" : "WBS 항목 추가"}</h2>{editingTaskId ? <button className="secondary-button" type="button" onClick={onCancel}>취소</button> : <span className="meta-pill">필수: 항목명</span>}</div>
+      <div className="panel-title-row">
+        <h2>{editingTaskId ? "WBS 항목 수정" : "WBS 항목 추가"}</h2>
+        <div className="form-actions compact-actions">
+          <button className="secondary-button" type="button" onClick={onHide}>양식 숨기기</button>
+          {editingTaskId ? <button className="secondary-button" type="button" onClick={onCancel}>편집 취소</button> : <span className="meta-pill">필수: 항목명</span>}
+        </div>
+      </div>
       <form className="stacked-form compact-form" onSubmit={onSubmit}>
         <div className="form-grid three-columns">
-          <label>항목명<input placeholder="예: API 응답 시간 개선" value={taskForm.title} onChange={(event) => setTaskForm({ ...taskForm, title: event.target.value })} /></label>
+          <label>항목명<input ref={titleInput} placeholder="예: API 응답 시간 개선" value={taskForm.title} onChange={(event) => setTaskForm({ ...taskForm, title: event.target.value })} /></label>
           <label>상태<select value={taskForm.status} onChange={(event) => setTaskForm({ ...taskForm, status: event.target.value as TaskStatus })}>{Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>우선순위<select value={taskForm.priority} onChange={(event) => setTaskForm({ ...taskForm, priority: event.target.value as TaskPriority })}>{Object.entries(taskPriorityLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         </div>
@@ -1088,12 +1185,7 @@ function TaskCard({ task, updateStatus, startEdit, deleteTask }: { task: Project
   );
 }
 
-function TaskTable({ tasks, updateStatus, startEdit }: { tasks: ProjectTask[]; updateStatus: (task: ProjectTask, status: TaskStatus) => Promise<void>; startEdit: (task: ProjectTask) => void }) {
-  const [statusFilter, setStatusFilter] = useState<TaskStatus | "all">("all");
-  const [priorityFilter, setPriorityFilter] = useState<TaskPriority | "all">("all");
-  const [issueFilter, setIssueFilter] = useState<"all" | "issue" | "normal">("all");
-  const [sortKey, setSortKey] = useState<"due_date" | "priority" | "created_at" | "status" | "progress_scope">("due_date");
-
+function TaskTable({ issueFilter, priorityFilter, setIssueFilter, setPriorityFilter, setSortKey, setStatusFilter, sortKey, statusFilter, tasks, updateStatus, startEdit }: { issueFilter: "all" | "issue" | "normal"; priorityFilter: TaskPriority | "all"; setIssueFilter: (filter: "all" | "issue" | "normal") => void; setPriorityFilter: (filter: TaskPriority | "all") => void; setSortKey: (sortKey: TaskSortKey) => void; setStatusFilter: (filter: TaskStatus | "all") => void; sortKey: TaskSortKey; statusFilter: TaskStatus | "all"; tasks: ProjectTask[]; updateStatus: (task: ProjectTask, status: TaskStatus) => Promise<void>; startEdit: (task: ProjectTask) => void }) {
   const filteredTasks = useMemo(() => {
     return [...tasks]
       .filter((task) => statusFilter === "all" || task.status === statusFilter)
@@ -1114,15 +1206,14 @@ function TaskTable({ tasks, updateStatus, startEdit }: { tasks: ProjectTask[]; u
 
   return (
     <>
-      <div className="panel-title-row table-section-title"><h2>WBS 목록</h2><span className="meta-pill">필터 · 정렬 · 상태 변경</span></div>
+      <div className="panel-title-row table-section-title"><h2>WBS 목록</h2><span className="count-badge">{filteredTasks.length} / {tasks.length}개</span></div>
       <div className="list-toolbar" aria-label="WBS 필터와 정렬">
-        <label>상태<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as TaskStatus | "all")}><option value="all">전체</option>{Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        <label>우선순위<select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value as TaskPriority | "all")}><option value="all">전체</option>{Object.entries(taskPriorityLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        <label>이슈<select value={issueFilter} onChange={(event) => setIssueFilter(event.target.value as "all" | "issue" | "normal")}><option value="all">전체</option><option value="issue">관리 필요</option><option value="normal">정상</option></select></label>
-        <label>정렬<select value={sortKey} onChange={(event) => setSortKey(event.target.value as "due_date" | "priority" | "created_at" | "status" | "progress_scope")}><option value="due_date">마감일</option><option value="priority">우선순위</option><option value="created_at">시작일</option><option value="status">상태</option><option value="progress_scope">산정 여부</option></select></label>
-        <span className="count-badge">{filteredTasks.length}개</span>
+        <label>상태<select aria-label="상태" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as TaskStatus | "all")}><option value="all">전체</option>{Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label>우선순위<select aria-label="우선순위" value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value as TaskPriority | "all")}><option value="all">전체</option>{Object.entries(taskPriorityLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label>이슈<select aria-label="이슈" value={issueFilter} onChange={(event) => setIssueFilter(event.target.value as "all" | "issue" | "normal")}><option value="all">전체</option><option value="issue">관리 필요</option><option value="normal">정상</option></select></label>
+        <label>정렬<select aria-label="정렬" value={sortKey} onChange={(event) => setSortKey(event.target.value as TaskSortKey)}><option value="due_date">마감일</option><option value="priority">우선순위</option><option value="created_at">시작일</option><option value="status">상태</option><option value="progress_scope">산정 여부</option></select></label>
       </div>
-      {filteredTasks.length === 0 ? <div className="empty-state">WBS 항목 없음</div> : null}
+      {filteredTasks.length === 0 ? <div className="empty-state">{tasks.length ? "조건에 맞는 WBS 항목이 없습니다." : "WBS 항목 없음"}</div> : null}
       {filteredTasks.length > 0 ? (
         <div className="data-table-wrap">
           <table className="data-table dense-task-table">
@@ -1131,7 +1222,7 @@ function TaskTable({ tasks, updateStatus, startEdit }: { tasks: ProjectTask[]; u
               const delayed = isDelayed(task);
               const issueLabel = delayed ? "기한 초과" : task.status === "on_hold" ? "보류" : task.status !== "done" && task.priority === "high" ? "우선 확인" : "정상";
               const hasIssue = issueLabel !== "정상";
-              return <tr key={task.id}><td><button className="table-link-button" type="button" onClick={() => startEdit(task)}>{task.title}</button></td><td><select aria-label={`${task.title} 상태 변경`} value={task.status} onChange={(event) => void updateStatus(task, event.target.value as TaskStatus)}>{Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td><td><span className={`meta-pill priority-${task.priority}`}>{taskPriorityLabels[task.priority]}</span></td><td><span className={`meta-pill ${hasIssue ? "priority-high" : "priority-medium"}`}>{issueLabel}</span></td><td><span className="meta-pill">{task.counts_toward_progress ? "산정 WBS" : "참고 활동"}</span></td><td>{task.created_at.slice(0, 10)}</td><td>{task.due_date ?? "-"}</td></tr>;
+              return <tr key={task.id}><td data-label="WBS 항목"><button className="table-link-button" type="button" onClick={() => startEdit(task)}>{task.title}</button></td><td data-label="상태"><select aria-label={`${task.title} 상태 변경`} value={task.status} onChange={(event) => void updateStatus(task, event.target.value as TaskStatus)}>{Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td><td data-label="우선순위"><span className={`meta-pill priority-${task.priority}`}>{taskPriorityLabels[task.priority]}</span></td><td data-label="이슈"><span className={`meta-pill ${hasIssue ? "priority-high" : "priority-medium"}`}>{issueLabel}</span></td><td data-label="산정"><span className="meta-pill">{task.counts_toward_progress ? "산정 WBS" : "참고 활동"}</span></td><td data-label="시작일">{task.created_at.slice(0, 10)}</td><td data-label="마감일">{task.due_date ?? "-"}</td></tr>;
             })}</tbody>
           </table>
         </div>

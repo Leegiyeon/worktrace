@@ -25,7 +25,7 @@
 
 ## Information architecture
 - Implemented primary navigation: the logo links to `/`; the authenticated header exposes `/projects`, `/goals`, `/verifications`, `/branches`, `/insights`, and `/reports`; `/login` hides the app header.
-- Navigation state: each global route sets `aria-current="page"` when active; the branch page keeps its project selector inside the page toolbar instead of turning every project into a separate graph section.
+- Navigation state: desktop global links set `aria-current="page"`; at 760px and below a native `화면 이동` select exposes all seven routes including the dashboard. Project detail maps to the projects option. The branch page keeps its project selector inside the page toolbar.
 - Core routes/screens: `/login`, `/`, `/projects`, `/projects/[projectId]`, `/goals`, `/verifications`, `/branches`, `/insights`, and `/reports`.
 - Content hierarchy: dashboard attention and activity first; project list/detail for CRUD and evidence; goals/milestones for objective and acceptance criteria; verification center for AI-assisted review and explicit validation state; branch graph for selected repository inspection; insights and reports after project records exist.
 - Workflow sequence: define project and WBS -> connect repository/evidence -> review goals and milestone evidence -> use AI review as advisory output -> explicitly confirm validation state when needed -> use computed progress, reporting, and career assets without treating AI as the source of truth.
@@ -37,7 +37,7 @@
 - Progressive disclosure: common fields stay visible; branch details, milestone evidence, and secondary evidence lists use compact disclosure or bounded panels.
 - One action, one place: global navigation owns route movement, project tabs own domain workflows, and record rows/cards expose edit/delete/validation actions in their local context.
 - Honest scope: stale AI reviews remain visible but cannot complete validation; verified milestones are not overwritten by batch AI calls; unavailable data is shown as loading, empty, error, or disconnected rather than implied success.
-- Tradeoffs: desktop keeps dense tables, boards, and metric grids; mobile preserves data fidelity with wrapping, bounded overflow, and horizontal table scroll instead of hiding core data.
+- Tradeoffs: desktop keeps dense tables, boards, and metric grids; mobile WBS uses labeled two-column fields with a full-width title. Other dense tables retain bounded horizontal overflow where needed.
 
 ## Visual language
 - Color: implemented tokens use neutral light surfaces with navy identity accents: `--background #f5f6f8`, `--foreground #111827`, `--muted #647084`, `--surface #ffffff`, `--surface-muted #f1f4f8`, `--accent #172033`, `--accent-strong #0b1220`, `--accent-soft #e6edf7`, `--accent-blue #2367e8`, `--border #d9e0ea`, `--danger #b42318`, `--success #15803d`, and `--warning #b7791f`.
@@ -49,6 +49,9 @@
 
 ## Components
 - Existing components to reuse: metric cards, status/meta/count badges, dense lists, data tables, progress bars, task boards, panel title rows, tab navigation, alerts, forms, and compact action rows.
+- Dashboard hierarchy: project progress and one filtered attention queue precede activity charts and recent logs. Overdue tasks are part of that queue, not a duplicate panel. Project/issue lists keep all loaded rows in bounded scroll regions.
+- Project workflow: list first, compact context, search/status/sort, and an on-demand create form. WBS defaults to list view, with one shared on-demand add/edit form; hiding it keeps the draft. Detail metrics appear only on the overview tab.
+- URL state: project list uses `q`, `status`, `sort`; project detail uses `tab`, `view`, `status`, `priority`, `issue`, `sort`. Reload/back restores those conditions. Form drafts remain in memory, not in URL or persistent storage.
 - Implemented branch graph components: selected-project branch page with native `프로젝트` select, compact page title, project link, repository loading/error/disconnected states, one `BranchActivityGraph`, compact/full commit range controls, bounded scroll canvas, selected commit detail, refresh button, source timestamp, and branch status disclosure.
 - Implemented milestone components: goals page objective/success-criteria forms, milestone rows with WBS count/progress/weight, expandable evidence panel, AI review result card, missing-check list, and acceptance-criteria/pending-WBS/recent-evidence sections.
 - Implemented verification components: project-level review summary, needed-review and force-review buttons, current/stale/missing review counts, milestone verification cards, stale-review alert, AI review action, explicit `성취 기준 확인 · 검증 완료` action, and validation cancel action. Validation is an explicit confirmation flow separate from the general progress formula.
@@ -65,10 +68,10 @@
 
 ## Responsive behavior
 - Supported breakpoints/devices: desktop browsers and mobile widths down to 360px, with CSS guardrails down to 320px minimum document width.
-- Layout adaptations: dashboard grids collapse from three columns to two and one; project management and overview grids collapse below tablet widths; dense tables keep horizontal scroll; nav scrolls horizontally inside the sticky header when necessary.
+- Layout adaptations: dashboard uses two desktop columns and one mobile column; summary metrics use four columns and two at 640px and below. Project and WBS filters keep status/sort pairs side by side on mobile. Other dense tables keep horizontal scroll.
 - Variable content: long titles and evidence strings use `overflow-wrap`; table wrappers and the full-history graph use bounded overflow. The summary graph fits node spacing to available width without scaling label fonts. Shared HEAD refs use one representative label plus a count; labels are measured and packed separately from history lanes. Summary height follows content rather than clipping nodes below stacked names.
 - Mobile planning: milestone rows and verification actions collapse to single-column full-width controls; count badges and pills can wrap at narrow widths.
-- Narrow header behavior: the logo remains the dashboard route; navigation is horizontally scrollable and product text can compress before route controls wrap.
+- Narrow header behavior: the logo remains the dashboard route; a native route select replaces the horizontally scrolling desktop links at 760px and below.
 - Touch/hover differences: actions remain visible without hover; hover polish is optional, while focus and disabled states are explicit.
 
 ## Interaction states
@@ -98,4 +101,4 @@
 - [ ] Define the next single-user access-control and operational hardening checklist for the current worktrace.cloud deployment; owner: product/ops; impact: auth policy, monitoring, backup, and incident recovery.
 - [ ] Decide the allowed sensitivity of future uploaded documents; owner: product; impact: retention, encryption, and AI data boundaries.
 - [ ] Decide when document ingestion becomes the next vertical slice; owner: product; impact: navigation and schema expansion.
-- [ ] Decide whether `dashboard-topbar` remains the standard compact page heading or should be replaced route-by-route with non-card headers like the branch page; owner: design/frontend; impact: visual consistency and doc/test updates.
+- Resolved: `dashboard-topbar` remains the shared compact page heading but no longer has a card border, background, or shadow. Dashboard sections use unframed bands; legacy tool panels are not claimed to be fully migrated.

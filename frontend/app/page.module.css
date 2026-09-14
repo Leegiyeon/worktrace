@@ -1,0 +1,33 @@
+.layout.layout {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas: "progress attention" "status recent" "completed completed" "capture capture";
+  align-items: start;
+  gap: 16px 24px;
+}
+
+.layout > section, .layout > details {
+  padding: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  min-width: 0;
+}
+
+.layout :global(.panel-title-row) { margin-bottom: 8px; }
+.layout :global(.panel-title-row) > select { width: auto; max-width: 180px; }
+.projectRows { max-height: 360px; overflow: auto; scrollbar-gutter: stable; }
+.layout :global(.progress-row-head strong) { min-width: 0; flex: 1 1 100%; }
+.layout :global(.attention-queue) { grid-template-columns: minmax(0, 1fr); gap: 0; max-height: 360px; overflow: auto; scrollbar-gutter: stable; }
+.layout :global(.attention-row) { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 10px 2px; }
+.layout :global(.attention-row) > span:first-child { grid-row: 1 / 3; gap: 3px; }
+.layout :global(.attention-row strong), .layout :global(.attention-row small) { white-space: normal; overflow-wrap: anywhere; }
+.layout :global(.attention-row time) { grid-column: 2; text-align: right; }
+.layout :global(.recent-panel .dense-list) { max-height: 220px; overflow: auto; }
+.layout :global(.completed-panel .data-table-wrap) { max-height: 260px; overflow: auto; }
+
+@media (max-width: 760px) {
+  .layout.layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "progress" "attention" "capture" "status" "recent" "completed"; gap: 8px; }
+  .projectRows, .layout :global(.attention-queue) { max-height: 300px; }
+}
