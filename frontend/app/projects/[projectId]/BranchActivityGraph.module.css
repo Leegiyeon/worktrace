@@ -1,19 +1,27 @@
-.panel { display: grid; gap: 16px; min-width: 0; }
+.panel { display: grid; gap: 10px; min-width: 0; }
+.graphBody { display: grid; gap: 8px; min-width: 0; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.toolbar small { color: var(--muted); font-size: 12px; }
+.modes { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: 4px; }
+.modes button { min-height: 28px; padding: 3px 10px; border: 0; border-radius: 2px; background: transparent; color: var(--muted); font-size: 12px; }
+.modes button[aria-pressed="true"] { background: var(--surface-muted); color: var(--text); font-weight: 600; }
+.branchDetails summary { cursor: pointer; font-size: 12px; padding-block: 4px; color: var(--muted); }
+.branchDetails summary span { margin-left: 4px; font-variant-numeric: tabular-nums; }
 .titleRow { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; min-width: 0; }
 .titleRow > div { min-width: 0; overflow-wrap: anywhere; }
 .titleRow h2 { margin: 0 0 4px; }
 .titleRow small, .legendItem small, .note { color: var(--muted); }
-.canvas { min-width: 0; max-height: 520px; overflow: auto; border-block: 1px solid var(--border); background: var(--surface-muted); }
+.canvas { min-width: 0; max-height: 240px; overflow: auto; border-block: 1px solid var(--border); background: var(--surface-muted); }
 .canvas:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .network { display: block; max-width: none; font-family: inherit; }
 .branchLine { fill: none; stroke-width: 2; stroke-linecap: round; }
 .commitNode { stroke: var(--surface, #fff); stroke-width: 1.5; }
 .hitTarget { fill: transparent; }
 .network a:focus .commitNode, .network a:hover .commitNode { stroke: #24292f; stroke-width: 3; }
-.headLabel { display: inline-flex; align-items: center; gap: 6px; max-width: 266px; padding: 3px 8px; height: 25px; box-sizing: border-box; border: 1px solid; border-radius: 4px; background: var(--surface, #fff); font-size: 12px; font-weight: 600; line-height: 17px; white-space: nowrap; }
+.headLabel { display: inline-flex; align-items: center; gap: 4px; max-width: 180px; padding: 2px 6px; height: 22px; box-sizing: border-box; border: 1px solid; border-radius: 4px; background: var(--surface, #fff); font-size: 12px; font-weight: 600; line-height: 16px; white-space: nowrap; }
 .labelText { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .legend { display: grid; border-bottom: 1px solid var(--border); }
-.legendItem { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 54px; padding: 8px 2px; border-bottom: 1px solid var(--border); }
+.legendItem { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 40px; padding: 5px 2px; border-bottom: 1px solid var(--border); }
 .legendItem:last-child { border-bottom: 0; }
 .legendItem strong, .legendItem small { display: block; overflow-wrap: anywhere; }
 .legendItem strong { font-size: var(--text-sm); }

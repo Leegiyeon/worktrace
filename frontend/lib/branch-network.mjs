@@ -6,7 +6,7 @@ export function branchColor(name) {
   return COLORS[hash % COLORS.length];
 }
 
-export function buildBranchNetwork(branches) {
+export function buildBranchNetwork(branches, { compact = false, viewportWidth = 720 } = {}) {
   const orderedBranches = [...branches].sort((a, b) => Number(b.is_default) - Number(a.is_default) || a.name.localeCompare(b.name));
   const usedColors = new Set([COLORS[0]]);
   const colors = new Map(orderedBranches.map((branch) => {
@@ -60,23 +60,41 @@ export function buildBranchNetwork(branches) {
     const lane = ownership.get(branch.head_sha);
     if (lane !== undefined) lanes[lane].labels.push(branch);
   }
-  let height = 20;
+  const visible = new Set(order);
+  if (compact) {
+    const heads = new Set(branches.map((branch) => branch.head_sha));
+    const mergeParents = new Set([...commits.values()].filter((commit) => commit.parents.length > 1).flatMap((commit) => commit.parents));
+    for (const sha of order) {
+      const commit = commits.get(sha);
+      if (!heads.has(sha) && !mergeParents.has(sha) && commit.parents.length === 1 && commits.has(commit.parents[0]) && children.get(sha).length === 1) visible.delete(sha);
+    }
+  }
+  const visibleOrder = order.filter((sha) => visible.has(sha));
+  const spacing = compact ? Math.max(18, Math.min(40, (viewportWidth - 216) / Math.max(1, visibleOrder.length - 1))) : 24;
+  let height = 10;
   for (const lane of lanes) {
     lane.top = height;
-    lane.y = height + lane.labels.length * 30 + 28;
-    height = lane.y + 48;
+    lane.y = height + lane.labels.length * 26 + 12;
+    height = lane.y + 18;
   }
-  const nodes = order.map((sha, index) => {
+  const nodes = visibleOrder.map((sha, index) => {
     const commit = commits.get(sha);
     const lane = lanes[ownership.get(sha)];
-    return { ...commit, x: 36 + index * 44, y: lane.y, color: lane.color, missingParents: commit.parents.filter((parent) => !commits.has(parent)) };
+    return { ...commit, x: 20 + index * spacing, y: lane.y, color: lane.color, missingParents: commit.parents.filter((parent) => !commits.has(parent)) };
   });
   const bySha = new Map(nodes.map((node) => [node.sha, node]));
-  const edges = nodes.flatMap((node) => node.parents.filter((sha) => bySha.has(sha)).map((sha) => {
+  const edges = nodes.flatMap((node) => node.parents.filter((sha) => commits.has(sha)).map((immediateParent) => {
+    let sha = immediateParent;
+    let collapsedCommits = 0;
+    // Only degree-one chains are collapsed; every fork and merge remains explicit.
+    while (!visible.has(sha)) {
+      sha = commits.get(sha).parents[0];
+      collapsedCommits++;
+    }
     const parent = bySha.get(sha);
     const mid = (parent.x + node.x) / 2;
-    return { from: sha, to: node.sha, color: node.parents[0] === sha ? node.color : parent.color, path: `M ${parent.x} ${parent.y} C ${mid} ${parent.y}, ${mid} ${node.y}, ${node.x} ${node.y}` };
+    return { from: sha, to: node.sha, collapsedCommits, color: node.parents[0] === immediateParent ? node.color : parent.color, path: `M ${parent.x} ${parent.y} C ${mid} ${parent.y}, ${mid} ${node.y}, ${node.x} ${node.y}` };
   }));
-  const labels = lanes.flatMap((lane) => lane.labels.map((branch, index) => ({ name: branch.name, sha: branch.head_sha, x: bySha.get(branch.head_sha).x, y: lane.top + index * 30, nodeY: lane.y, color: colors.get(branch.name) })));
-  return { nodes, edges, labels, width: Math.max(720, nodes.length * 44 + 300), height: Math.max(140, height), incomplete: branches.some((branch) => branch.history_truncated || !bySha.has(branch.head_sha)) || nodes.some((node) => node.missingParents.length > 0) };
+  const labels = lanes.flatMap((lane) => lane.labels.map((branch, index) => ({ name: branch.name, sha: branch.head_sha, x: bySha.get(branch.head_sha).x, y: lane.top + index * 26, nodeY: lane.y, color: colors.get(branch.name) })));
+  return { nodes, edges, labels, totalCommits: order.length, width: Math.max(viewportWidth, 216 + Math.max(0, nodes.length - 1) * spacing), height: Math.max(80, height), incomplete: branches.some((branch) => branch.history_truncated || !bySha.has(branch.head_sha)) || nodes.some((node) => node.missingParents.length > 0) };
 }

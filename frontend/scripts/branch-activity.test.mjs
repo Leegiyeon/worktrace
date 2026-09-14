@@ -68,6 +68,28 @@ test("all supported branch heads have distinct colors and permutation-stable lay
   assert.deepEqual(graph, buildBranchNetwork([...branches].reverse()));
 });
 
+test("compact network collapses only linear history and keeps all head refs", () => {
+  const commits = Array.from({ length: 100 }, (_, i) => commit(`c${i}`, i ? [`c${i - 1}`] : []));
+  const branches = [branch("main", "c99", commits, true), branch("release", "c50", commits.slice(0, 51))];
+  const compact = buildBranchNetwork(branches, { compact: true, viewportWidth: 390 });
+  assert.deepEqual(compact.nodes.map((node) => node.sha), ["c0", "c50", "c99"]);
+  assert.equal(compact.width, 390);
+  assert.ok(compact.height <= 120);
+  assert.equal(compact.totalCommits, 100);
+  assert.deepEqual(compact.edges.map((edge) => edge.collapsedCommits), [49, 48]);
+  assert.equal(compact.labels.length, 2);
+  assert.equal(buildBranchNetwork(branches).nodes.length, 100);
+});
+
+test("compact network preserves forks, merge parents, and missing-history boundaries", () => {
+  const commits = [commit("root", ["missing"]), commit("a", ["root"]), commit("b", ["a"]), commit("w1", ["a"]), commit("w2", ["w1"]), commit("merge", ["b", "w2"])];
+  const compact = buildBranchNetwork([branch("main", "merge", commits, true)], { compact: true });
+  assert.deepEqual(new Set(compact.nodes.map((node) => node.sha)), new Set(["root", "a", "b", "w2", "merge"]));
+  assert.equal(compact.edges.filter((edge) => edge.to === "merge").length, 2);
+  assert.ok(compact.edges.some((edge) => edge.from === "a" && edge.to === "w2" && edge.collapsedCommits === 1));
+  assert.equal(compact.incomplete, true);
+});
+
 
 test("branch activity is available through an authenticated project proxy", () => {
   assert.match(proxy, /proxyBackend/);

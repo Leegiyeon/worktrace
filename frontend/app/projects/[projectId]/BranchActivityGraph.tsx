@@ -31,16 +31,32 @@ function commitLink(url: string | null) {
 }
 
 function NetworkGraph({ branches }: { branches: GitHubBranchActivity[] }) {
-  const graph = useMemo(() => buildBranchNetwork(branches), [branches]);
+  const [compact, setCompact] = useState(true);
+  const [viewportWidth, setViewportWidth] = useState(720);
+  const container = useRef<HTMLDivElement>(null);
+  const graph = useMemo(() => buildBranchNetwork(branches, { compact, viewportWidth }), [branches, compact, viewportWidth]);
   const canvas = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!container.current) return;
+    const observer = new ResizeObserver(([entry]) => setViewportWidth(Math.max(240, Math.floor(entry.contentRect.width))));
+    observer.observe(container.current);
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => {
     if (canvas.current) canvas.current.scrollLeft = Math.max(0, (graph.nodes.at(-1)?.x ?? 0) - canvas.current.clientWidth * 0.45);
   }, [graph]);
 
-  return <>
+  return <div className={styles.graphBody} ref={container}>
+    <div className={styles.toolbar}>
+      <div className={styles.modes} role="group" aria-label="커밋 표시 범위">
+        <button type="button" aria-pressed={compact} onClick={() => setCompact(true)}>요약</button>
+        <button type="button" aria-pressed={!compact} onClick={() => setCompact(false)}>전체 커밋</button>
+      </div>
+      <small>{graph.totalCommits}개 커밋{compact ? ` · 주요 지점 ${graph.nodes.length}개` : ""}</small>
+    </div>
     {graph.nodes.length === 0 ? <div className="empty-state">표시할 커밋 이력이 없습니다.</div> : <div className={styles.canvas} ref={canvas} tabIndex={0} role="region" aria-label="커밋 네트워크">
       <svg className={styles.network} width={graph.width} height={graph.height} aria-label="브랜치 병합 네트워크">
-        {graph.edges.map((edge) => <path key={`${edge.from}-${edge.to}`} className={styles.branchLine} d={edge.path} stroke={edge.color} />)}
+        {graph.edges.map((edge) => <path key={`${edge.from}-${edge.to}`} className={styles.branchLine} d={edge.path} stroke={edge.color} strokeDasharray={edge.collapsedCommits ? "4 2" : undefined}><title>{edge.collapsedCommits ? `중간 커밋 ${edge.collapsedCommits}개` : "부모 커밋 연결"}</title></path>)}
         {graph.nodes.map((node) => <g key={node.sha}>
           {node.missingParents.length > 0 ? <path d={`M ${node.x - 18} ${node.y} H ${node.x}`} stroke={node.color} strokeDasharray="3 3"><title>이전 부모 커밋은 조회 범위 밖입니다.</title></path> : null}
           <a href={commitLink(node.url)} target="_blank" rel="noreferrer" aria-label={`${node.sha.slice(0, 7)} ${node.message}`}>
@@ -50,8 +66,8 @@ function NetworkGraph({ branches }: { branches: GitHubBranchActivity[] }) {
           </a>
         </g>)}
         {graph.labels.map((label) => <g className={styles.branchLabel} key={label.name}>
-          <path d={`M ${label.x} ${label.y + 25} V ${label.nodeY - 8}`} stroke={label.color} strokeDasharray="2 3" />
-          <foreignObject x={label.x - 8} y={label.y} width="270" height="26">
+          <path d={`M ${label.x} ${label.y + 22} V ${label.nodeY - 7}`} stroke={label.color} strokeDasharray="2 3" />
+          <foreignObject x={label.x - 8} y={label.y} width="184" height="23">
             <span className={styles.headLabel} style={{ borderColor: label.color, color: label.color }} title={`${label.name} · ${label.sha}`}>
               <span className={styles.swatch} style={{ backgroundColor: label.color }} /><span className={styles.labelText}>{label.name}</span>
             </span>
@@ -61,14 +77,17 @@ function NetworkGraph({ branches }: { branches: GitHubBranchActivity[] }) {
     </div>}
     {graph.incomplete ? <p className={styles.note}>최근 커밋 일부만 표시됩니다. 조회 범위 밖의 분기·병합 관계는 생략됩니다.</p> : null}
     {branches.some((branch) => branch.branch_list_truncated) ? <p className={styles.note}>브랜치 목록은 기준 브랜치 포함 최대 13개까지 표시됩니다.</p> : null}
-    <div className={styles.legend} aria-label="브랜치별 병합 상태">
+    <details className={styles.branchDetails}>
+      <summary>브랜치별 상태 <span>{branches.length}</span></summary>
+      <div className={styles.legend} aria-label="브랜치별 병합 상태">
       {branches.map((branch) => <div className={styles.legendItem} key={branch.name}>
         <span className={styles.swatch} style={{ backgroundColor: graph.labels.find((label) => label.name === branch.name)?.color ?? branchColor(branch.name) }} />
         <div><strong>{branch.name}</strong><small>{branch.head_sha?.slice(0, 7) ?? "HEAD 미확인"} · {branchStatusLabel(branch)}</small></div>
         <span className={styles.distance}>ahead {branch.ahead_by} · behind {branch.behind_by}</span>
       </div>)}
-    </div>
-  </>;
+      </div>
+    </details>
+  </div>;
 }
 
 function BranchNetworkLoader({ projectId, repositoryName }: Props) {
