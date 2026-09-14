@@ -39,6 +39,9 @@ async function hasValidSession(request: NextRequest) {
 }
 
 export async function proxy(request: NextRequest) {
+  if (["/brand/worktrace-mark.svg", "/apple-touch-icon.png", "/favicon.ico"].includes(request.nextUrl.pathname)) {
+    return NextResponse.next();
+  }
   const isProduction = process.env.NODE_ENV === "production";
   const passwordHash = process.env.WORKTRACE_PASSWORD_HASH ?? process.env.WORK_SUPPORT_PASSWORD_HASH;
   const sessionSecret = process.env.WORKTRACE_SESSION_SECRET ?? process.env.WORK_SUPPORT_SESSION_SECRET;

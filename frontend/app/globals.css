@@ -118,34 +118,22 @@ body {
   width: 34px;
   height: 34px;
   border-radius: var(--radius-lg);
-  box-shadow: 0 10px 22px rgba(15, 39, 66, 0.16);
+  flex: 0 0 34px;
 }
 
-.app-logo-mark svg {
+.app-logo-mark img {
   width: 100%;
   height: 100%;
 }
 
-.app-logo-mark .mark-bg {
-  fill: var(--accent);
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.app-logo-mark .mark-check,
-.app-logo-mark .mark-grid {
-  fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.app-logo-mark .mark-check {
-  stroke: #ffffff;
-  stroke-width: 3;
-}
-
-.app-logo-mark .mark-grid {
-  opacity: 0.82;
-  stroke: #94c6ff;
-  stroke-width: 2.2;
+.login-brand img {
+  flex: 0 0 40px;
 }
 
 .app-logo-text {
