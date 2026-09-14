@@ -21,6 +21,7 @@ export type ProjectSummary = {
   milestone_count: number;
   progress_basis: ProgressBasis;
   progress_percent: number;
+  derived_task_count?: number;
   updated_at: string;
 };
 
@@ -36,6 +37,7 @@ export type ProjectMilestone = {
   total_tasks: number;
   completed_tasks: number;
   progress_percent: number;
+  derived_task_count?: number;
   updated_at: string;
 };
 

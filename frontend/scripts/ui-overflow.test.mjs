@@ -7,6 +7,7 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf
 const layout = read("app/layout.tsx");
 const overflowStyles = read("app/ui-overflow-fixes.css");
 const verificationPage = read("app/verifications/page.tsx");
+const verificationStyles = read("app/verifications/page.module.css");
 const globalStyles = read("app/globals.css");
 
 test("project progress keeps its bar and value aligned below the title", () => {
@@ -30,11 +31,13 @@ test("goals milestone rows reflow before they can overlap", () => {
 });
 
 test("verification center marks shrink-safe responsive surfaces", () => {
-  assert.match(verificationPage, /verification-page/);
-  assert.match(verificationPage, /verification-project-panel/);
-  assert.match(verificationPage, /verification-card/);
-  assert.match(verificationPage, /verification-review/);
-  assert.match(verificationPage, /verification-actions/);
-  assert.match(overflowStyles, /\.verification-card/);
-  assert.match(overflowStyles, /\.verification-actions/);
+  assert.match(verificationPage, /styles\.summaryGrid/);
+  assert.match(verificationPage, /styles\.milestoneRow/);
+  assert.match(verificationPage, /styles\.rowActions/);
+  assert.match(verificationStyles, /\.summaryGrid/);
+  assert.match(verificationStyles, /\.milestoneRow/);
+  assert.match(verificationStyles, /\.rowActions/);
+  assert.match(verificationStyles, /@media \(max-width: 900px\)/);
+  assert.match(verificationStyles, /@media \(max-width: 640px\)/);
+  assert.match(overflowStyles, /button,[\s\S]*?white-space:\s*normal/);
 });

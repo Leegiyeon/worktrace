@@ -382,6 +382,7 @@ _PROJECT_SUMMARY_SQL = """
            COALESCE(ts.total_tasks, 0)::int AS total_tasks,
            COALESCE(ts.completed_tasks, 0)::int AS completed_tasks,
            COALESCE(ts.remaining_tasks, 0)::int AS remaining_tasks,
+           COALESCE(ts.derived_task_count, 0)::int AS derived_task_count,
            COALESCE(ms.milestone_count, 0)::int AS milestone_count,
            CASE WHEN COALESCE(ts.total_tasks, 0) > 0
                      AND COALESCE(ms.scoped_task_count, 0) = COALESCE(ts.total_tasks, 0)
@@ -397,7 +398,8 @@ _PROJECT_SUMMARY_SQL = """
     LEFT JOIN LATERAL (
         SELECT COUNT(*) FILTER (WHERE t.counts_toward_progress)::int AS total_tasks,
                COUNT(*) FILTER (WHERE t.counts_toward_progress AND t.status='done')::int AS completed_tasks,
-               COUNT(*) FILTER (WHERE t.counts_toward_progress AND t.status<>'done')::int AS remaining_tasks
+               COUNT(*) FILTER (WHERE t.counts_toward_progress AND t.status<>'done')::int AS remaining_tasks,
+               COUNT(*) FILTER (WHERE t.counts_toward_progress AND t.source_provider='derived-github')::int AS derived_task_count
         FROM project_tasks t
         WHERE t.owner_id=%(owner_id)s AND t.project_id=p.id
     ) ts ON true
@@ -423,6 +425,7 @@ _MILESTONE_SQL = """
            m.weight, m.sort_order, m.updated_at::text,
            COUNT(t.id) FILTER (WHERE t.counts_toward_progress)::int AS total_tasks,
            COUNT(t.id) FILTER (WHERE t.counts_toward_progress AND t.status='done')::int AS completed_tasks,
+           COUNT(t.id) FILTER (WHERE t.counts_toward_progress AND t.source_provider='derived-github')::int AS derived_task_count,
            CASE WHEN COUNT(t.id) FILTER (WHERE t.counts_toward_progress)=0 THEN 0
                 ELSE ROUND((COUNT(t.id) FILTER (WHERE t.counts_toward_progress AND t.status='done')::numeric /
                             COUNT(t.id) FILTER (WHERE t.counts_toward_progress)::numeric) * 100)::int END AS progress_percent
@@ -437,7 +440,8 @@ def _project_from_row(row) -> ProjectSummary:
         objective=row.get("objective") or "", success_criteria=row.get("success_criteria") or "",
         status=row["status"], role=row.get("role") or "", total_tasks=row.get("total_tasks") or 0,
         completed_tasks=row.get("completed_tasks") or 0, remaining_tasks=row.get("remaining_tasks") or 0,
-        milestone_count=row.get("milestone_count") or 0, progress_basis=row.get("progress_basis") or "unscoped",
+        derived_task_count=row.get("derived_task_count") or 0, milestone_count=row.get("milestone_count") or 0,
+        progress_basis=row.get("progress_basis") or "unscoped",
         progress_percent=row.get("progress_percent") or 0, updated_at=row["updated_at"],
     )
 
@@ -447,8 +451,8 @@ def _milestone_from_row(row) -> ProjectMilestone:
         id=row["id"], project_id=row["project_id"], milestone_key=row["milestone_key"], title=row["title"],
         description=row.get("description") or "", acceptance_criteria=row.get("acceptance_criteria") or "",
         weight=row["weight"], sort_order=row.get("sort_order") or 0, total_tasks=row.get("total_tasks") or 0,
-        completed_tasks=row.get("completed_tasks") or 0, progress_percent=row.get("progress_percent") or 0,
-        updated_at=row["updated_at"],
+        completed_tasks=row.get("completed_tasks") or 0, derived_task_count=row.get("derived_task_count") or 0,
+        progress_percent=row.get("progress_percent") or 0, updated_at=row["updated_at"],
     )
 
 

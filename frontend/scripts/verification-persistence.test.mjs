@@ -13,7 +13,7 @@ test("persisted milestone reviews are restored without changing validation state
   assert.match(source, /최근 AI 검토/);
 
   const restoreStart = source.indexOf("async function loadLatestReviews");
-  const restoreEnd = source.indexOf("function verdictLabel", restoreStart);
+  const restoreEnd = source.indexOf("function statusLabel", restoreStart);
   const restoreSource = source.slice(restoreStart, restoreEnd);
   assert.doesNotMatch(restoreSource, /method:\s*"PATCH"/);
   assert.doesNotMatch(restoreSource, /changeValidation\(/);

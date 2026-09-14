@@ -25,6 +25,7 @@ SYSTEM_PROMPT = """당신은 개인 프로젝트의 다음 행동을 정리하�
 - blockers에는 입력에서 확인 가능한 보류/기한 초과/계획 공백만 적는다.
 - 완료된 WBS를 다음 행동으로 추천하지 않는다.
 - GitHub commit 개수나 활동량만으로 진척 또는 완료를 판단하지 않는다.
+- source_provider가 derived-github인 WBS는 커밋 근거로 자동 구성된 제안이며 사용자가 확인한 완료 근거로 간주하지 않는다.
 - 근거가 부족하면 needs_attention에 무엇을 정의하거나 확인해야 하는지 명시한다.
 - summary는 짧고 실무적으로 작성한다.
 """
@@ -100,7 +101,8 @@ def _load_context(settings: Settings, owner_id: str, project_id: UUID) -> dict:
             (owner_id, project_id),
         ).fetchall()
         tasks = connection.execute(
-            """SELECT id::text, title, description, status, priority, due_date::text, milestone_id::text
+            """SELECT id::text, title, description, status, priority, due_date::text, milestone_id::text,
+                      source_provider, source_key
                FROM project_tasks
                WHERE owner_id=%s AND project_id=%s AND counts_toward_progress=true
                ORDER BY due_date ASC NULLS LAST, updated_at DESC""",
@@ -123,7 +125,8 @@ def _build_prompt(context: dict) -> str:
         for item in context["milestones"]
     ) or "- 없음"
     tasks = "\n".join(
-        f"- id={item['id']} | {item['status']}/{item['priority']} | due={item['due_date'] or '없음'} | milestone={item['milestone_id'] or '미지정'} | {item['title']}"
+        f"- id={item['id']} | {item['status']}/{item['priority']} | due={item['due_date'] or '없음'} | milestone={item['milestone_id'] or '미지정'} | "
+        f"source={_task_source_label(item)} | {item['title']}"
         for item in context["tasks"]
     ) or "- 없음"
     commits = "\n".join(
@@ -156,3 +159,11 @@ def _dedupe(items: list[str]) -> list[str]:
             seen.add(normalized)
             result.append(normalized)
     return result
+
+
+def _task_source_label(task) -> str:
+    source_provider = task.get("source_provider") or "manual"
+    source_key = task.get("source_key") or ""
+    if source_provider == "derived-github":
+        return f"derived-github:{source_key or '-'} (커밋 근거 자동 구성 제안, 사용자 확인 완료 아님)"
+    return f"{source_provider}:{source_key}" if source_key else source_provider

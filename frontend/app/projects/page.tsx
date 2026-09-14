@@ -191,7 +191,7 @@ export default function ProjectsPage() {
             <span>{contextLabel}</span>
             {!isLoading && !loadErrorMessage ? <span>진행 {dashboard.activeProjects.length}</span> : null}
             {!isLoading && !loadErrorMessage ? <span>잔여 {dashboard.remainingTasks}</span> : null}
-            {!isLoading && !loadErrorMessage ? <span>평균 {dashboard.averageProgress.label}</span> : null}
+            {!isLoading && !loadErrorMessage ? <span title={dashboard.averageProgress.basisLabel}>평균 {dashboard.averageProgress.label} · {dashboard.averageProgress.scopedProjects}개</span> : null}
           </div>
         </div>
         <button
@@ -282,6 +282,7 @@ export default function ProjectsPage() {
                     <div className={styles.projectMeta}>
                       <span>{project.role || "역할 미지정"}</span>
                       <span>업데이트 {project.updated_at.slice(0, 10)}</span>
+                      <span>{progress.basisLabel}</span>
                     </div>
                   </div>
                   <span className="meta-pill status-navy">{projectStatusLabels[project.status]}</span>

@@ -33,6 +33,7 @@ import {
   workTypeLabels
 } from "../types";
 import { projectProgressDisplay, wbsActivityCounts } from "../progress-display";
+import { ProgressEvidence } from "../ProgressEvidence";
 
 type PageProps = {
   params: Promise<{ projectId: string }>;
@@ -1038,13 +1039,14 @@ export default function ProjectDetailPage({ params }: PageProps) {
               <section className="summary-grid dashboard-metrics" aria-label="프로젝트 지표">
                 <div className="metric-card"><span>진척도</span><strong>{projectProgressDisplay(project).label}</strong></div>
                 <div className="metric-card"><span>산정 WBS / 전체 활동</span><strong>{dashboard.activityCounts.countedWbs} / {dashboard.activityCounts.allActivities}</strong></div>
-                <div className="metric-card"><span>커밋 근거</span><strong>{loadFailures.includes("commits") ? "-" : commits.length}</strong></div>
+                <div className="metric-card"><span>조회된 커밋 근거</span><strong>{loadFailures.includes("commits") ? "-" : commits.length}</strong></div>
                 <div className="metric-card"><span>성과</span><strong>{loadFailures.includes("outcomes") ? "-" : outcomes.length}</strong></div>
               </section>
               <section className="panel">
                 <div className="panel-title-row"><h2>진척</h2><span className="count-badge">{projectStatusLabels[project.status]}</span></div>
+                <ProgressEvidence project={project} />
                 <div className="overview-bars">
-                  {projectProgressDisplay(project).percent === null ? <div><span>완료율</span><strong>산정 전</strong></div> : <div><span>완료율</span><div className="progress-row-bar"><span style={{ width: `${projectProgressDisplay(project).percent}%` }} /></div></div>}
+                  {projectProgressDisplay(project).percent === null ? <div><span>WBS 완료율</span><strong>{projectProgressDisplay(project).label}</strong></div> : <div><span>{projectProgressDisplay(project).isEstimate ? "참고 완료율" : "WBS 완료율"}</span><div className="progress-row-bar"><span style={{ width: `${projectProgressDisplay(project).percent}%` }} /></div></div>}
                   {groupedTasks.map((group) => <div className="status-bar-row" key={group.status}><span>{group.label}</span><div className="status-bar-track"><i style={{ width: `${tasks.length ? (group.items.length / tasks.length) * 100 : 0}%` }} /></div><strong>{group.items.length}</strong></div>)}
                 </div>
               </section>

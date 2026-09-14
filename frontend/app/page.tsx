@@ -109,7 +109,7 @@ export default function HomePage() {
   const [isDraftingQuickCapture, setIsDraftingQuickCapture] = useState(false);
   const [quickCaptureMessage, setQuickCaptureMessage] = useState("");
   const [aiMemoText, setAiMemoText] = useState("");
-  const [draftConfidence, setDraftConfidence] = useState<number | null>(null);
+  const [hasAiDraft, setHasAiDraft] = useState(false);
   const [issueFilter, setIssueFilter] = useState("all");
 
   const loadDashboard = useCallback(async () => {
@@ -249,7 +249,7 @@ export default function HomePage() {
       }
       setQuickCaptureForm(createInitialQuickCaptureForm());
       setAiMemoText("");
-      setDraftConfidence(null);
+      setHasAiDraft(false);
       setQuickCaptureMessage("업무 로그 저장 완료");
       await loadDashboard();
     } catch (error) {
@@ -294,7 +294,7 @@ export default function HomePage() {
         blockers: draft.blockers,
         duration_minutes: String(draft.duration_minutes)
       });
-      setDraftConfidence(draft.confidence);
+      setHasAiDraft(true);
       setQuickCaptureMessage("AI 초안 생성 완료 · 검토 후 저장");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "AI 초안을 생성하지 못했습니다.");
@@ -308,7 +308,7 @@ export default function HomePage() {
       <header className="dashboard-topbar compact-page-heading">
         <h1>대시보드</h1>
         <div className="task-meta">
-          <span className="meta-pill">평균 진척 {dashboard.averageProgress.label}</span>
+          <span className="meta-pill" title={dashboard.averageProgress.basisLabel}>평균 진척 {dashboard.averageProgress.label} · {dashboard.averageProgress.scopedProjects}개</span>
         </div>
       </header>
 
@@ -363,7 +363,7 @@ export default function HomePage() {
                     <div className="progress-row-bar" aria-label={`${project.title} 진행률 ${progress.label}`}>
                       <span style={{ width: `${progress.percent}%` }} />
                     </div>
-                    <b>{progress.label}</b>
+                    <b title={progress.basisLabel}>{progress.label}</b>
                   </>
                 )}
               </Link>;
@@ -374,7 +374,7 @@ export default function HomePage() {
         <details className="panel quick-capture-panel" id="quick-capture">
           <summary className="panel-title-row quick-capture-summary">
             <h2>업무 기록</h2>
-            <span className="meta-pill">{draftConfidence === null ? "업무 로그" : `신뢰도 ${Math.round(draftConfidence * 100)}%`}</span>
+            <span className="meta-pill">{hasAiDraft ? "AI 초안 · 확인 필요" : "업무 로그"}</span>
           </summary>
           <div className="quick-ai-draft">
             <label>메모
@@ -547,7 +547,7 @@ export default function HomePage() {
 
         <section className="panel completed-panel">
           <div className="panel-title-row">
-            <h2>이번 주 완료</h2>
+            <h2>이번 주 갱신된 완료 업무</h2>
             <span className="count-badge">{tasksUnavailable ? "-" : `${dashboard.completedThisWeek.length}개`}</span>
           </div>
           {tasksUnavailable ? <div className="empty-state">완료 업무를 확인하지 못했습니다.</div> : null}
@@ -560,7 +560,7 @@ export default function HomePage() {
                     <th>업무</th>
                     <th>프로젝트</th>
                     <th>우선순위</th>
-                    <th>완료일</th>
+                    <th>수정일</th>
                   </tr>
                 </thead>
                 <tbody>

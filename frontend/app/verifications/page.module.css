@@ -1,0 +1,344 @@
+.page {
+  display: grid;
+  gap: 12px;
+}
+
+.header {
+  align-items: end;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.header h1 {
+  font-size: 22px;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.projectSelect {
+  align-items: start;
+  display: grid;
+  gap: 4px;
+  min-width: min(360px, 100%);
+}
+
+.projectSelect span,
+.projectSelect small,
+.projectToolbar small,
+.metric span,
+.milestoneMain small,
+.compactRow small,
+.reviewSummary small {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.projectSelect select {
+  min-height: 40px;
+}
+
+.projectSurface {
+  display: grid;
+  gap: 12px;
+}
+
+.summaryGrid {
+  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+}
+
+.metric {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.metric + .metric {
+  border-left: 1px solid var(--border);
+}
+
+.metric strong {
+  color: var(--accent-strong);
+  font-size: var(--text-lg);
+  overflow-wrap: anywhere;
+}
+
+.lockableArea {
+  border: 0;
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  min-inline-size: 0;
+  padding: 0;
+}
+
+.visuallyHidden {
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
+}
+
+.projectToolbar {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 12px;
+}
+
+.projectToolbar > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.projectToolbar strong,
+.milestoneMain strong {
+  overflow-wrap: anywhere;
+}
+
+.aiActions,
+.rowActions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.compactSelect {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.compactSelect span {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.compactSelect select {
+  min-height: 32px;
+}
+
+.advancedReview {
+  position: relative;
+}
+
+.advancedReview summary {
+  cursor: pointer;
+  font-size: var(--text-sm);
+  min-height: 32px;
+  padding: 7px 0;
+}
+
+.advancedReview button {
+  margin-top: 6px;
+}
+
+.milestoneList {
+  display: grid;
+  gap: 10px;
+}
+
+.milestoneRow {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.milestoneMain {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.milestoneMain > div:first-child,
+.stateStack {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.stateStack {
+  justify-items: end;
+}
+
+.stateBadge {
+  background: var(--accent-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--accent-strong);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+.evidenceGrid,
+.detailColumns {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.detailColumns {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.evidenceGrid > div,
+.detailColumns > div,
+.reviewSummary {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  align-content: start;
+}
+
+.detailColumns,
+.reviewSummary {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.evidenceGrid p,
+.reviewSummary p {
+  color: var(--muted);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.compactList,
+.reviewSummary {
+  display: grid;
+  gap: 6px;
+}
+
+.compactRow {
+  align-items: start;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding-top: 6px;
+}
+
+.compactRow:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.compactRow span,
+.compactRow a {
+  overflow-wrap: anywhere;
+}
+
+.reviewSummary ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.rowActions {
+  justify-content: flex-start;
+}
+
+@media (max-width: 900px) {
+  .header,
+  .projectToolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .aiActions,
+  .rowActions {
+    justify-content: flex-start;
+  }
+
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .metric:nth-child(n + 3) {
+    border-top: 1px solid var(--border);
+  }
+
+  .detailColumns {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .milestoneMain {
+    grid-template-columns: 1fr;
+  }
+
+  .evidenceGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .evidenceGrid > div:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .stateStack {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .aiActions > button,
+  .compactSelect,
+  .compactSelect select,
+  .advancedReview,
+  .advancedReview button {
+    width: 100%;
+  }
+
+  .rowActions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rowActions > button:only-child,
+  .rowActions > button:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 360px) {
+  .page {
+    gap: 10px;
+  }
+
+  .metric,
+  .milestoneRow,
+  .projectToolbar {
+    padding: 10px 0;
+  }
+
+  .metric,
+  .milestoneRow {
+    padding: 10px;
+  }
+}

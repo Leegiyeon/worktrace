@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import type { ProjectSummary, ProjectTask } from "../projects/types";
+import { projectProgressDisplay } from "../projects/progress-display";
 
 type AnalystAction = {
   task_id: string;
@@ -21,13 +22,11 @@ type AnalystResult = {
 };
 
 function basisLabel(project: ProjectSummary) {
-  if (project.progress_basis === "milestone") return "마일스톤 기반";
-  if (project.progress_basis === "wbs") return "전체 계획 WBS 기반";
-  return "진척률 산정 전";
+  return projectProgressDisplay(project).basisLabel;
 }
 
 function progressLabel(project: ProjectSummary) {
-  return project.progress_basis === "unscoped" ? "산정 전" : `${project.progress_percent}%`;
+  return projectProgressDisplay(project).label;
 }
 
 export default function InsightsPage() {
@@ -190,7 +189,7 @@ export default function InsightsPage() {
           <div className="panel-title-row">
             <div>
               <h2>AI 분석 결과</h2>
-              <small>신뢰도 {Math.round(result.confidence * 100)}% · Commit Evidence {result.evidence_commit_count}건</small>
+              <small>AI 제안 · 커밋 근거 {result.evidence_commit_count}건</small>
             </div>
             <span className="count-badge">잔여 WBS {result.remaining_wbs_count}</span>
           </div>

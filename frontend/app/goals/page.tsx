@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
-import { projectProgressDisplay, scopedProjectAverage } from "../projects/progress-display";
+import { milestoneProgressDisplay, projectProgressDisplay, scopedProjectAverage } from "../projects/progress-display";
 import type { MilestoneReview, ProjectMilestone, ProjectSummary } from "../projects/types";
 import { useGoalDrafts } from "../components/GoalDraftProvider";
 import styles from "./page.module.css";
@@ -39,9 +39,7 @@ type MilestoneEvidence = {
 };
 
 function basisLabel(project: ProjectSummary) {
-  if (project.progress_basis === "milestone") return "마일스톤 기반";
-  if (project.progress_basis === "wbs") return "WBS 기반";
-  return "진척률 산정 전";
+  return projectProgressDisplay(project).basisLabel;
 }
 
 function evidenceKindLabel(kind: MilestoneEvidence["recent_evidence"][number]["kind"]) {
@@ -274,7 +272,7 @@ export default function GoalsPage() {
                 <div className="panel-title-row">
                   <div>
                     <h2><Link className="text-link" href={`/projects/${project.id}`}>{project.title}</Link></h2>
-                    <small>{basisLabel(project)} · {milestoneError ? "마일스톤 조회 실패" : `${completedMilestones}/${project.milestone_count} 마일스톤 완료`}</small>
+                    <small>{basisLabel(project)} · {milestoneError ? "마일스톤 조회 실패" : `${completedMilestones}/${project.milestone_count} 마일스톤 WBS 완료`}</small>
                   </div>
                   <span className="count-badge">{progress.label}</span>
                 </div>
@@ -344,7 +342,7 @@ export default function GoalsPage() {
                             <small>{milestone.acceptance_criteria || "성취 기준 미정"}</small>
                           </div>
                           <span>{milestone.completed_tasks}/{milestone.total_tasks} WBS</span>
-                          <b>{milestone.progress_percent}% · {milestone.weight}%</b>
+                          <b>{milestoneProgressDisplay(milestone).label} · 가중치 {milestone.weight}%</b>
                           <button
                             className="secondary-button"
                             type="button"
@@ -397,7 +395,7 @@ export default function GoalsPage() {
                                         <strong>AI 완료 판단 보조</strong>
                                         <small>AI는 완료 상태를 변경하지 않습니다. 최종 판단은 사용자가 합니다.</small>
                                       </div>
-                                      <span className="count-badge">{reviewVerdictLabel(review)} · {Math.round(review.confidence * 100)}%</span>
+                                      <span className="count-badge">AI 제안 · {reviewVerdictLabel(review)}</span>
                                     </div>
                                     <p>{review.reasoning_summary}</p>
                                     <small>

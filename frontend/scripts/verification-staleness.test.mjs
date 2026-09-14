@@ -6,7 +6,7 @@ const source = readFileSync(new URL("../app/verifications/page.tsx", import.meta
 
 test("stale persisted reviews are visible but cannot complete validation", () => {
   assert.match(source, /is_stale: boolean/);
-  assert.match(source, /재검토 필요/);
+  assert.match(source, /AI 재검토가 필요합니다/);
   assert.match(source, /이전 판단/);
   assert.match(source, /reviewResult\?\.verdict === "ready_candidate" && validation && !isStale/);
 });

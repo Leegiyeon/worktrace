@@ -11,18 +11,30 @@ const detailPage = read("app/projects/[projectId]/page.tsx");
 const globals = read("app/globals.css");
 const helper = read("app/projects/progress-display.ts");
 const compiledHelper = transpileModule(helper, { compilerOptions: { module: ModuleKind.ESNext } }).outputText;
-const { projectProgressDisplay, scopedProjectAverage, wbsActivityCounts } = await import(`data:text/javascript;base64,${Buffer.from(compiledHelper).toString("base64")}`);
+const { projectProgressDisplay, milestoneProgressDisplay, scopedProjectAverage, wbsActivityCounts } = await import(`data:text/javascript;base64,${Buffer.from(compiledHelper).toString("base64")}`);
 
 test("progress values distinguish an unscoped project from a real zero", () => {
   assert.equal(projectProgressDisplay({ progress_basis: "unscoped", progress_percent: 0 }).percent, null);
-  assert.equal(projectProgressDisplay({ progress_basis: "wbs", progress_percent: 0 }).label, "0%");
+  assert.equal(projectProgressDisplay({ progress_basis: "wbs", progress_percent: 0, derived_task_count: 0 }).label, "0%");
   assert.equal(scopedProjectAverage([]).label, "산정 전");
   assert.equal(scopedProjectAverage([{ progress_basis: "unscoped", progress_percent: 0 }]).label, "산정 전");
   assert.deepEqual(scopedProjectAverage([
-    { progress_basis: "wbs", progress_percent: 60 },
-    { progress_basis: "milestone", progress_percent: 100 },
+    { progress_basis: "wbs", progress_percent: 60, derived_task_count: 0 },
+    { progress_basis: "milestone", progress_percent: 100, derived_task_count: 0 },
     { progress_basis: "unscoped", progress_percent: 0 }
-  ]), { label: "80%", percent: 80, isScoped: true, scopedProjects: 2 });
+  ]), { label: "80%", percent: 80, isScoped: true, isEstimate: false, basisLabel: "자동 구성·출처 미확인·미산정 제외", scopedProjects: 2 });
+});
+
+test("derived commit plans and missing provenance never look like confirmed progress", () => {
+  const derived = { progress_basis: "milestone", progress_percent: 50, derived_task_count: 12 };
+  assert.equal(projectProgressDisplay(derived).label, "참고 50%");
+  assert.equal(projectProgressDisplay(derived).isEstimate, true);
+  assert.equal(projectProgressDisplay({ progress_basis: "wbs", progress_percent: 100 }).label, "기준 미확인");
+  assert.equal(projectProgressDisplay({ progress_basis: "wbs", progress_percent: 100 }).percent, null);
+  assert.equal(scopedProjectAverage([derived]).percent, null);
+  assert.equal(scopedProjectAverage([derived, { progress_basis: "wbs", progress_percent: 20, derived_task_count: 0 }]).percent, 20);
+  assert.equal(milestoneProgressDisplay({ total_tasks: 0, progress_percent: 0, derived_task_count: 0 }).label, "산정 전");
+  assert.equal(milestoneProgressDisplay({ total_tasks: 2, progress_percent: 50, derived_task_count: 2 }).label, "참고 50%");
 });
 
 test("adding reference activities does not increase counted WBS", () => {
@@ -36,7 +48,7 @@ test("adding reference activities does not increase counted WBS", () => {
 test("progress helper keeps unscoped projects out of averages", () => {
   assert.match(helper, /project\.progress_basis === "unscoped"/);
   assert.match(helper, /label: "산정 전"/);
-  assert.match(helper, /const scopedProjects = projects\.filter\(\(project\) => projectProgressDisplay\(project\)\.isScoped\)/);
+  assert.match(helper, /return progress.isScoped && !progress.isEstimate/);
   assert.match(helper, /scopedProjects\.reduce\(\(sum, project\) => sum \+ project\.progress_percent, 0\) \/ scopedProjects\.length/);
 });
 

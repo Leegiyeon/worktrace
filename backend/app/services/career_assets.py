@@ -13,6 +13,7 @@ CAREER_SYSTEM_PROMPT = """프로젝트의 전산화된 근거를 읽고 한국�
 - 커밋, WBS, 업무 로그, 사용자가 확정한 성과를 함께 검토한다.
 - 근거에 없는 수치, 성과, 역할, 기술은 만들지 않는다.
 - 커밋 메시지는 활동 근거이지 성과 확정으로 간주하지 않는다.
+- source_provider가 derived-github인 WBS는 커밋 근거로 자동 구성된 제안이며 사용자가 확인한 완료 업무로 쓰지 않는다.
 - 미확정 내용은 초안 또는 확인 필요로 명시한다.
 - 이력서 bullet은 간결한 행동-결과 구조로 작성한다.
 - 지정된 JSON 스키마만 반환한다.
@@ -79,7 +80,8 @@ def generate_project_career_asset(
 
         tasks = connection.execute(
             """
-            SELECT id::text, title, description, status, priority, due_date::text, updated_at::text
+            SELECT id::text, title, description, status, priority, due_date::text, updated_at::text,
+                   source_provider, source_key
             FROM project_tasks
             WHERE owner_id = %(owner_id)s AND project_id = %(project_id)s
             ORDER BY
@@ -293,7 +295,7 @@ def _build_ai_career_asset_content(settings, project, tasks, work_logs, outcomes
         "wbs": [dict(row) for row in tasks],
         "work_logs": [dict(row) for row in work_logs],
         "confirmed_outcomes": [dict(row) for row in outcomes if row.get("resume_ready")],
-        "other_outcomes": [dict(row) for row in outcomes if not row.get("resume_ready")],
+        "pending_outcome_count": len([row for row in outcomes if not row.get("resume_ready")]),
         "commits": [dict(row) for row in commits],
         "target_role": target_role,
     }
@@ -329,7 +331,7 @@ def _build_ai_career_asset_content(settings, project, tasks, work_logs, outcomes
 
 def _preferred_outcomes(outcomes) -> list:
     resume_ready = [outcome for outcome in outcomes if outcome.get("resume_ready")]
-    return resume_ready if resume_ready else list(outcomes)
+    return resume_ready
 
 
 def _has_weak_evidence(work_logs, outcomes, preferred_outcomes) -> bool:
@@ -342,18 +344,25 @@ def _has_weak_evidence(work_logs, outcomes, preferred_outcomes) -> bool:
 
 def _source_summary(project, tasks, work_logs, outcomes, target_role: CareerTargetRole, weak_evidence: bool, commits) -> str:
     status = "초안" if weak_evidence else "확정 근거 기반"
+    confirmed_outcome_count = len([outcome for outcome in outcomes if outcome.get("resume_ready")])
+    pending_outcome_count = len(outcomes) - confirmed_outcome_count
+    derived_task_count = len([task for task in tasks if _is_derived_github_task(task)])
     return (
         f"{project['title']} · 목표 역할 {target_role} · 프로젝트 상태 {project.get('status') or '-'} · "
-        f"WBS {len(tasks)}건 · 커밋 근거 {len(commits)}건 · 업무 로그 {len(work_logs)}건 · 성과 {len(outcomes)}건 · {status}"
+        f"WBS {len(tasks)}건(자동 구성 제안 {derived_task_count}건) · 커밋 근거 {len(commits)}건 · "
+        f"업무 로그 {len(work_logs)}건 · 확정 성과 {confirmed_outcome_count}건 · 검토 중 성과 {pending_outcome_count}건 · {status}"
     )
 
 
 def _work_summary(project, tasks, work_logs, prefix: str, commits) -> str:
-    done_tasks = [task["title"] for task in tasks if task.get("status") == "done"][:3]
+    done_tasks = [task["title"] for task in _actual_done_tasks(tasks)][:3]
+    derived_tasks = [task["title"] for task in tasks if _is_derived_github_task(task)][:3]
     recent_logs = [log["title"] for log in work_logs[:3]]
     parts = []
     if done_tasks:
         parts.append(f"완료 업무: {', '.join(done_tasks)}")
+    if derived_tasks:
+        parts.append(f"자동 구성 WBS 제안(완료 확정 아님): {', '.join(derived_tasks)}")
     if recent_logs:
         parts.append(f"주요 로그: {', '.join(recent_logs)}")
     commit_messages = [commit["message"].splitlines()[0] for commit in commits[:3] if commit.get("message")]
@@ -372,7 +381,7 @@ def _outcome_summary(outcomes, prefix: str) -> str:
 
 def _resume_bullets(project, target_role: CareerTargetRole, outcomes, tasks, work_logs, prefix: str) -> str:
     project_title = project["title"]
-    first_work = _first_title([task for task in tasks if task.get("status") == "done"]) or _first_title(work_logs) or "프로젝트 업무"
+    first_work = _first_title(_actual_done_tasks(tasks)) or _first_title(work_logs) or "프로젝트 업무"
     bullets = [
         f"- {prefix}{target_role} 관점에서 {project_title}의 {first_work} 흐름을 정리하고 실행 근거를 업무 로그로 축적",
     ]
@@ -400,7 +409,7 @@ def _portfolio_description(project, target_role: CareerTargetRole, outcomes, wor
 
 
 def _star_answer(project, target_role: CareerTargetRole, tasks, work_logs, outcomes, prefix: str) -> str:
-    task_text = _first_title(tasks) or "업무 범위 정리"
+    task_text = _first_title([task for task in tasks if not _is_derived_github_task(task)]) or "업무 범위 정리"
     action_text = _first_title(work_logs) or "업무 기록 정리"
     result_text = _outcome_phrase(outcomes[0]) if outcomes else "사용자 확인 성과 보강 필요"
     return "\n".join(
@@ -460,3 +469,11 @@ def _first_title(rows) -> str:
     if not rows:
         return ""
     return rows[0].get("title") or ""
+
+
+def _is_derived_github_task(task) -> bool:
+    return task.get("source_provider") == "derived-github"
+
+
+def _actual_done_tasks(tasks) -> list:
+    return [task for task in tasks if task.get("status") == "done" and not _is_derived_github_task(task)]

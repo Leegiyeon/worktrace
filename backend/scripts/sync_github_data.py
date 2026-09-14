@@ -261,7 +261,7 @@ def project_for(connection, owner_id: str, metadata: dict, title: str, fallback:
             (owner_id, title, metadata.get("description") or fallback, role),
         ).fetchone()["id"]
     connection.execute(
-        "UPDATE projects SET title=%s, description=%s, status='in_progress', role=%s, updated_at=now() WHERE owner_id=%s AND id=%s",
+        "UPDATE projects SET title=%s, description=%s, role=%s, updated_at=now() WHERE owner_id=%s AND id=%s",
         (title, metadata.get("description") or fallback, role, owner_id, project_id),
     )
     connection.execute(

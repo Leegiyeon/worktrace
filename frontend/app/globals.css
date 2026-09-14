@@ -2342,6 +2342,18 @@ code {
 }
 
 /* Shared layout normalization */
+.progress-evidence {
+  min-width: 0;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.progress-evidence summary { cursor: pointer; color: var(--muted); }
+.progress-evidence dl { display: grid; gap: 8px; margin: 12px 0 0; }
+.progress-evidence dl > div { display: grid; grid-template-columns: minmax(80px, 0.3fr) minmax(0, 1fr); gap: 8px; }
+.progress-evidence dt { color: var(--muted); }
+.progress-evidence dd { margin: 0; overflow-wrap: anywhere; }
+
 .panel,
 .metric-card,
 .candidate-card,

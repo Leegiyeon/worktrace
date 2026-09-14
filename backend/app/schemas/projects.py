@@ -50,6 +50,7 @@ class ProjectSummary(ProjectBaseModel):
     total_tasks: int = 0
     completed_tasks: int = 0
     remaining_tasks: int = 0
+    derived_task_count: int = 0
     milestone_count: int = 0
     progress_basis: ProgressBasis = "unscoped"
     progress_percent: int = 0
@@ -84,6 +85,7 @@ class ProjectMilestone(ProjectBaseModel):
     sort_order: int = 0
     total_tasks: int = 0
     completed_tasks: int = 0
+    derived_task_count: int = 0
     progress_percent: int = 0
     updated_at: str
 
