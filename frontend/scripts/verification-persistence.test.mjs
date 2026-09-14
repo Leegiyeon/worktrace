@@ -8,7 +8,8 @@ test("persisted milestone reviews are restored without changing validation state
   assert.match(source, /type StoredMilestoneReview/);
   assert.match(source, /async function loadLatestReviews/);
   assert.match(source, /\/api\/ai\/milestone-reviews\/\$\{project\.id\}/);
-  assert.match(source, /setReviews\(storedReviews\)/);
+  assert.match(source, /setReviews\(storedReviews\.reviews\)/);
+  assert.match(source, /setReviewLoadErrors\(storedReviews\.reviewErrors\)/);
   assert.match(source, /최근 AI 검토/);
 
   const restoreStart = source.indexOf("async function loadLatestReviews");

@@ -7,6 +7,13 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf
 const layout = read("app/layout.tsx");
 const overflowStyles = read("app/ui-overflow-fixes.css");
 const verificationPage = read("app/verifications/page.tsx");
+const globalStyles = read("app/globals.css");
+
+test("project progress keeps its bar and value aligned below the title", () => {
+  assert.match(globalStyles, /\.progress-row-head\s*\{\s*grid-column: 1 \/ -1/);
+  assert.match(globalStyles, /\.progress-row b\s*\{\s*grid-column: 2;\s*grid-row: 2/);
+  assert.doesNotMatch(globalStyles, /\.progress-row\s*\{\s*grid-template-columns: 1fr;/);
+});
 
 test("responsive overflow hardening is loaded globally", () => {
   assert.match(layout, /ui-overflow-fixes\.css/);

@@ -6,6 +6,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { parseApiErrorMessage } from "../reports/api-error";
 import type { ProjectStatus, ProjectSummary } from "./types";
 import { projectStatusLabels } from "./types";
+import { projectProgressDisplay, scopedProjectAverage } from "./progress-display";
 
 const initialForm = {
   title: "",
@@ -13,10 +14,6 @@ const initialForm = {
   role: "",
   status: "idea" as ProjectStatus
 };
-
-function progressLabel(project: ProjectSummary) {
-  return project.progress_basis === "unscoped" ? "산정 전" : `${project.progress_percent}%`;
-}
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -29,10 +26,7 @@ export default function ProjectsPage() {
   const dashboard = useMemo(() => {
     const activeProjects = projects.filter((project) => project.status !== "done" && project.status !== "on_hold");
     const remainingTasks = projects.reduce((sum, project) => sum + project.remaining_tasks, 0);
-    const scopedProjects = projects.filter((project) => project.progress_basis !== "unscoped");
-    const averageProgress = scopedProjects.length
-      ? Math.round(scopedProjects.reduce((sum, project) => sum + project.progress_percent, 0) / scopedProjects.length)
-      : null;
+    const averageProgress = scopedProjectAverage(projects);
 
     return { activeProjects, remainingTasks, averageProgress };
   }, [projects]);
@@ -119,7 +113,7 @@ export default function ProjectsPage() {
         <div className="task-meta">
           <span className="meta-pill status-navy">진행 {dashboard.activeProjects.length}</span>
           <span className="meta-pill">잔여 {dashboard.remainingTasks}</span>
-          <span className="meta-pill">평균 {dashboard.averageProgress === null ? "산정 전" : `${dashboard.averageProgress}%`}</span>
+          <span className="meta-pill">평균 {dashboard.averageProgress.label}</span>
         </div>
       </header>
 
@@ -127,7 +121,7 @@ export default function ProjectsPage() {
         <div className="metric-card"><span>진행 중</span><strong>{dashboard.activeProjects.length}</strong></div>
         <div className="metric-card"><span>전체</span><strong>{projects.length}</strong></div>
         <div className="metric-card"><span>잔여 업무</span><strong>{dashboard.remainingTasks}</strong></div>
-        <div className="metric-card"><span>평균 진척</span><strong>{dashboard.averageProgress === null ? "산정 전" : `${dashboard.averageProgress}%`}</strong></div>
+        <div className="metric-card"><span>평균 진척</span><strong>{dashboard.averageProgress.label}</strong></div>
       </section>
 
       {errorMessage ? <div className="alert error" role="alert">{errorMessage}</div> : null}
@@ -153,23 +147,26 @@ export default function ProjectsPage() {
             <div className="data-table-wrap">
               <table className="data-table dense-task-table">
                 <thead><tr><th>프로젝트</th><th>상태</th><th>역할</th><th>진척도</th><th>잔여</th><th>완료/전체</th><th>업데이트</th></tr></thead>
-                <tbody>{projects.map((project) => (
-                  <tr key={project.id}>
-                    <td><Link className="table-link-button" href={`/projects/${project.id}`}>{project.title}</Link></td>
-                    <td><span className="meta-pill status-navy">{projectStatusLabels[project.status]}</span></td>
-                    <td>{project.role || "-"}</td>
-                    <td>
-                      {project.progress_basis === "unscoped" ? (
-                        <b>산정 전</b>
-                      ) : (
-                        <div className="table-progress"><div className="mini-progress"><span style={{ width: `${project.progress_percent}%` }} /></div><b>{progressLabel(project)}</b></div>
-                      )}
-                    </td>
-                    <td>{project.remaining_tasks}</td>
-                    <td>{project.completed_tasks}/{project.total_tasks}</td>
-                    <td>{project.updated_at.slice(0, 10)}</td>
-                  </tr>
-                ))}</tbody>
+                <tbody>{projects.map((project) => {
+                  const progress = projectProgressDisplay(project);
+                  return (
+                    <tr key={project.id}>
+                      <td><Link className="table-link-button" href={`/projects/${project.id}`}>{project.title}</Link></td>
+                      <td><span className="meta-pill status-navy">{projectStatusLabels[project.status]}</span></td>
+                      <td>{project.role || "-"}</td>
+                      <td>
+                        {progress.percent === null ? (
+                          <b>{progress.label}</b>
+                        ) : (
+                          <div className="table-progress"><div className="mini-progress"><span style={{ width: `${progress.percent}%` }} /></div><b>{progress.label}</b></div>
+                        )}
+                      </td>
+                      <td>{project.remaining_tasks}</td>
+                      <td>{project.completed_tasks}/{project.total_tasks}</td>
+                      <td>{project.updated_at.slice(0, 10)}</td>
+                    </tr>
+                  );
+                })}</tbody>
               </table>
             </div>
           ) : null}

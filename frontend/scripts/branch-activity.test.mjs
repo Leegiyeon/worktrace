@@ -40,13 +40,49 @@ test("network deduplicates shared history and renders only real merge parents", 
   for (const label of graph.labels) assert.equal(label.x, graph.nodes.find((node) => node.sha === label.sha).x);
 });
 
-test("shared heads keep distinct nonoverlapping labels on the same commit", () => {
+test("shared heads group refs without pushing the commit below the viewport", () => {
   const head = commit("same");
   const graph = buildBranchNetwork([branch("main", "same", [head], true), branch("release", "same", [head])]);
   assert.equal(graph.nodes.length, 1);
-  assert.equal(graph.labels[0].x, graph.labels[1].x);
-  assert.ok(Math.abs(graph.labels[0].y - graph.labels[1].y) >= 26);
+  assert.equal(graph.labels.length, 1);
+  assert.deepEqual(graph.labels[0].refs.map((ref) => ref.name), ["main", "release"]);
+  assert.equal(graph.labels[0].name, "main");
+  assert.ok(graph.height <= 80);
   assert.equal(graph.incomplete, false);
+});
+
+test("compact graph fits a mobile viewport without scaling label text", () => {
+  const commits = [commit("root")];
+  let head = "root";
+  for (let i = 0; i < 6; i++) {
+    commits.push(commit(`work${i}`, [head]), commit(`base${i}`, [head]), commit(`merge${i}`, [`base${i}`, `work${i}`]));
+    head = `merge${i}`;
+  }
+  const branches = Array.from({ length: 13 }, (_, i) => branch(i ? `feature/long-name-${i}` : "main", head, commits, i === 0));
+  const graph = buildBranchNetwork(branches, { compact: true, viewportWidth: 370 });
+  assert.ok(graph.width <= 370);
+  assert.ok(graph.height <= 100);
+  assert.equal(graph.labels.length, 1);
+  assert.equal(graph.labels[0].refs.length, 13);
+  for (const label of graph.labels) {
+    assert.ok(label.left >= 0);
+    assert.ok(label.left + label.width <= graph.width);
+  }
+  assert.ok(graph.nodes.every((node) => node.x >= 16 && node.x <= graph.width - 16 && node.y < graph.height));
+  assert.equal(new Set(graph.labels[0].refs.map((ref) => ref.color)).size, 13);
+});
+
+test("nearby heads keep labels nonoverlapping and anchored to their commits", () => {
+  const commits = Array.from({ length: 10 }, (_, i) => commit(`c${i}`, i ? [`c${i - 1}`] : []));
+  const branches = [branch("main", "c9", commits, true), branch("release/long-label", "c8", commits), branch("hotfix", "c7", commits)];
+  const graph = buildBranchNetwork(branches, { compact: true, viewportWidth: 320 });
+  for (const label of graph.labels) {
+    assert.equal(label.x, graph.nodes.find((node) => node.sha === label.sha).x);
+    assert.ok(label.left + label.width <= 320);
+    for (const other of graph.labels.filter((other) => other !== label && other.y === label.y)) {
+      assert.ok(label.left + label.width <= other.left || other.left + other.width <= label.left);
+    }
+  }
 });
 
 test("missing ancestry is bounded, never replaced with a fabricated merge", () => {

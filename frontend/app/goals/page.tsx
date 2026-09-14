@@ -3,9 +3,15 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
+import { projectProgressDisplay, scopedProjectAverage } from "../projects/progress-display";
 import type { MilestoneReview, ProjectMilestone, ProjectSummary } from "../projects/types";
 
 type GoalProject = ProjectSummary & { milestones: ProjectMilestone[] };
+
+type GoalProjectsPayload = {
+  projects: GoalProject[];
+  milestoneErrors: Record<string, string>;
+};
 
 type ProjectDraft = {
   objective: string;
@@ -35,6 +41,25 @@ type MilestoneEvidence = {
   }>;
 };
 
+function toProjectDraft(project: ProjectSummary): ProjectDraft {
+  return {
+    objective: project.objective,
+    success_criteria: project.success_criteria
+  };
+}
+
+function draftChanged(draft: ProjectDraft | undefined, project: ProjectSummary) {
+  if (!draft) return false;
+  return draft.objective !== project.objective || draft.success_criteria !== project.success_criteria;
+}
+
+function mergeProjectDrafts(current: Record<string, ProjectDraft>, projects: GoalProject[]) {
+  return Object.fromEntries(projects.map((project) => {
+    const currentDraft = current[project.id];
+    return [project.id, currentDraft && draftChanged(currentDraft, project) ? currentDraft : toProjectDraft(project)];
+  }));
+}
+
 function basisLabel(project: ProjectSummary) {
   if (project.progress_basis === "milestone") return "마일스톤 기반";
   if (project.progress_basis === "wbs") return "WBS 기반";
@@ -51,84 +76,105 @@ function reviewVerdictLabel(review: MilestoneReview) {
   return "추가 확인 필요";
 }
 
-async function fetchGoalProjects(): Promise<GoalProject[]> {
+async function fetchProjectMilestones(project: ProjectSummary): Promise<ProjectMilestone[]> {
+  const milestoneResponse = await fetch(`/api/projects/${project.id}/milestones`, { cache: "no-store" });
+  if (!milestoneResponse.ok) throw new Error("마일스톤을 불러오지 못했습니다.");
+  return (await milestoneResponse.json()) as ProjectMilestone[];
+}
+
+async function fetchGoalProjects(): Promise<GoalProjectsPayload> {
   const response = await fetch("/api/projects", { cache: "no-store" });
   if (!response.ok) throw new Error("프로젝트를 불러오지 못했습니다.");
   const baseProjects = (await response.json()) as ProjectSummary[];
-  return Promise.all(
+  const milestoneErrors: Record<string, string> = {};
+  const projects = await Promise.all(
     baseProjects.map(async (project) => {
-      const milestoneResponse = await fetch(`/api/projects/${project.id}/milestones`, { cache: "no-store" });
-      const milestones = milestoneResponse.ok ? ((await milestoneResponse.json()) as ProjectMilestone[]) : [];
-      return { ...project, milestones };
+      try {
+        const milestones = await fetchProjectMilestones(project);
+        return { ...project, milestones };
+      } catch (error) {
+        milestoneErrors[project.id] = error instanceof Error ? error.message : "마일스톤을 불러오지 못했습니다.";
+        return { ...project, milestones: [] };
+      }
     })
   );
-}
-
-function projectDrafts(projects: GoalProject[]) {
-  return Object.fromEntries(projects.map((project) => [project.id, {
-    objective: project.objective,
-    success_criteria: project.success_criteria
-  }]));
+  return { projects, milestoneErrors };
 }
 
 export default function GoalsPage() {
   const [projects, setProjects] = useState<GoalProject[]>([]);
   const [drafts, setDrafts] = useState<Record<string, ProjectDraft>>({});
   const [isLoading, setIsLoading] = useState(true);
-  const [savingProjectId, setSavingProjectId] = useState<string | null>(null);
+  const [savingProjects, setSavingProjects] = useState<Record<string, boolean>>({});
+  const [loadingMilestoneProjectId, setLoadingMilestoneProjectId] = useState<string | null>(null);
   const [expandedMilestoneId, setExpandedMilestoneId] = useState<string | null>(null);
   const [evidenceByMilestone, setEvidenceByMilestone] = useState<Record<string, MilestoneEvidence>>({});
   const [reviewByMilestone, setReviewByMilestone] = useState<Record<string, MilestoneReview>>({});
+  const [milestoneErrors, setMilestoneErrors] = useState<Record<string, string>>({});
+  const [evidenceErrors, setEvidenceErrors] = useState<Record<string, string>>({});
+  const [reviewErrors, setReviewErrors] = useState<Record<string, string>>({});
   const [loadingEvidenceId, setLoadingEvidenceId] = useState<string | null>(null);
   const [reviewingMilestoneId, setReviewingMilestoneId] = useState<string | null>(null);
+  const [loadErrorMessage, setLoadErrorMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
-  const load = useCallback(async () => {
+  const loadGoalData = useCallback(async () => {
     setIsLoading(true);
-    setErrorMessage("");
+    setLoadErrorMessage("");
     try {
-      const withMilestones = await fetchGoalProjects();
-      setProjects(withMilestones);
-      setDrafts(projectDrafts(withMilestones));
+      const payload = await fetchGoalProjects();
+      setProjects(payload.projects);
+      setMilestoneErrors(payload.milestoneErrors);
+      setDrafts((current) => mergeProjectDrafts(current, payload.projects));
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "목표 데이터를 불러오지 못했습니다.");
+      setLoadErrorMessage(error instanceof Error ? error.message : "목표 데이터를 불러오지 못했습니다.");
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    fetchGoalProjects()
-      .then((withMilestones) => {
-        if (cancelled) return;
-        setProjects(withMilestones);
-        setDrafts(projectDrafts(withMilestones));
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        setErrorMessage(error instanceof Error ? error.message : "목표 데이터를 불러오지 못했습니다.");
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    void loadGoalData();
+  }, [loadGoalData]);
 
-  const averageProgress = useMemo(() => {
-    const scoped = projects.filter((project) => project.progress_basis !== "unscoped");
-    if (scoped.length === 0) return 0;
-    return Math.round(scoped.reduce((sum, project) => sum + project.progress_percent, 0) / scoped.length);
-  }, [projects]);
+  const dirtyProjectIds = useMemo(() => projects.filter((project) => draftChanged(drafts[project.id], project)).map((project) => project.id), [drafts, projects]);
+
+  useEffect(() => {
+    if (dirtyProjectIds.length === 0) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [dirtyProjectIds.length]);
+
+  async function retryProjectMilestones(project: GoalProject) {
+    setLoadingMilestoneProjectId(project.id);
+    setErrorMessage("");
+    try {
+      const milestones = await fetchProjectMilestones(project);
+      setProjects((current) => current.map((item) => item.id === project.id ? { ...item, milestones } : item));
+      setMilestoneErrors((current) => {
+        const next = { ...current };
+        delete next[project.id];
+        return next;
+      });
+    } catch (error) {
+      setMilestoneErrors((current) => ({ ...current, [project.id]: error instanceof Error ? error.message : "마일스톤을 불러오지 못했습니다." }));
+    } finally {
+      setLoadingMilestoneProjectId(null);
+    }
+  }
+
+  const averageProgress = useMemo(() => scopedProjectAverage(projects), [projects]);
 
   async function saveProject(event: FormEvent, project: GoalProject) {
     event.preventDefault();
     const draft = drafts[project.id];
     if (!draft) return;
-    setSavingProjectId(project.id);
+    setSavingProjects((current) => ({ ...current, [project.id]: true }));
     setErrorMessage("");
     setSuccessMessage("");
     try {
@@ -138,12 +184,22 @@ export default function GoalsPage() {
         body: JSON.stringify({ objective: draft.objective.trim(), success_criteria: draft.success_criteria.trim() })
       });
       if (!response.ok) throw new Error("목표와 성취 기준을 저장하지 못했습니다.");
-      await load();
+      const savedProject = (await response.json()) as ProjectSummary;
+      setProjects((current) => current.map((item) => item.id === project.id ? { ...savedProject, milestones: item.milestones } : item));
+      setDrafts((current) => {
+        const currentDraft = current[project.id];
+        const saveCompletedBeforeFurtherEdit = currentDraft?.objective === draft.objective && currentDraft.success_criteria === draft.success_criteria;
+        return { ...current, [project.id]: saveCompletedBeforeFurtherEdit ? toProjectDraft(savedProject) : currentDraft ?? toProjectDraft(savedProject) };
+      });
       setSuccessMessage(`${project.title} 목표를 저장했습니다.`);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "저장 중 오류가 발생했습니다.");
     } finally {
-      setSavingProjectId(null);
+      setSavingProjects((current) => {
+        const next = { ...current };
+        delete next[project.id];
+        return next;
+      });
     }
   }
 
@@ -154,15 +210,24 @@ export default function GoalsPage() {
     }
     setExpandedMilestoneId(milestoneId);
     if (evidenceByMilestone[milestoneId]) return;
+    await loadMilestoneEvidence(projectId, milestoneId);
+  }
+
+  async function loadMilestoneEvidence(projectId: string, milestoneId: string) {
     setLoadingEvidenceId(milestoneId);
     setErrorMessage("");
+    setEvidenceErrors((current) => {
+      const next = { ...current };
+      delete next[milestoneId];
+      return next;
+    });
     try {
       const response = await fetch(`/api/projects/${projectId}/milestones/${milestoneId}/evidence`, { cache: "no-store" });
       if (!response.ok) throw new Error("마일스톤 근거를 불러오지 못했습니다.");
       const evidence = (await response.json()) as MilestoneEvidence;
       setEvidenceByMilestone((current) => ({ ...current, [milestoneId]: evidence }));
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "마일스톤 근거 조회 중 오류가 발생했습니다.");
+      setEvidenceErrors((current) => ({ ...current, [milestoneId]: error instanceof Error ? error.message : "마일스톤 근거 조회 중 오류가 발생했습니다." }));
     } finally {
       setLoadingEvidenceId(null);
     }
@@ -171,6 +236,11 @@ export default function GoalsPage() {
   async function reviewMilestone(projectId: string, milestoneId: string) {
     setReviewingMilestoneId(milestoneId);
     setErrorMessage("");
+    setReviewErrors((current) => {
+      const next = { ...current };
+      delete next[milestoneId];
+      return next;
+    });
     try {
       const response = await fetch("/api/ai/milestone-review", {
         method: "POST",
@@ -185,7 +255,7 @@ export default function GoalsPage() {
       const review = (await response.json()) as MilestoneReview;
       setReviewByMilestone((current) => ({ ...current, [milestoneId]: review }));
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "AI 검토 중 오류가 발생했습니다.");
+      setReviewErrors((current) => ({ ...current, [milestoneId]: error instanceof Error ? error.message : "AI 검토 중 오류가 발생했습니다." }));
     } finally {
       setReviewingMilestoneId(null);
     }
@@ -203,36 +273,47 @@ export default function GoalsPage() {
 
       <section className="summary-grid dashboard-metrics" aria-label="목표 관리 지표">
         <div className="metric-card"><span>관리 프로젝트</span><strong>{projects.length}</strong></div>
-        <div className="metric-card"><span>마일스톤</span><strong>{projects.reduce((sum, project) => sum + project.milestones.length, 0)}</strong></div>
-        <div className="metric-card"><span>평균 진척</span><strong>{averageProgress}%</strong></div>
+        <div className="metric-card"><span>마일스톤</span><strong>{projects.reduce((sum, project) => sum + project.milestone_count, 0)}</strong></div>
+        <div className="metric-card"><span>평균 진척</span><strong>{averageProgress.label}</strong></div>
         <div className="metric-card"><span>산정 전</span><strong>{projects.filter((project) => project.progress_basis === "unscoped").length}</strong></div>
       </section>
 
+      {loadErrorMessage ? (
+        <div className="alert error" role="alert">
+          {loadErrorMessage}
+          <button className="secondary-button" type="button" disabled={isLoading} onClick={() => void loadGoalData()}>다시 불러오기</button>
+        </div>
+      ) : null}
       {errorMessage ? <div className="alert error" role="alert">{errorMessage}</div> : null}
       {successMessage ? <div className="alert success" role="status">{successMessage}</div> : null}
       {isLoading ? <section className="panel muted">목표 데이터를 불러오는 중입니다.</section> : null}
+      {!isLoading && !loadErrorMessage && projects.length === 0 ? <section className="empty-state">프로젝트가 없습니다.</section> : null}
 
       {!isLoading ? (
         <div className="stacked-section">
           {projects.map((project) => {
             const draft = drafts[project.id] ?? { objective: "", success_criteria: "" };
+            const isDirty = dirtyProjectIds.includes(project.id);
+            const isSavingProject = Boolean(savingProjects[project.id]);
             const completedMilestones = project.milestones.filter((milestone) => milestone.progress_percent === 100).length;
+            const milestoneError = milestoneErrors[project.id];
+            const progress = projectProgressDisplay(project);
             return (
               <section className="panel" key={project.id}>
                 <div className="panel-title-row">
                   <div>
                     <h2><Link className="text-link" href={`/projects/${project.id}`}>{project.title}</Link></h2>
-                    <small>{basisLabel(project)} · {completedMilestones}/{project.milestones.length} 마일스톤 완료</small>
+                    <small>{basisLabel(project)} · {milestoneError ? "마일스톤 조회 실패" : `${completedMilestones}/${project.milestone_count} 마일스톤 완료`}</small>
                   </div>
-                  <span className="count-badge">{project.progress_percent}%</span>
+                  <span className="count-badge">{progress.label}</span>
                 </div>
 
-                <div className="overview-bars">
+                {progress.percent !== null ? <div className="overview-bars">
                   <div>
                     <span>전체 진척</span>
-                    <div className="progress-row-bar"><span style={{ width: `${project.progress_percent}%` }} /></div>
+                    <div className="progress-row-bar"><span style={{ width: `${progress.percent}%` }} /></div>
                   </div>
-                </div>
+                </div> : null}
 
                 <form className="stacked-form compact-form" onSubmit={(event) => void saveProject(event, project)}>
                   <label>
@@ -252,16 +333,27 @@ export default function GoalsPage() {
                     />
                   </label>
                   <div className="form-actions">
-                    <button disabled={savingProjectId === project.id} type="submit">
-                      {savingProjectId === project.id ? "저장 중" : "목표 저장"}
+                    {isDirty ? <span className="count-badge">저장 안 됨</span> : null}
+                    <button disabled={isSavingProject} type="submit">
+                      {isSavingProject ? "저장 중" : "목표 저장"}
                     </button>
                   </div>
                 </form>
 
                 <div className="dense-list">
+                  {milestoneError ? (
+                    <div className="alert error" role="alert">
+                      {milestoneError}
+                      <button className="secondary-button" type="button" disabled={loadingMilestoneProjectId === project.id} onClick={() => void retryProjectMilestones(project)}>
+                        {loadingMilestoneProjectId === project.id ? "다시 불러오는 중" : "마일스톤 다시 불러오기"}
+                      </button>
+                    </div>
+                  ) : null}
                   {project.milestones.map((milestone) => {
                     const evidence = evidenceByMilestone[milestone.id];
                     const review = reviewByMilestone[milestone.id];
+                    const evidenceError = evidenceErrors[milestone.id];
+                    const reviewError = reviewErrors[milestone.id];
                     const isExpanded = expandedMilestoneId === milestone.id;
                     return (
                       <article key={milestone.id}>
@@ -285,6 +377,14 @@ export default function GoalsPage() {
                         {isExpanded ? (
                           <div className="panel milestone-evidence-panel">
                             {loadingEvidenceId === milestone.id ? <p className="muted">근거를 불러오는 중입니다.</p> : null}
+                            {evidenceError ? (
+                              <div className="alert error" role="alert">
+                                {evidenceError}
+                                <button className="secondary-button" type="button" disabled={loadingEvidenceId === milestone.id} onClick={() => void loadMilestoneEvidence(project.id, milestone.id)}>
+                                  근거 다시 불러오기
+                                </button>
+                              </div>
+                            ) : null}
                             {evidence ? (
                               <>
                                 <div className="panel-title-row">
@@ -334,6 +434,14 @@ export default function GoalsPage() {
                                         )}
                                       </div>
                                     </div>
+                                  </div>
+                                ) : null}
+                                {reviewError ? (
+                                  <div className="alert error" role="alert">
+                                    {reviewError}
+                                    <button className="secondary-button" type="button" disabled={reviewingMilestoneId === milestone.id} onClick={() => void reviewMilestone(project.id, milestone.id)}>
+                                      AI 검토 다시 실행
+                                    </button>
                                   </div>
                                 ) : null}
 
@@ -388,7 +496,7 @@ export default function GoalsPage() {
                       </article>
                     );
                   })}
-                  {project.milestones.length === 0 ? <div className="empty-state">마일스톤이 없습니다. 프로젝트 상세에서 계획 WBS부터 정의하세요.</div> : null}
+                  {!milestoneError && project.milestones.length === 0 ? <div className="empty-state">마일스톤이 없습니다. 프로젝트 상세에서 계획 WBS부터 정의하세요.</div> : null}
                 </div>
               </section>
             );

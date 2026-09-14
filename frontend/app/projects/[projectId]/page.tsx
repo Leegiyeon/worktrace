@@ -11,6 +11,7 @@ import type {
   CareerTargetRole,
   GitHubCommit,
   GitHubDelivery,
+  ProjectMilestone,
   ProjectOutcome,
   ProjectGitHubStatus,
   ProjectStatus,
@@ -30,6 +31,7 @@ import {
   taskStatusLabels,
   workTypeLabels
 } from "../types";
+import { projectProgressDisplay, wbsActivityCounts } from "../progress-display";
 
 type PageProps = {
   params: Promise<{ projectId: string }>;
@@ -37,7 +39,7 @@ type PageProps = {
 
 type DetailTab = "overview" | "tasks" | "logs" | "outcomes" | "career";
 type TaskViewMode = "board" | "list" | "calendar";
-type DetailLoadFailure = "logs" | "outcomes" | "career" | "commits" | "githubStatus";
+type DetailLoadFailure = "logs" | "outcomes" | "career" | "commits" | "githubStatus" | "milestones";
 
 type TaskForm = {
   title: string;
@@ -45,6 +47,8 @@ type TaskForm = {
   status: TaskStatus;
   priority: TaskPriority;
   due_date: string;
+  milestone_id: string;
+  counts_toward_progress: boolean;
 };
 
 type ProjectForm = {
@@ -99,7 +103,9 @@ const initialTaskForm: TaskForm = {
   description: "",
   status: "planned",
   priority: "medium",
-  due_date: ""
+  due_date: "",
+  milestone_id: "",
+  counts_toward_progress: true
 };
 
 const initialProjectForm: ProjectForm = {
@@ -141,14 +147,6 @@ function isDelayed(task: ProjectTask) {
   if (!task.due_date || task.status === "done") return false;
   return new Date(`${task.due_date}T23:59:59`) < new Date();
 }
-
-function taskProgress(task: ProjectTask) {
-  if (task.status === "done") return 100;
-  if (task.status === "in_progress") return 50;
-  if (task.status === "on_hold") return 10;
-  return 0;
-}
-
 
 function formatDateKey(date: Date) {
   const year = date.getFullYear();
@@ -307,6 +305,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
   const [taskViewMode, setTaskViewMode] = useState<TaskViewMode>("board");
   const [project, setProject] = useState<ProjectSummary | null>(null);
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
+  const [milestones, setMilestones] = useState<ProjectMilestone[]>([]);
   const [workLogs, setWorkLogs] = useState<WorkLogItem[]>([]);
   const [outcomes, setOutcomes] = useState<ProjectOutcome[]>([]);
   const [careerAssets, setCareerAssets] = useState<CareerAsset[]>([]);
@@ -344,6 +343,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
 
   const dashboard = useMemo(() => {
     const delayedTasks = tasks.filter(isDelayed);
+    const activityCounts = wbsActivityCounts(tasks);
     const sortedTasks = sortTasks(tasks);
     const dueTasks = sortedTasks.filter((task) => task.due_date);
     const { start: weekStart, end: weekEnd } = getWeekRange();
@@ -356,16 +356,17 @@ export default function ProjectDetailPage({ params }: PageProps) {
     const latestOutcomes = [...outcomes].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 5);
     const quantitativeOutcomes = outcomes.filter((outcome) => outcome.outcome_type === "quantitative").length;
     const resumeReadyOutcomes = outcomes.filter((outcome) => outcome.resume_ready).length;
-    return { delayedTasks, dueTasks, latestOutcomes, quantitativeOutcomes, recentLogs, resumeReadyOutcomes, sortedTasks, thisWeekDueTasks };
+    return { activityCounts, delayedTasks, dueTasks, latestOutcomes, quantitativeOutcomes, recentLogs, resumeReadyOutcomes, sortedTasks, thisWeekDueTasks };
   }, [outcomes, tasks, workLogs]);
 
   const loadProject = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage("");
     try {
-      const [projectResponse, tasksResponse, logsResponse, outcomesResponse, careerResponse, repositoryResponse, commitsResponse, githubStatusResponse] = await Promise.all([
+      const [projectResponse, tasksResponse, milestonesResponse, logsResponse, outcomesResponse, careerResponse, repositoryResponse, commitsResponse, githubStatusResponse] = await Promise.all([
         fetch(`/api/projects/${projectId}`, { cache: "no-store" }),
         fetch(`/api/projects/${projectId}/tasks`, { cache: "no-store" }),
+        fetch(`/api/projects/${projectId}/milestones`, { cache: "no-store" }).catch(() => null),
         fetch(`/api/work-logs?project_id=${projectId}`, { cache: "no-store" }),
         fetch(`/api/projects/${projectId}/outcomes`, { cache: "no-store" }),
         fetch(`/api/projects/${projectId}/career-assets`, { cache: "no-store" }),
@@ -391,6 +392,8 @@ export default function ProjectDetailPage({ params }: PageProps) {
       });
       setTasks((await tasksResponse.json()) as ProjectTask[]);
       const failures: DetailLoadFailure[] = [];
+      if (milestonesResponse?.ok) setMilestones((await milestonesResponse.json()) as ProjectMilestone[]);
+      else failures.push("milestones");
       if (logsResponse.ok) setWorkLogs((await logsResponse.json()) as WorkLogItem[]);
       else failures.push("logs");
       if (outcomesResponse.ok) setOutcomes((await outcomesResponse.json()) as ProjectOutcome[]);
@@ -528,7 +531,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
       return;
     }
 
-    const payload = { ...taskForm, due_date: taskForm.due_date || null };
+    const payload = { ...taskForm, due_date: taskForm.due_date || null, milestone_id: taskForm.milestone_id || null };
     const success = editingTaskId ? "업무 수정 완료" : "업무 추가 완료";
     setIsSavingTask(true);
     setErrorMessage("");
@@ -565,7 +568,9 @@ export default function ProjectDetailPage({ params }: PageProps) {
       description: task.description,
       status: task.status,
       priority: task.priority,
-      due_date: task.due_date ?? ""
+      due_date: task.due_date ?? "",
+      milestone_id: task.milestone_id ?? "",
+      counts_toward_progress: task.counts_toward_progress
     });
     setTaskViewMode("board");
     setActiveTab("tasks");
@@ -832,7 +837,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
         {project ? (
           <div className="task-meta">
             <span className="meta-pill status-navy">{projectStatusLabels[project.status]}</span>
-            <span className="meta-pill">진척 {project.progress_percent}%</span>
+            <span className="meta-pill">진척 {projectProgressDisplay(project).label}</span>
             <span className="meta-pill">잔여 {project.remaining_tasks}</span>
             <span className="meta-pill priority-high">지연 {dashboard.delayedTasks.length}</span>
           </div>
@@ -844,7 +849,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
       {loadFailures.length > 0 ? (
         <div className="alert error data-load-alert" role="alert">
           <span>
-            일부 데이터를 불러오지 못했습니다: {loadFailures.map((failure) => ({ logs: "업무 로그", outcomes: "성과", career: "경력 자산", commits: "커밋 근거", githubStatus: "GitHub 수집 상태" })[failure]).join(", ")}.
+            일부 데이터를 불러오지 못했습니다: {loadFailures.map((failure) => ({ logs: "업무 로그", outcomes: "성과", career: "경력 자산", commits: "커밋 근거", githubStatus: "GitHub 수집 상태", milestones: "마일스톤" })[failure]).join(", ")}.
           </span>
           <button className="secondary-button" disabled={isLoading} type="button" onClick={() => void loadProject()}>
             다시 시도
@@ -856,8 +861,8 @@ export default function ProjectDetailPage({ params }: PageProps) {
       {project ? (
         <>
           <section className="summary-grid dashboard-metrics" aria-label="프로젝트 지표">
-            <div className="metric-card"><span>진척도</span><strong>{project.progress_percent}%</strong></div>
-            <div className="metric-card"><span>잔여 WBS</span><strong>{project.remaining_tasks}</strong></div>
+            <div className="metric-card"><span>진척도</span><strong>{projectProgressDisplay(project).label}</strong></div>
+            <div className="metric-card"><span>산정 WBS / 전체 활동</span><strong>{dashboard.activityCounts.countedWbs} / {dashboard.activityCounts.allActivities}</strong></div>
             <div className="metric-card"><span>커밋 근거</span><strong>{loadFailures.includes("commits") ? "-" : commits.length}</strong></div>
             <div className="metric-card"><span>성과</span><strong>{loadFailures.includes("outcomes") ? "-" : outcomes.length}</strong></div>
           </section>
@@ -884,7 +889,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
               <section className="panel">
                 <div className="panel-title-row"><h2>진척</h2><span className="count-badge">{projectStatusLabels[project.status]}</span></div>
                 <div className="overview-bars">
-                  <div><span>완료율</span><div className="progress-row-bar"><span style={{ width: `${project.progress_percent}%` }} /></div></div>
+                  {projectProgressDisplay(project).percent === null ? <div><span>완료율</span><strong>산정 전</strong></div> : <div><span>완료율</span><div className="progress-row-bar"><span style={{ width: `${projectProgressDisplay(project).percent}%` }} /></div></div>}
                   {groupedTasks.map((group) => <div className="status-bar-row" key={group.status}><span>{group.label}</span><div className="status-bar-track"><i style={{ width: `${tasks.length ? (group.items.length / tasks.length) * 100 : 0}%` }} /></div><strong>{group.items.length}</strong></div>)}
                 </div>
               </section>
@@ -986,7 +991,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
               </div>
               {taskViewMode === "board" ? (
                 <section className="board-layout">
-                  <TaskFormPanel editingTaskId={editingTaskId} isSavingTask={isSavingTask} taskForm={taskForm} setTaskForm={setTaskForm} onSubmit={handleSaveTask} onCancel={() => { setEditingTaskId(null); setTaskForm(initialTaskForm); }} />
+                  <TaskFormPanel editingTaskId={editingTaskId} isSavingTask={isSavingTask} milestones={milestones} milestonesUnavailable={loadFailures.includes("milestones")} taskForm={taskForm} setTaskForm={setTaskForm} onSubmit={handleSaveTask} onCancel={() => { setEditingTaskId(null); setTaskForm(initialTaskForm); }} />
                   <section className="task-board" aria-label="업무 보드">
                     {groupedTasks.map((group) => (
                       <div className="panel task-column" key={group.status}>
@@ -1038,7 +1043,9 @@ function MiniOutcomeList({ outcomes }: { outcomes: ProjectOutcome[] }) {
   return <div className="compact-list">{outcomes.map((outcome) => <div className="dense-list-row" key={outcome.id}><span>{outcome.title}</span><small>{outcomeMetric(outcome)}</small><b>{outcome.resume_ready ? "가능" : "보류"}</b></div>)}</div>;
 }
 
-function TaskFormPanel({ editingTaskId, isSavingTask, taskForm, setTaskForm, onSubmit, onCancel }: { editingTaskId: string | null; isSavingTask: boolean; taskForm: TaskForm; setTaskForm: (form: TaskForm) => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; onCancel: () => void }) {
+function TaskFormPanel({ editingTaskId, isSavingTask, milestones, milestonesUnavailable, taskForm, setTaskForm, onSubmit, onCancel }: { editingTaskId: string | null; isSavingTask: boolean; milestones: ProjectMilestone[]; milestonesUnavailable: boolean; taskForm: TaskForm; setTaskForm: (form: TaskForm) => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; onCancel: () => void }) {
+  const selectedMilestoneMissing = taskForm.milestone_id && !milestones.some((milestone) => milestone.id === taskForm.milestone_id);
+
   return (
     <section className="panel task-form-panel">
       <div className="panel-title-row"><h2>{editingTaskId ? "WBS 항목 수정" : "WBS 항목 추가"}</h2>{editingTaskId ? <button className="secondary-button" type="button" onClick={onCancel}>취소</button> : <span className="meta-pill">필수: 항목명</span>}</div>
@@ -1052,6 +1059,10 @@ function TaskFormPanel({ editingTaskId, isSavingTask, taskForm, setTaskForm, onS
           <label>마감일<input type="date" value={taskForm.due_date} onChange={(event) => setTaskForm({ ...taskForm, due_date: event.target.value })} /></label>
           <label>설명<textarea placeholder="완료 기준 또는 참고 메모" value={taskForm.description} onChange={(event) => setTaskForm({ ...taskForm, description: event.target.value })} /></label>
         </div>
+        <div className="form-grid two-columns">
+          <label>마일스톤<select aria-label="마일스톤" disabled={milestonesUnavailable} value={taskForm.milestone_id} onChange={(event) => setTaskForm({ ...taskForm, milestone_id: event.target.value })}><option value="">미지정</option>{selectedMilestoneMissing ? <option value={taskForm.milestone_id}>현재 연결된 마일스톤</option> : null}{milestones.map((milestone) => <option key={milestone.id} value={milestone.id}>{milestone.title}</option>)}</select></label>
+          <label className="checkbox-row"><input checked={taskForm.counts_toward_progress} type="checkbox" onChange={(event) => setTaskForm({ ...taskForm, counts_toward_progress: event.target.checked })} /><span>진척 산정에 포함</span></label>
+        </div>
         <div className="form-actions"><button type="submit" disabled={isSavingTask}>{isSavingTask ? "저장 중" : editingTaskId ? "수정 저장" : "WBS 항목 추가"}</button></div>
       </form>
     </section>
@@ -1059,8 +1070,6 @@ function TaskFormPanel({ editingTaskId, isSavingTask, taskForm, setTaskForm, onS
 }
 
 function TaskCard({ task, updateStatus, startEdit, deleteTask }: { task: ProjectTask; updateStatus: (task: ProjectTask, status: TaskStatus) => Promise<void>; startEdit: (task: ProjectTask) => void; deleteTask: (task: ProjectTask) => Promise<void> }) {
-  const progress = taskProgress(task);
-
   return (
     <article className="task-card jira-task-card">
       <div className="jira-card-topline">
@@ -1071,9 +1080,8 @@ function TaskCard({ task, updateStatus, startEdit, deleteTask }: { task: Project
       <h3>{task.title}</h3>
       <div className="jira-card-facts">
         <span className={isDelayed(task) ? "meta-pill priority-high" : "meta-pill"}>{task.due_date ?? "마감 없음"}</span>
-        <span className="meta-pill">진척 {progress}%</span>
+        <span className="meta-pill">{task.counts_toward_progress ? "산정 WBS" : "참고 활동"}</span>
       </div>
-      <div className="mini-progress"><span style={{ width: `${progress}%` }} /></div>
       <select value={task.status} onChange={(event) => void updateStatus(task, event.target.value as TaskStatus)} aria-label={`${task.title} 상태 변경`}>{Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
       <div className="form-actions compact-actions"><button className="secondary-button" type="button" onClick={() => startEdit(task)}>수정</button><button className="danger-button" type="button" onClick={() => void deleteTask(task)}>삭제</button></div>
     </article>
@@ -1084,7 +1092,7 @@ function TaskTable({ tasks, updateStatus, startEdit }: { tasks: ProjectTask[]; u
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "all">("all");
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | "all">("all");
   const [issueFilter, setIssueFilter] = useState<"all" | "issue" | "normal">("all");
-  const [sortKey, setSortKey] = useState<"due_date" | "priority" | "progress" | "created_at" | "status">("due_date");
+  const [sortKey, setSortKey] = useState<"due_date" | "priority" | "created_at" | "status" | "progress_scope">("due_date");
 
   const filteredTasks = useMemo(() => {
     return [...tasks]
@@ -1097,9 +1105,9 @@ function TaskTable({ tasks, updateStatus, startEdit }: { tasks: ProjectTask[]; u
       })
       .sort((a, b) => {
         if (sortKey === "priority") return priorityOrder[a.priority] - priorityOrder[b.priority];
-        if (sortKey === "progress") return taskProgress(b) - taskProgress(a);
         if (sortKey === "created_at") return a.created_at.localeCompare(b.created_at);
         if (sortKey === "status") return taskStatusOrder.indexOf(a.status) - taskStatusOrder.indexOf(b.status);
+        if (sortKey === "progress_scope") return Number(b.counts_toward_progress) - Number(a.counts_toward_progress);
         return (a.due_date ?? "9999-12-31").localeCompare(b.due_date ?? "9999-12-31");
       });
   }, [issueFilter, priorityFilter, sortKey, statusFilter, tasks]);
@@ -1111,20 +1119,19 @@ function TaskTable({ tasks, updateStatus, startEdit }: { tasks: ProjectTask[]; u
         <label>상태<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as TaskStatus | "all")}><option value="all">전체</option>{Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label>우선순위<select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value as TaskPriority | "all")}><option value="all">전체</option>{Object.entries(taskPriorityLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label>이슈<select value={issueFilter} onChange={(event) => setIssueFilter(event.target.value as "all" | "issue" | "normal")}><option value="all">전체</option><option value="issue">관리 필요</option><option value="normal">정상</option></select></label>
-        <label>정렬<select value={sortKey} onChange={(event) => setSortKey(event.target.value as "due_date" | "priority" | "progress" | "created_at" | "status")}><option value="due_date">마감일</option><option value="priority">우선순위</option><option value="progress">진행률</option><option value="created_at">시작일</option><option value="status">상태</option></select></label>
+        <label>정렬<select value={sortKey} onChange={(event) => setSortKey(event.target.value as "due_date" | "priority" | "created_at" | "status" | "progress_scope")}><option value="due_date">마감일</option><option value="priority">우선순위</option><option value="created_at">시작일</option><option value="status">상태</option><option value="progress_scope">산정 여부</option></select></label>
         <span className="count-badge">{filteredTasks.length}개</span>
       </div>
       {filteredTasks.length === 0 ? <div className="empty-state">WBS 항목 없음</div> : null}
       {filteredTasks.length > 0 ? (
         <div className="data-table-wrap">
           <table className="data-table dense-task-table">
-            <thead><tr><th>WBS 항목</th><th>상태</th><th>우선순위</th><th>이슈</th><th>시작일</th><th>마감일</th><th>진행률</th></tr></thead>
+            <thead><tr><th>WBS 항목</th><th>상태</th><th>우선순위</th><th>이슈</th><th>산정</th><th>시작일</th><th>마감일</th></tr></thead>
             <tbody>{filteredTasks.map((task) => {
               const delayed = isDelayed(task);
-              const progress = taskProgress(task);
               const issueLabel = delayed ? "기한 초과" : task.status === "on_hold" ? "보류" : task.status !== "done" && task.priority === "high" ? "우선 확인" : "정상";
               const hasIssue = issueLabel !== "정상";
-              return <tr key={task.id}><td><button className="table-link-button" type="button" onClick={() => startEdit(task)}>{task.title}</button></td><td><select aria-label={`${task.title} 상태 변경`} value={task.status} onChange={(event) => void updateStatus(task, event.target.value as TaskStatus)}>{Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td><td><span className={`meta-pill priority-${task.priority}`}>{taskPriorityLabels[task.priority]}</span></td><td><span className={`meta-pill ${hasIssue ? "priority-high" : "priority-medium"}`}>{issueLabel}</span></td><td>{task.created_at.slice(0, 10)}</td><td>{task.due_date ?? "-"}</td><td><div className="table-progress"><div className="mini-progress"><span style={{ width: `${progress}%` }} /></div><b>{progress}%</b></div></td></tr>;
+              return <tr key={task.id}><td><button className="table-link-button" type="button" onClick={() => startEdit(task)}>{task.title}</button></td><td><select aria-label={`${task.title} 상태 변경`} value={task.status} onChange={(event) => void updateStatus(task, event.target.value as TaskStatus)}>{Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td><td><span className={`meta-pill priority-${task.priority}`}>{taskPriorityLabels[task.priority]}</span></td><td><span className={`meta-pill ${hasIssue ? "priority-high" : "priority-medium"}`}>{issueLabel}</span></td><td><span className="meta-pill">{task.counts_toward_progress ? "산정 WBS" : "참고 활동"}</span></td><td>{task.created_at.slice(0, 10)}</td><td>{task.due_date ?? "-"}</td></tr>;
             })}</tbody>
           </table>
         </div>

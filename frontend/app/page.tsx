@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import type { ProjectSummary, ProjectTask, TaskStatus, WorkLogItem, WorkType } from "./projects/types";
 import { projectStatusLabels, taskPriorityLabels, taskStatusLabels, workTypeLabels } from "./projects/types";
+import { projectProgressDisplay, scopedProjectAverage, wbsActivityCounts } from "./projects/progress-display";
 import { parseApiErrorMessage } from "./reports/api-error";
 
 const taskStatusOrder: TaskStatus[] = ["planned", "in_progress", "done", "on_hold"];
@@ -157,12 +158,11 @@ export default function HomePage() {
       tasks: projectTasks[project.id] ?? []
     }));
     const allTasks = taskBundles.flatMap(({ project, tasks }) => tasks.map((task) => ({ ...task, project_title: project.title })));
+    const activityCounts = wbsActivityCounts(allTasks);
     const weekStart = getWeekStart();
     const activeProjects = projects.filter((project) => activeStatuses.has(project.status));
     const remainingTasks = projects.reduce((sum, project) => sum + project.remaining_tasks, 0);
-    const averageProgress = projects.length
-      ? Math.round(projects.reduce((sum, project) => sum + project.progress_percent, 0) / projects.length)
-      : 0;
+    const averageProgress = scopedProjectAverage(projects);
     const delayedTasks = allTasks.filter(isDelayed).sort((a, b) => (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999"));
     const completedThisWeek = allTasks
       .filter((task) => isCompletedThisWeek(task, weekStart))
@@ -186,6 +186,7 @@ export default function HomePage() {
 
     return {
       activeProjects,
+      activityCounts,
       attentionTasks,
       averageProgress,
       completedThisWeek,
@@ -194,7 +195,6 @@ export default function HomePage() {
       remainingTasks,
       weeklyLogs,
       taskStatusCounts,
-      totalTasks: allTasks.length
     };
   }, [projectTasks, projects, recentWorkLogs]);
 
@@ -305,6 +305,9 @@ export default function HomePage() {
     <main className="page-shell dashboard-page">
       <header className="dashboard-topbar compact-page-heading">
         <h1>대시보드</h1>
+        <div className="task-meta">
+          <span className="meta-pill">평균 진척 {dashboard.averageProgress.label}</span>
+        </div>
       </header>
 
       {errorMessage ? <div className="alert error" role="alert">{errorMessage}</div> : null}
@@ -343,17 +346,24 @@ export default function HomePage() {
           <div className="progress-chart-list">
             {projects.slice(0, 5).map((project) => {
               const issueCount = (projectTasks[project.id] ?? []).filter(isManagementIssue).length;
+              const progress = projectProgressDisplay(project);
               return <Link className="progress-row" href={`/projects/${project.id}`} key={project.id}>
                 <div className="progress-row-head">
                   <strong>{project.title}</strong>
                   <span className="meta-pill status-navy">{projectStatusLabels[project.status]}</span>
                   <span className="meta-pill">잔여 {project.remaining_tasks}</span>
-                  <span className={`meta-pill ${issueCount > 0 ? "priority-high" : "priority-medium"}`}>이슈 {issueCount}</span>
+                  <span className={`meta-pill ${!tasksUnavailable && issueCount > 0 ? "priority-high" : "priority-medium"}`}>이슈 {tasksUnavailable ? "-" : issueCount}</span>
                 </div>
-                <div className="progress-row-bar" aria-label={`${project.title} 진행률 ${project.progress_percent}%`}>
-                  <span style={{ width: `${project.progress_percent}%` }} />
-                </div>
-                <b>{project.progress_percent}%</b>
+                {progress.percent === null ? (
+                  <b>{progress.label}</b>
+                ) : (
+                  <>
+                    <div className="progress-row-bar" aria-label={`${project.title} 진행률 ${progress.label}`}>
+                      <span style={{ width: `${progress.percent}%` }} />
+                    </div>
+                    <b>{progress.label}</b>
+                  </>
+                )}
               </Link>;
             })}
           </div>
@@ -495,7 +505,7 @@ export default function HomePage() {
         <section className="panel status-graph-panel">
           <div className="panel-title-row">
             <h2>WBS 상태 분포</h2>
-            <span className="count-badge">{tasksUnavailable ? "-" : `${dashboard.totalTasks}개`}</span>
+            <span className="count-badge">{tasksUnavailable ? "-" : `산정 ${dashboard.activityCounts.countedWbs} / 전체 ${dashboard.activityCounts.allActivities}`}</span>
           </div>
           {tasksUnavailable ? <div className="empty-state">업무 상태를 불러오지 못했습니다.</div> : null}
           {!tasksUnavailable ? <div className="status-bars">

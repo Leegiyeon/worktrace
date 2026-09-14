@@ -1,145 +1,219 @@
 # worktrace Design System
 
-worktrace UI는 실무형 개인 프로젝트 관리 도구를 기준으로 한다. 화면은 설명보다 데이터, 장식보다 판단, 카드 나열보다 넓은 대시보드 그리드를 우선한다.
+worktrace UI는 실무형 개인 프로젝트 관리 도구를 기준으로 한다. 현재 구현은 데이터, 근거, 명시적 상태, compact control, 낮은 장식성을 우선한다. 이 문서는 구현된 상태와 설계 의도를 구분해 기록한다.
 
-## 1. UI 원칙
+최종 대조: 2026-09-14. 제품 흐름은 [DESIGN.md](../DESIGN.md), 데이터·운영 기준은 [README.md](../README.md)를 참조한다.
 
-1. 긴 설명문, 소개문, 장식성 문구를 제거한다.
-2. 기능에 직접 필요하지 않은 `description`, `subtitle`, `helper text`를 삭제한다.
-3. 화면은 텍스트보다 데이터 중심으로 구성한다.
-4. 주요 정보는 그래프, 도표, 테이블, 보드, 리스트, 배지, 진행률 바로 표현한다.
-5. 한 화면에 카드만 나열하지 않고 대시보드형 그리드로 넓게 배치한다.
-6. 네이비 계열을 메인 컬러로 사용한다.
-7. Jira처럼 업무 상태, 우선순위, 태그, 분류, 마감일, 진척도가 한눈에 보여야 한다.
-8. 각 화면은 실제 업무 판단에 필요한 정보만 남긴다.
-9. 빈 영역은 긴 설명글 대신 짧은 empty state와 액션 버튼만 둔다.
-10. 전체적으로 실무형 프로젝트 관리 도구처럼 간결하고 밀도 있게 정리한다.
+## 1. 현재 구현 스냅샷
 
-## 2. 정보 구조
+- Framework: Next.js App Router, React, TypeScript, global CSS, route/component CSS module.
+- 주요 route: `/`, `/projects`, `/projects/[projectId]`, `/goals`, `/verifications`, `/branches`, `/insights`, `/reports`, `/login`.
+- 전역 navigation: logo는 dashboard(`/`)로 이동하고, header는 프로젝트, 목표·마일스톤, 검증센터, 브랜치 그래프, 인사이트, 리포트를 노출한다. `/login`에서는 header를 숨긴다.
+- 브랜치 그래프: 한 번에 하나의 selected project만 검사한다. native `프로젝트` select와 프로젝트 링크를 같은 toolbar에 두고, selected repository만 fetch한다.
+- 진행률: `counts_toward_progress=true`인 WBS만 계산한다. 산정 대상이 있고 모두 마일스톤에 배정되면 가중 평균을 사용한다. 미배정 업무가 하나라도 있으면 전체 WBS 완료 비율을 사용하며, 산정 대상이 없으면 `산정 전`으로 표시한다.
+- 검증센터: AI 검토는 판단 보조다. stale/current review를 구분하고, `성취 기준 확인 · 검증 완료`는 사용자의 별도 명시 확인 flow다.
+- Page chrome: 여러 기존 화면은 `.dashboard-topbar`를 아직 사용한다. 브랜치 그래프 화면은 장식 card/eyebrow 없이 compact header를 사용한다.
 
-### 우선순위
+## 2. UI 원칙
 
-1. 상태: 프로젝트 상태, 업무 상태, 분석/생성 상태
-2. 실행 판단: 우선순위, 마감일, 지연 여부, 다음 액션
-3. 진행률: 완료율, 잔여 업무 수, 완료/전체 수
-4. 근거: 업무 로그, 연결된 성과, 문서/기록 출처
-5. 편집 액션: 생성, 수정, 상태 변경, 삭제, 복사
+1. 설명보다 업무 판단에 필요한 데이터를 먼저 보여준다.
+2. 장식성 hero, 반복 subtitle, 불필요한 helper text를 줄인다.
+3. 주요 정보는 metric, table, board, dense list, badge, progress bar, functional graph로 표현한다.
+4. 무거운 시각화는 selected context 하나에만 bounded surface로 제공한다.
+5. loading, empty, disconnected, partial failure, error, success, stale, refreshing, saving, disabled 상태를 구분한다.
+6. navy/neutral 계열을 기본으로 하고 semantic color는 상태 전달에만 사용한다.
+7. 한국어 업무 용어와 짧은 command label을 유지한다.
+8. 기존 token과 primitive로 해결하고 새 visual system이나 dependency를 만들지 않는다.
 
-### 피해야 할 구성
+## 3. Token
 
-- 큰 hero 영역에 긴 소개문 배치
-- 화면 상단 subtitle 반복
-- 카드만 세로로 나열하는 단조로운 화면
-- “아직 데이터가 없습니다” 뒤에 긴 안내문 추가
-- 실제 값 없이 설명만 있는 placeholder panel
+Source of truth: `frontend/app/globals.css`.
 
-## 3. 레이아웃 기준
+### Color
 
-- 기본 화면은 넓은 dashboard grid를 사용한다.
-- 주요 메트릭은 상단에 compact metric row로 둔다.
-- 프로젝트 상세는 다음 구성을 우선한다.
-  - 상단: 상태, 진행률, 잔여 업무, 마감/최근 업데이트
-  - 본문: 업무 보드, 로그 타임라인, 성과 테이블/카드, 경력 자산 패널
-  - 보조 영역: 필터, 정렬, 액션 버튼
-- 목록 화면은 table 또는 dense list를 우선한다.
-- 칸반/보드 화면은 상태별 column과 count badge를 제공한다.
+- `--background`: `#f5f6f8`
+- `--foreground`: `#111827`
+- `--muted`: `#647084`
+- `--surface`: `#ffffff`
+- `--surface-muted`: `#f1f4f8`
+- `--surface-elevated`: `rgba(255, 255, 255, 0.88)`
+- `--accent`: `#172033`
+- `--accent-strong`: `#0b1220`
+- `--accent-soft`: `#e6edf7`
+- `--accent-blue`: `#2367e8`
+- `--border`: `#d9e0ea`
+- `--danger`: `#b42318`
+- `--success`: `#15803d`
+- `--warning`: `#b7791f`
 
-## 4. 컴포넌트 원칙
+### Typography
 
-### Metric
+- Sans stack: `-apple-system`, BlinkMacSystemFont, `SF Pro Text`, `Segoe UI`, `Noto Sans KR`, Arial, Helvetica, sans-serif.
+- Mono stack: `SFMono-Regular`, Consolas, `Liberation Mono`, monospace.
+- Text token: `--text-xs 11px`, `--text-sm 12px`, `--text-md 13px`, `--text-base 14px`, `--text-lg 16px`.
+- 기본 page `h1`은 28px이고, compact route header는 module CSS에서 22px까지 낮출 수 있다.
+- letter spacing은 `0`이고 viewport width로 font-size를 scale하지 않는다.
 
-- 숫자와 단위가 먼저 보여야 한다.
-- 설명은 1줄 label로 제한한다.
-- 예: `잔여 업무 3`, `완료율 25%`, `이번 주 로그 6건`
+### Spacing / Radius / Elevation
 
-### Badge
+- `--page-gutter`: `clamp(12px, 2.5vw, 32px)`.
+- `.page-shell`: max-width 1384px.
+- 주요 gap은 8, 10, 12, 14, 16px 단위를 사용한다.
+- 기본 control height는 40px, compact control height는 32px.
+- radius는 6-8px 범위다.
+- shadow는 `--shadow-soft`, `--shadow-card`, `--shadow-hairline` 정도로 제한한다.
 
-- 상태, 우선순위, 유형, 지연 여부, resume-ready 여부에 사용한다.
-- 긴 문장 대신 짧은 값으로 표현한다.
-- 예: `진행`, `높음`, `정량`, `지연`, `이력서 가능`
+## 4. Navigation / Page Chrome
 
-### Table/List
+- logo는 `aria-label="worktrace 대시보드로 이동"`을 가진 dashboard link다.
+- top-level route link는 active 상태에서 `aria-current="page"`를 사용한다.
+- 좁은 화면에서 header nav는 wrapping 대신 horizontal scroll을 허용한다.
+- 설계 의도: inspector/tool 성격의 화면에는 decorative eyebrow나 큰 topbar card를 새로 추가하지 않는다.
+- 구현 상태: dashboard, projects, goals, verifications, insights, reports 일부는 `.dashboard-topbar`를 계속 사용한다. 이를 없어진 패턴으로 문서화하지 않는다.
 
-- 업무명, 상태, 우선순위, 마감일, 최근 업데이트를 한 줄에서 비교할 수 있어야 한다.
-- 모바일이 아닌 기본 desktop 화면에서는 정보 밀도를 낮추지 않는다.
-- 긴 근거/성과 텍스트는 중요한 식별자가 사라지지 않도록 줄바꿈을 허용한다.
+## 5. Layout Pattern
 
-### Board
+### Page Shell
 
-- 업무 상태 column은 count badge를 포함한다.
-- 카드 안에는 제목, 우선순위, 마감일, 담당/분류, 상태 변경 액션만 남긴다.
+- route content는 `.page-shell`을 사용한다.
+- route-local layout은 CSS module을 우선한다.
+- route-level gap은 compact하게 유지한다.
 
-### Empty state
+### Grid / Table / List
 
-- 한 문장 + 액션 버튼만 사용한다.
-- 예: `업무가 없습니다.` + `업무 추가`
-- 긴 온보딩 문구나 기능 소개는 넣지 않는다.
+- dashboard는 named grid area를 사용한다.
+- metric row는 `.summary-grid`와 `.metric-card`를 사용한다.
+- table은 `.data-table-wrap`으로 horizontal overflow를 관리한다.
+- dense list는 desktop에서 한 줄 비교를 우선하고 mobile에서 column으로 접는다.
+- 긴 title, evidence, repository name, URL, commit message는 wrap 또는 clamp 처리한다.
 
-### Forms / Actions
+### Panel / Card
 
-- 실제 데이터 입력 필드는 예시 placeholder로 입력 방향을 짧게 보여준다.
-- 설명, 완료 기준, 성과 근거처럼 긴 값은 단일 input보다 textarea를 우선한다.
-- 기본 액션은 `primary`, 보조 액션은 `secondary`, 삭제는 별도 danger 영역으로 분리한다.
-- 기간 선택처럼 즉시 판단 가능한 오류는 API 호출 전에 화면에서 짧게 막는다.
-- 탭/버튼/링크는 키보드 focus와 선택 상태가 색상 외에도 드러나야 한다.
+- `.panel`은 framed tool, 반복 item, 상태/action grouping에 사용한다.
+- 설계 의도: 장식 목적의 card-in-card는 만들지 않는다.
+- 구현 상태: milestone evidence나 AI review처럼 별도 disclosure/result 의미가 있는 nested panel은 존재한다. 새 작업에서는 같은 의미적 경계가 있을 때만 유지한다.
+- empty panel은 긴 설명 대신 짧은 state와 필요한 action만 둔다.
 
-## 5. 컬러 기준
+## 6. Component Contract
 
-메인 컬러는 네이비 계열로 고정한다.
+### Metric / Badge
 
-- Primary navy: `#0f2742`
-- Deep navy: `#081827`
-- Surface navy: `#102a44`
-- Accent blue: `#2563eb`
-- Background: `#f4f7fb`
-- Border: `#d8e1ee`
-- Text primary: `#0f172a`
-- Text secondary: `#475569`
+- metric은 값과 단위를 먼저 보여주고 label은 짧게 둔다.
+- `status-pill`, `meta-pill`, `count-badge`는 상태, 우선순위, count, stale/current review, compact summary에 사용한다.
+- narrow width에서 badge가 줄바꿈되어도 읽을 수 있어야 한다.
 
-상태 색상은 의미 전달에만 사용한다.
+### Form / Action
 
-- 완료: green 계열
-- 진행: blue 계열
-- 보류: amber/gray 계열
-- 위험/지연: red 계열
-- 우선순위 높음: red 또는 strong accent
+- input, select, primary command button은 기본 40px 높이다.
+- table/nav control은 필요하면 32px compact 높이를 쓴다.
+- 목표, 성취 기준, 근거, 성과처럼 긴 값은 textarea를 우선한다.
+- button label은 결과 중심으로 쓴다: `프로젝트 추가`, `목표 저장`, `AI 검토`, `성취 기준 확인 · 검증 완료`, `리포트 생성`.
 
-## 6. 화면별 기준
+### Alert / Status
+
+- error는 `.alert.error`와 `role="alert"`를 사용한다.
+- success/copy/status는 `.alert.success`, `role="status"`, `aria-live`를 사용한다.
+- partial load failure와 valid empty state를 섞지 않는다.
+
+### Branch Graph
+
+- branch page는 project selection과 selected repository fetch state를 소유한다.
+- 모든 project repository를 upfront fetch하지 않는다.
+- graph component는 selected project title, repository label, source timestamp, refresh, compact/full commit mode, selected commit detail, incomplete-history note, branch status disclosure를 소유한다.
+- 요약은 실제 가용 폭으로 노드 간격을 계산한다. 라벨 글자 크기는 유지하고 실제 글자 폭을 측정한다. 같은 HEAD의 이름은 대표 이름과 `+N`으로 묶으며 선택하면 전체 브랜치 상태를 연다.
+- 라벨 행은 커밋 경로 행과 별도로 배치한다. 요약 높이는 내용에 맞추고 전체 커밋 보기만 176px(모바일 160px)의 스크롤 영역을 사용한다. 부모 연결과 조회 범위 밖 표시를 생략하거나 만들어내지 않는다.
+- repository fetch error, disconnected repository, graph loading, empty branch history, retry/refresh는 별도 상태다.
+- page title은 `브랜치 그래프`이고, selected project title은 graph component가 표시한다. progress나 project heading을 주변에서 중복하지 않는다.
+
+### Goals / Milestone
+
+- goals page는 project objective와 success criteria 편집을 소유한다.
+- 저장은 해당 프로젝트 응답만 적용하며 다른 draft와 저장 중 추가 입력을 보존한다. 미저장 상태와 탭 닫기/새로고침 경고를 제공한다. 앱 내부 경로 이동 보호는 아직 구현하지 않았다.
+- 목표/검증센터는 프로젝트·마일스톤·저장된 검토 조회 실패를 빈 상태로 표시하지 않으며 개별 재시도를 제공한다.
+- milestone row는 title, acceptance criteria, WBS completion, progress, weight, `근거 보기`를 보여준다.
+- evidence disclosure는 WBS completion, evidence count, AI review action/result, acceptance criteria, pending WBS, recent commit/PR evidence를 보여준다.
+- AI review는 완료 상태를 직접 바꾸지 않는 판단 보조로 표현한다.
+- progress 표기는 milestone/WBS 기반 또는 `산정 전`으로 표현하고 raw activity volume처럼 다루지 않는다.
+
+### Verification Center
+
+- project card는 progress, milestone count, valid AI review count, needed review count, batch action을 보여준다.
+- 기본 batch review는 missing/stale review만 AI 호출한다. force review는 명시적 action이다.
+- 마일스톤 또는 저장된 검토 조회가 실패한 프로젝트에서는 일괄 실행을 비활성화하고 조회 복구를 우선한다.
+- validation done milestone은 batch AI review에서 유지된다.
+- stale persisted review는 stale reason과 함께 보이지만 validation 완료 action을 unlock하지 않는다.
+- `성취 기준 확인 · 검증 완료`와 취소는 사용자의 별도 확인 flow다. 이는 progress 계산식 자체의 전역 prerequisite이 아니다.
+
+## 7. Accessibility
+
+- 가능한 경우 native control을 사용한다. project selection은 visible label `프로젝트`가 있는 native select다.
+- form control은 visible 또는 programmatic label을 가진다.
+- `aria-current`, `aria-expanded`, `aria-pressed`, `aria-busy`, `role="status"`, `role="alert"`, `aria-live`를 상태에 맞게 사용한다.
+- link, button, input, select, textarea, graph canvas, graph commit node는 focus state가 보여야 한다.
+- table은 semantic table을 유지한다.
+- 색상만으로 상태를 전달하지 않는다.
+
+## 8. Responsive / Overflow
+
+- 문서 최소 폭은 320px이고 설계 target은 mobile 360px까지 포함한다.
+- global overflow hardening은 `frontend/app/ui-overflow-fixes.css`에 있다.
+- header nav, dense table, graph canvas는 필요한 경우 각자 내부 scroll을 가진다.
+- milestone row는 900px/640px 근처에서 action을 full-width로 접어 overlap을 피한다.
+- verification action과 panel-title action row는 mobile에서 줄바꿈된다.
+- count badge와 pill은 아주 좁은 화면에서 wrapping을 허용한다.
+
+## 9. Screen Contract
 
 ### Dashboard
 
-- 진행 중 프로젝트, 전체 잔여 업무, 이번 주 로그, 이력서 반영 가능 성과를 metric으로 표시한다.
-- 프로젝트 리스트는 상태/진척도/잔여 업무/최근 업데이트를 함께 보여준다.
-- 설명 패널보다 데이터 테이블과 compact list를 우선한다.
+- active projects, attention tasks, delayed work, recently completed work, recent logs, status graph, quick capture를 보여준다.
+- quick capture의 AI draft는 보조이며, 제출 source는 사용자가 확인한 form 값이다.
 
-### Project detail
+### Projects
 
-- 프로젝트 개요는 compact summary로 유지한다.
-- 업무는 Jira식 보드 또는 dense table로 관리한다.
-- 로그는 날짜/유형/소요 시간/다음 액션 중심 timeline으로 표시한다.
-- 성과는 정량/정성, metric, before/after, 근거 로그, 이력서 가능 여부를 함께 보여준다.
+- summary는 active count, total projects, remaining tasks, average progress를 보여준다.
+- 생성 form과 project table을 같은 page에서 관리한다.
 
-### Career asset
+### Project Detail
 
-- 이력서/경력기술서/포트폴리오/STAR 문장은 근거 데이터와 함께 배치한다.
-- 긴 설명 대신 `근거 로그 수`, `성과 수`, `정량 수치 여부`, `수정 상태` 같은 지표를 먼저 보여준다.
-- Markdown 복사는 명확한 action button으로 둔다.
+- project CRUD, WBS/tasks, work logs, outcomes, repository connection/status, commits, deliveries, branch graph, career assets를 소유한다.
+- record type별 관리 surface는 중복하지 않는다.
+
+### Goals / Milestones
+
+- objective/success criteria 편집과 milestone evidence 검토를 소유한다.
+- progress는 counted WBS와 milestone weight의 계산 결과로 표시한다.
+
+### Verification Center
+
+- AI-assisted milestone review와 explicit validation state 변경을 소유한다.
+- AI batch review를 milestone 자동 완료로 설명하지 않는다.
+
+### Branch Graph
+
+- 한 selected project의 repository branch inspection을 소유한다.
+- page title은 `브랜치 그래프`이고 graph component가 selected project title을 표시한다.
+- graph 주변에 progress나 selected project heading을 중복하지 않는다.
+
+### Insights
+
+- 사용자가 project를 선택하고 실행 버튼을 눌렀을 때만 Project Analyst가 실행된다.
+- 결과는 objective, WBS, milestone, GitHub evidence 기반의 advisory output이다.
 
 ### Reports
 
-- 기간, 프로젝트 수, 로그 수, 잔여 업무, 지연 업무를 먼저 보여준다.
-- 리포트 본문은 Markdown preview와 copy action 중심으로 구성한다.
+- date/type control은 생성 전 validation한다.
+- 생성 결과는 metric, evidence table/list, Markdown preview, copy action 중심이다.
 
-## 7. 작성/리뷰 체크리스트
+## 10. Review Checklist
 
-UI를 생성하거나 수정할 때 다음을 확인한다.
-
-- [ ] 긴 소개문이나 장식성 문구를 제거했는가?
-- [ ] subtitle/helper text가 실제 입력 오류 방지나 판단에 필요한가?
-- [ ] 주요 정보가 metric, table, board, badge, progress bar로 표현되는가?
-- [ ] 카드만 나열하지 않고 넓은 grid를 사용했는가?
-- [ ] 상태/우선순위/마감일/진척도가 한눈에 보이는가?
-- [ ] empty state가 짧고 액션 중심인가?
-- [ ] 네이비 계열과 업무 도구형 밀도를 유지했는가?
-- [ ] 긴 입력/근거 값이 잘리지 않고, 삭제/생성/복사 액션 위계가 분명한가?
-- [ ] 탭과 폼 컨트롤에 선택/focus 상태와 기본 입력 가이드가 있는가?
+- [ ] 현재 navigation과 route ownership을 반영했는가?
+- [ ] 구현 상태와 설계 의도를 구분했는가?
+- [ ] loading, empty, disconnected, partial failure, error, success 상태가 구분되는가?
+- [ ] 무거운 graph/visualization이 selected context 하나로 bounded 되는가?
+- [ ] AI review가 자동 완료가 아니라 advisory로 표현되는가?
+- [ ] progress 설명이 counted WBS ratio / weighted milestone average와 일치하는가?
+- [ ] decorative card-in-card를 새로 만들지 않았는가?
+- [ ] 현재 CSS token을 재사용했는가?
+- [ ] desktop/mobile에서 overlap, clipping, 과한 nowrap이 없는가?
+- [ ] label, focus, status role, semantic table/disclosure를 유지했는가?

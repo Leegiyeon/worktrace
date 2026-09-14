@@ -6,7 +6,7 @@ export function branchColor(name) {
   return COLORS[hash % COLORS.length];
 }
 
-export function buildBranchNetwork(branches, { compact = false, viewportWidth = 720 } = {}) {
+export function buildBranchNetwork(branches, { compact = false, viewportWidth = 720, labelWidths = {} } = {}) {
   const orderedBranches = [...branches].sort((a, b) => Number(b.is_default) - Number(a.is_default) || a.name.localeCompare(b.name));
   const usedColors = new Set([COLORS[0]]);
   const colors = new Map(orderedBranches.map((branch) => {
@@ -70,7 +70,8 @@ export function buildBranchNetwork(branches, { compact = false, viewportWidth = 
     }
   }
   const visibleOrder = order.filter((sha) => visible.has(sha));
-  const spacing = compact ? Math.max(16, Math.min(28, (viewportWidth - 192) / Math.max(1, visibleOrder.length - 1))) : 24;
+  const width = compact ? Math.max(240, Math.min(viewportWidth, 40 + Math.max(0, visibleOrder.length - 1) * 28)) : Math.max(240, 40 + Math.max(0, visibleOrder.length - 1) * 24);
+  const spacing = compact ? Math.min(28, (width - 40) / Math.max(1, visibleOrder.length - 1)) : 24;
   const indexBySha = new Map(order.map((sha, index) => [sha, index]));
   const tracks = [];
   for (let laneIndex = 0; laneIndex < lanes.length; laneIndex++) {
@@ -90,12 +91,29 @@ export function buildBranchNetwork(branches, { compact = false, viewportWidth = 
       lane.track = next;
     }
   }
-  let height = 10;
-  for (const track of tracks) {
-    track.top = height;
-    track.y = height + track.labels.length * 26 + 10;
-    height = track.y + 14;
+  const groupedHeads = new Map();
+  for (const branch of orderedBranches) {
+    if (!visible.has(branch.head_sha)) continue;
+    const refs = groupedHeads.get(branch.head_sha) ?? [];
+    refs.push({ name: branch.name, color: colors.get(branch.name) });
+    groupedHeads.set(branch.head_sha, refs);
   }
+  const visibleIndex = new Map(visibleOrder.map((sha, index) => [sha, index]));
+  const labelRows = [];
+  // Ref labels are packed independently of history lanes; shared HEADs use one label.
+  const labels = [...groupedHeads].map(([sha, refs]) => {
+    const name = refs[0].name;
+    const labelWidth = Math.min(180, (labelWidths[name] ?? [...name].reduce((size, char) => size + (char.charCodeAt(0) > 127 ? 12 : 8), 0)) + 28 + (refs.length > 1 ? 32 : 0));
+    const x = 20 + visibleIndex.get(sha) * spacing;
+    const left = Math.max(4, Math.min(x - 8, width - labelWidth - 4));
+    let row = labelRows.findIndex((intervals) => intervals.every(([start, end]) => left >= end + 6 || left + labelWidth + 6 <= start));
+    if (row === -1) { row = labelRows.length; labelRows.push([]); }
+    labelRows[row].push([left, left + labelWidth]);
+    return { name, sha, refs, x, left, width: labelWidth, y: 4 + row * 26, color: refs[0].color };
+  });
+  const labelHeight = labelRows.length * 26;
+  for (const [index, track] of tracks.entries()) track.y = labelHeight + 16 + index * 24;
+  const height = Math.max(64, labelHeight + tracks.length * 24 + 8);
   const nodes = visibleOrder.map((sha, index) => {
     const commit = commits.get(sha);
     const lane = lanes[ownership.get(sha)];
@@ -114,6 +132,6 @@ export function buildBranchNetwork(branches, { compact = false, viewportWidth = 
     const mid = (parent.x + node.x) / 2;
     return { from: sha, to: node.sha, collapsedCommits, color: node.parents[0] === immediateParent ? node.color : parent.color, path: `M ${parent.x} ${parent.y} C ${mid} ${parent.y}, ${mid} ${node.y}, ${node.x} ${node.y}` };
   }));
-  const labels = lanes.flatMap((lane) => lane.labels.map((branch, index) => ({ name: branch.name, sha: branch.head_sha, x: bySha.get(branch.head_sha).x, y: lane.track.top + index * 26, nodeY: lane.track.y, color: colors.get(branch.name) })));
-  return { nodes, edges, labels, totalCommits: order.length, width: Math.max(240, 192 + Math.max(0, nodes.length - 1) * spacing), height: Math.max(64, height), incomplete: branches.some((branch) => branch.history_truncated || !bySha.has(branch.head_sha)) || nodes.some((node) => node.missingParents.length > 0) };
+  for (const label of labels) label.nodeY = bySha.get(label.sha).y;
+  return { nodes, edges, labels, spacing, totalCommits: order.length, width, height, incomplete: branches.some((branch) => branch.history_truncated || !bySha.has(branch.head_sha)) || nodes.some((node) => node.missingParents.length > 0) };
 }
