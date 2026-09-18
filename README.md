@@ -72,6 +72,8 @@ UI 구조는 [DESIGN.md](DESIGN.md), 공통 시각 규칙은
 - 산정 WBS에 `source_provider=derived-github`가 있으면 `참고 N%`로 구분합니다. 기존 커밋 분류 마이그레이션은 구현 항목을 완료, 확인 항목을 예정으로 자동 구성했으므로 이 비율은 실제 계획의 달성률을 보장하지 않습니다. API의 `derived_task_count`는 산정 대상 중 자동 구성된 항목 수입니다.
 - 자동 구성 항목이 포함되거나 출처 필드가 없는 프로젝트는 대시보드·프로젝트 목록의 평균에서 제외합니다. 출처 필드가 없는 구버전 응답은 `기준 미확인`이며, 산정 전을 0%로 대체하지 않습니다. 프로젝트 상세의 `수치 산정 근거`에서 분모·분자·자동 구성 수·계산식을 확인합니다.
 - 프로젝트 `status=done`은 사용자가 정한 개발 종료 상태이며 WBS 완료율·성취 기준 확인과 별개입니다. 운영 중인 완료 프로젝트도 표현할 수 있고, GitHub 동기화는 기존 프로젝트 상태를 다시 진행 중으로 덮어쓰지 않습니다.
+- `016`부터 개발 단계와 서비스 상태(`unknown / not_released / operating / retired`)를 별도로 저장합니다. 프로젝트 개요의 `개발·운영 상태`에서 사유와 함께 확인하며, 미완료 WBS가 있는 개발 종료에는 처리 사유가 필요합니다. WBS 상태·비율은 변경하지 않습니다. 기존 프로젝트는 운영 미확인으로 시작하며 과거 실제 종료일을 현재 날짜로 채우지 않습니다.
+- 상태 변경은 `POST /projects/{project_id}/lifecycle`로만 처리합니다. 버전 충돌과 동일 요청 재전송을 검사하며, `GET`은 상태 및 최근 확인 20건을 반환합니다. 개발 재개는 현재 종료일을 비우지만 과거 확인 이력은 보존합니다. 일반 프로젝트 수정으로 개발 단계를 우회 변경하거나 생성 시 바로 완료 처리할 수 없습니다.
 - 대시보드의 `이번 주 갱신된 완료 업무`는 완료 상태이면서 `updated_at`이 이번 주인 업무입니다. 실제 완료 시각을 별도로 기록한 값은 아닙니다. 상세의 `조회된 커밋 근거`는 조회 응답 건수이며 전체 저장 건수는 GitHub 수집 상태의 `저장 커밋`과 구분합니다.
 - AI가 반환하는 confidence는 측정된 정확도가 아니므로 화면에 신뢰도 백분율로 표시하지 않습니다. 경력 자산 생성에는 확정 성과만 사용하고, 자동 구성 WBS는 실제 완료 실적에서 제외하며 AI 입력에 그 출처를 전달합니다. 기존 저장된 경력 자료는 자동 재작성하지 않습니다.
 - `014` 이후 GitHub 동기화는 Issue·PR 원본을 `github_items`에 저장하고 WBS를 생성·수정하지 않습니다. 이전에 생성된 WBS의 상태·산정 여부는 보존합니다. 외부 closed 상태를 로컬 done으로 변환하지 않으며 PR 종료를 병합으로 간주하지 않습니다.
@@ -497,7 +499,7 @@ FastAPI/Pydantic 요청 검증 실패는 기본 422 응답을 유지합니다.
 
 ## DB 초기화 / migration 방법
 
-canonical SQL source는 `infrastructure/postgres/init/*.sql` 전체이며 현재 `001`부터 `015`까지 있습니다.
+canonical SQL source는 `infrastructure/postgres/init/*.sql` 전체이며 현재 `001`부터 `016`까지 있습니다.
 `backend/scripts/migrate_db.py`가 파일명 순서대로 적용하고 advisory lock·트랜잭션·체크섬을 관리합니다.
 `002_work_support_schema.sql`은 기본 스키마 한 부분일 뿐이며 파일명은 migration 식별자 호환을 위해 유지합니다.
 
@@ -548,9 +550,9 @@ PY
 
 baseline 자동 승인 도구와 실제 운영 복원 검증은 이번 변경에 포함되지 않습니다.
 
-### 수집 보호·근거 검토 DB 통합 테스트
+### 수집 보호·근거 검토·상태 확인 DB 통합 테스트
 
-`backend/tests/test_github_preservation_postgres.py`, `backend/tests/test_github_items_postgres.py`는 `WORKTRACE_TEST_DATABASE_URL`이 있을 때만 실행됩니다.
+`backend/tests/test_github_preservation_postgres.py`, `backend/tests/test_github_items_postgres.py`, `backend/tests/test_project_lifecycle_postgres.py`는 `WORKTRACE_TEST_DATABASE_URL`이 있을 때만 실행됩니다.
 데이터베이스 이름은 반드시 `worktrace_test`여야 하며 임의 스키마 안에서 검증 후 rollback합니다. 독립 연결을 사용하는 동시 요청 테스트는 임시 스키마를 커밋한 후 해당 스키마만 제거합니다. 같은 테스트 DB에서 여러 suite를 동시에 실행하지 않습니다.
 GitHub Actions는 격리된 pgvector 테스트 서비스를 사용합니다. 환경변수가 없는 로컬 테스트에서는 이 검증이 skip됩니다.
 운영 URL을 테스트 변수에 넣지 않습니다. 테스트는 개발자의 `.env`를 읽지 않으며, 필요한 설정은 테스트 환경 또는 fixture로 주입합니다.
@@ -565,6 +567,8 @@ node scripts/github-evidence.browser.mjs
 ```
 
 필요하면 `WORKTRACE_CHROME_PATH`로 Chrome 실행 파일을 지정합니다. 이 테스트는 API를 모의 응답으로 대체하며 실서비스 자료를 쓰지 않습니다. 320/390/768/1440px 캡처, 넘침·버튼 겹침, 채택/연결/제외/복원, 충돌, 조회 실패, 응답 유실 재시도를 검증합니다. 실제 SQL 검증 및 운영 smoke를 대체하지 않습니다.
+
+같은 환경에서 `node scripts/project-lifecycle.browser.mjs`는 개발·운영 상태 확인, 미완료 사유, 재개, 이력, 충돌 재조회, 응답 유실 재시도와 대시보드·프로젝트 목록의 반응형 배치를 검증합니다. 상태 패널의 입력은 같은 프로젝트 탭 이동 중 유지하지만 새로고침·다른 프로젝트 이동까지 복원하지는 않습니다.
 
 ### 로컬 DB를 완전히 초기화해야 할 때
 

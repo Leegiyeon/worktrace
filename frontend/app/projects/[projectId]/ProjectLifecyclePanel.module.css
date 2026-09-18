@@ -1,0 +1,22 @@
+.panel { padding: 16px 0; border-block: 1px solid var(--border); display: grid; gap: 12px; min-width: 0; }
+.heading, .actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.actions { justify-content: flex-start; }
+.heading h2 { font-size: 16px; margin: 0; }
+.facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0; }
+.facts dt, .muted { color: var(--muted); font-size: 13px; }
+.facts dd { margin: 4px 0 0; font-size: 14px; overflow-wrap: anywhere; }
+.form { padding: 0; margin: 0; border: 0; min-width: 0; display: grid; gap: 12px; }
+.form legend { font-weight: 600; margin-bottom: 12px; }
+.fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.form label { display: grid; gap: 8px; min-width: 0; }
+.form select, .form input, .form textarea { width: 100%; min-width: 0; max-width: 100%; font: inherit; }
+.form input, .form select { min-height: 40px; }
+.form textarea { min-height: 80px; resize: vertical; }
+.history { display: grid; gap: 12px; min-width: 0; }
+.history h3 { font-size: 14px; margin: 0; }
+.history article { border-top: 1px solid var(--border); padding-top: 12px; display: grid; gap: 8px; overflow-wrap: anywhere; }
+.history p { margin: 0; white-space: pre-wrap; }
+.history small { color: var(--muted); }
+.error { color: var(--danger); overflow-wrap: anywhere; }
+.success { color: var(--success); margin: 0; }
+@media (max-width: 760px) { .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fields { grid-template-columns: minmax(0, 1fr); } }

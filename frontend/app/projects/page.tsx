@@ -6,7 +6,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { parseApiErrorMessage } from "../reports/api-error";
 import type { ProjectStatus, ProjectSummary } from "./types";
-import { projectStatusLabels } from "./types";
+import { projectStatusLabels, serviceStatusLabels } from "./types";
 import { projectProgressDisplay, scopedProjectAverage } from "./progress-display";
 import styles from "./page.module.css";
 
@@ -224,7 +224,7 @@ export default function ProjectsPage() {
             <div className={styles.formGrid}>
               <label>프로젝트명<input placeholder="예: 고객 포털 개선" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></label>
               <label>내 역할<input placeholder="예: PM, Backend, Frontend" value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value })} /></label>
-              <label>상태<select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as ProjectStatus })}>{projectStatuses.map((value) => <option key={value} value={value}>{projectStatusLabels[value]}</option>)}</select></label>
+              <label>개발 단계<select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as ProjectStatus })}>{projectStatuses.filter((value) => value !== "done").map((value) => <option key={value} value={value}>{projectStatusLabels[value]}</option>)}</select></label>
             </div>
             <label>설명<textarea placeholder="목표, 범위, 현재 상황" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
             <div className="form-actions">
@@ -285,7 +285,10 @@ export default function ProjectsPage() {
                       <span>{progress.basisLabel}</span>
                     </div>
                   </div>
-                  <span className="meta-pill status-navy">{projectStatusLabels[project.status]}</span>
+                  <div className={styles.lifecycleStates}>
+                    <span className="meta-pill status-navy">{projectStatusLabels[project.status]}</span>
+                    <span className="meta-pill">{serviceStatusLabels[project.service_status ?? "unknown"]}</span>
+                  </div>
                   <div className={styles.progressCell}>
                     {progress.percent === null ? (
                       <b>{progress.label}</b>

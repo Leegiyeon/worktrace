@@ -1,10 +1,17 @@
+from datetime import datetime
 from uuid import UUID
+from zoneinfo import ZoneInfo
+
+from psycopg.types.json import Jsonb
 
 from app.core.config import Settings
 from app.db.connection import connect
 from app.schemas.projects import (
     GitHubCommit,
     ProjectCreate,
+    ProjectLifecycle,
+    ProjectLifecycleConfirm,
+    ProjectLifecycleHistoryItem,
     ProjectMilestone,
     ProjectMilestoneCreate,
     ProjectMilestoneUpdate,
@@ -19,6 +26,22 @@ from app.schemas.projects import (
 
 
 class ProjectNotFoundError(Exception):
+    pass
+
+
+class ProjectLifecycleConflictError(Exception):
+    pass
+
+
+class ProjectLifecycleValidationError(Exception):
+    pass
+
+
+class ProjectLifecycleRequestConflictError(Exception):
+    pass
+
+
+class ProjectStatusUpdateForbiddenError(Exception):
     pass
 
 
@@ -138,32 +161,145 @@ def get_project(settings: Settings, owner_id: str, project_id: UUID) -> ProjectS
 
 
 def update_project(settings: Settings, owner_id: str, project_id: UUID, payload: ProjectUpdate) -> ProjectSummary:
-    existing = get_project(settings, owner_id, project_id)
     updates = payload.model_dump(exclude_unset=True)
-    next_values = {
-        "title": updates.get("title", existing.title),
-        "description": updates.get("description", existing.description),
-        "objective": updates.get("objective", existing.objective),
-        "success_criteria": updates.get("success_criteria", existing.success_criteria),
-        "status": updates.get("status", existing.status),
-        "role": updates.get("role", existing.role),
-    }
     with connect(settings) as connection:
-        connection.execute(
+        current = connection.execute(
+            "SELECT status FROM projects WHERE owner_id=%s AND id=%s",
+            (owner_id, project_id),
+        ).fetchone()
+        if current is None:
+            raise ProjectNotFoundError()
+        if "status" in updates and updates["status"] != current["status"]:
+            raise ProjectStatusUpdateForbiddenError()
+        row = connection.execute(
             """
             UPDATE projects
-            SET title = %(title)s,
-                description = %(description)s,
-                objective = %(objective)s,
-                success_criteria = %(success_criteria)s,
-                status = %(status)s,
-                role = %(role)s,
+            SET title = COALESCE(%(title)s, title),
+                description = COALESCE(%(description)s, description),
+                objective = COALESCE(%(objective)s, objective),
+                success_criteria = COALESCE(%(success_criteria)s, success_criteria),
+                role = COALESCE(%(role)s, role),
                 updated_at = now()
             WHERE owner_id = %(owner_id)s AND id = %(project_id)s
+            RETURNING id
             """,
-            {"owner_id": owner_id, "project_id": project_id, **next_values},
-        )
+            {
+                "owner_id": owner_id,
+                "project_id": project_id,
+                "title": updates.get("title"),
+                "description": updates.get("description"),
+                "objective": updates.get("objective"),
+                "success_criteria": updates.get("success_criteria"),
+                "role": updates.get("role"),
+            },
+        ).fetchone()
+    if row is None:
+        raise ProjectNotFoundError()
     return get_project(settings, owner_id, project_id)
+
+
+def get_project_lifecycle(settings: Settings, owner_id: str, project_id: UUID) -> ProjectLifecycle:
+    with connect(settings) as connection:
+        return _get_project_lifecycle_in_connection(connection, owner_id, project_id)
+
+
+def confirm_project_lifecycle(
+    settings: Settings,
+    owner_id: str,
+    project_id: UUID,
+    payload: ProjectLifecycleConfirm,
+) -> ProjectLifecycle:
+    snapshot = payload.model_dump(mode="json")
+    with connect(settings) as connection:
+        with connection.transaction():
+            connection.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (f"{owner_id}:{project_id}",))
+            project = connection.execute(
+                """
+                SELECT id, status, service_status, development_ended_on, lifecycle_version
+                FROM projects
+                WHERE owner_id=%s AND id=%s
+                FOR UPDATE
+                """,
+                (owner_id, project_id),
+            ).fetchone()
+            if project is None:
+                raise ProjectNotFoundError()
+
+            replay = connection.execute(
+                """
+                SELECT request_snapshot
+                FROM project_lifecycle_history
+                WHERE owner_id=%s AND project_id=%s AND request_id=%s
+                """,
+                (owner_id, project_id, payload.request_id),
+            ).fetchone()
+            if replay is not None:
+                if replay["request_snapshot"] == snapshot:
+                    return _get_project_lifecycle_in_connection(connection, owner_id, project_id)
+                raise ProjectLifecycleRequestConflictError()
+
+            if int(project["lifecycle_version"]) != payload.expected_version:
+                raise ProjectLifecycleConflictError()
+
+            pending_task_count = _pending_task_count(connection, owner_id, project_id)
+            incomplete_reason = payload.incomplete_reason
+            if payload.status == "done" and pending_task_count > 0 and not incomplete_reason:
+                raise ProjectLifecycleValidationError()
+
+            if payload.development_ended_on is not None and payload.development_ended_on > datetime.now(ZoneInfo("Asia/Seoul")).date():
+                raise ProjectLifecycleValidationError()
+
+            next_ended_on = payload.development_ended_on if payload.status == "done" else None
+            history_row = connection.execute(
+                """
+                INSERT INTO project_lifecycle_history (
+                    owner_id, project_id, actor_owner_id, request_id, request_snapshot,
+                    previous_status, next_status, previous_service_status, next_service_status,
+                    reason, incomplete_reason, development_ended_on
+                )
+                VALUES (
+                    %(owner_id)s, %(project_id)s, %(actor_owner_id)s, %(request_id)s, %(request_snapshot)s,
+                    %(previous_status)s, %(next_status)s, %(previous_service_status)s, %(next_service_status)s,
+                    %(reason)s, %(incomplete_reason)s, %(development_ended_on)s
+                )
+                RETURNING confirmed_at
+                """,
+                {
+                    "owner_id": owner_id,
+                    "project_id": project_id,
+                    "actor_owner_id": owner_id,
+                    "request_id": payload.request_id,
+                    "request_snapshot": Jsonb(snapshot),
+                    "previous_status": project["status"],
+                    "next_status": payload.status,
+                    "previous_service_status": project["service_status"],
+                    "next_service_status": payload.service_status,
+                    "reason": payload.reason,
+                    "incomplete_reason": incomplete_reason,
+                    "development_ended_on": next_ended_on,
+                },
+            ).fetchone()
+            connection.execute(
+                """
+                UPDATE projects
+                SET status=%(status)s,
+                    service_status=%(service_status)s,
+                    development_ended_on=%(development_ended_on)s,
+                    lifecycle_version=lifecycle_version + 1,
+                    lifecycle_confirmed_at=%(confirmed_at)s,
+                    updated_at=now()
+                WHERE owner_id=%(owner_id)s AND id=%(project_id)s
+                """,
+                {
+                    "owner_id": owner_id,
+                    "project_id": project_id,
+                    "status": payload.status,
+                    "service_status": payload.service_status,
+                    "development_ended_on": next_ended_on,
+                    "confirmed_at": history_row["confirmed_at"],
+                },
+            )
+            return _get_project_lifecycle_in_connection(connection, owner_id, project_id)
 
 
 def delete_project(settings: Settings, owner_id: str, project_id: UUID) -> None:
@@ -295,6 +431,7 @@ def create_project_task(settings: Settings, owner_id: str, project_id: UUID, pay
     if payload.milestone_id is not None:
         _ensure_milestone_exists(settings, owner_id, project_id, payload.milestone_id)
     with connect(settings) as connection:
+        _lock_project_for_write(connection, owner_id, project_id)
         row = connection.execute(
             """
             INSERT INTO project_tasks (owner_id, project_id, title, description, status, priority, due_date, milestone_id, counts_toward_progress)
@@ -309,21 +446,34 @@ def create_project_task(settings: Settings, owner_id: str, project_id: UUID, pay
 
 
 def update_project_task(settings: Settings, owner_id: str, project_id: UUID, task_id: UUID, payload: ProjectTaskUpdate) -> ProjectTask:
-    existing = get_project_task(settings, owner_id, project_id, task_id)
     updates = payload.model_dump(exclude_unset=True)
-    milestone_id = updates.get("milestone_id", existing.milestone_id)
-    if milestone_id is not None:
-        _ensure_milestone_exists(settings, owner_id, project_id, UUID(str(milestone_id)))
-    next_values = {
-        "title": updates.get("title", existing.title),
-        "description": updates.get("description", existing.description),
-        "status": updates.get("status", existing.status),
-        "priority": updates.get("priority", existing.priority),
-        "due_date": updates.get("due_date", existing.due_date),
-        "milestone_id": milestone_id,
-        "counts_toward_progress": updates.get("counts_toward_progress", existing.counts_toward_progress),
-    }
     with connect(settings) as connection:
+        _lock_project_for_write(connection, owner_id, project_id)
+        existing = connection.execute(
+            """
+            SELECT t.id::text, t.project_id::text, t.title, t.description, t.status, t.priority,
+                   t.due_date::text, t.milestone_id::text, t.counts_toward_progress,
+                   t.created_at::text, t.updated_at::text
+            FROM project_tasks t
+            WHERE t.owner_id=%s AND t.project_id=%s AND t.id=%s
+            FOR UPDATE
+            """,
+            (owner_id, project_id, task_id),
+        ).fetchone()
+        if existing is None:
+            raise ProjectTaskNotFoundError()
+        milestone_id = updates["milestone_id"] if "milestone_id" in updates else existing.get("milestone_id")
+        if "milestone_id" in updates and milestone_id is not None:
+            _ensure_milestone_exists_in_connection(connection, owner_id, project_id, UUID(str(milestone_id)))
+        next_values = {
+            "title": updates.get("title", existing["title"]),
+            "description": updates.get("description", existing.get("description") or ""),
+            "status": updates.get("status", existing["status"]),
+            "priority": updates.get("priority", existing.get("priority") or "medium"),
+            "due_date": updates["due_date"] if "due_date" in updates else existing.get("due_date"),
+            "milestone_id": milestone_id,
+            "counts_toward_progress": updates.get("counts_toward_progress", existing.get("counts_toward_progress", True)),
+        }
         row = connection.execute(
             """
             UPDATE project_tasks t
@@ -347,6 +497,7 @@ def update_project_task(settings: Settings, owner_id: str, project_id: UUID, tas
 
 def delete_project_task(settings: Settings, owner_id: str, project_id: UUID, task_id: UUID) -> None:
     with connect(settings) as connection:
+        _lock_project_for_write(connection, owner_id, project_id)
         result = connection.execute(
             """DELETE FROM project_tasks t USING projects p
                WHERE p.id=t.project_id AND p.owner_id=%(owner_id)s AND t.owner_id=%(owner_id)s
@@ -383,18 +534,41 @@ def _ensure_project_exists(settings: Settings, owner_id: str, project_id: UUID) 
         raise ProjectNotFoundError()
 
 
+def _lock_project_for_write(connection, owner_id: str, project_id: UUID) -> None:
+    row = connection.execute(
+        "SELECT id FROM projects WHERE owner_id=%s AND id=%s FOR UPDATE",
+        (owner_id, project_id),
+    ).fetchone()
+    if row is None:
+        raise ProjectNotFoundError()
+
+
 def _ensure_milestone_exists(settings: Settings, owner_id: str, project_id: UUID, milestone_id: UUID) -> None:
     with connect(settings) as connection:
-        row = connection.execute(
-            "SELECT id FROM project_milestones WHERE owner_id=%s AND project_id=%s AND id=%s",
-            (owner_id, project_id, milestone_id),
-        ).fetchone()
+        row = _select_milestone(connection, owner_id, project_id, milestone_id)
     if row is None:
         raise ProjectMilestoneNotFoundError()
 
 
+def _ensure_milestone_exists_in_connection(connection, owner_id: str, project_id: UUID, milestone_id: UUID) -> None:
+    if _select_milestone(connection, owner_id, project_id, milestone_id) is None:
+        raise ProjectMilestoneNotFoundError()
+
+
+def _select_milestone(connection, owner_id: str, project_id: UUID, milestone_id: UUID):
+    return connection.execute(
+        "SELECT id FROM project_milestones WHERE owner_id=%s AND project_id=%s AND id=%s",
+        (owner_id, project_id, milestone_id),
+    ).fetchone()
+
+
 _PROJECT_SUMMARY_SQL = """
-    SELECT p.id::text, p.title, p.description, p.objective, p.success_criteria, p.status, p.role, p.updated_at::text,
+    SELECT p.id::text, p.title, p.description, p.objective, p.success_criteria, p.status,
+           COALESCE(p.service_status, 'unknown') AS service_status,
+           p.development_ended_on,
+           COALESCE(p.lifecycle_version, 0)::bigint AS lifecycle_version,
+           p.lifecycle_confirmed_at,
+           p.role, p.updated_at::text,
            COALESCE(ts.total_tasks, 0)::int AS total_tasks,
            COALESCE(ts.completed_tasks, 0)::int AS completed_tasks,
            COALESCE(ts.remaining_tasks, 0)::int AS remaining_tasks,
@@ -454,11 +628,66 @@ def _project_from_row(row) -> ProjectSummary:
     return ProjectSummary(
         id=row["id"], title=row["title"], description=row.get("description") or "",
         objective=row.get("objective") or "", success_criteria=row.get("success_criteria") or "",
-        status=row["status"], role=row.get("role") or "", total_tasks=row.get("total_tasks") or 0,
+        status=row["status"], service_status=row.get("service_status") or "unknown",
+        development_ended_on=row.get("development_ended_on"),
+        lifecycle_version=row.get("lifecycle_version") or 0,
+        lifecycle_confirmed_at=row.get("lifecycle_confirmed_at"),
+        role=row.get("role") or "", total_tasks=row.get("total_tasks") or 0,
         completed_tasks=row.get("completed_tasks") or 0, remaining_tasks=row.get("remaining_tasks") or 0,
         derived_task_count=row.get("derived_task_count") or 0, milestone_count=row.get("milestone_count") or 0,
         progress_basis=row.get("progress_basis") or "unscoped",
         progress_percent=row.get("progress_percent") or 0, updated_at=row["updated_at"],
+    )
+
+
+def _pending_task_count(connection, owner_id: str, project_id: UUID) -> int:
+    return int(
+        connection.execute(
+            """
+            SELECT COUNT(*)::int AS count
+            FROM project_tasks
+            WHERE owner_id=%s AND project_id=%s AND status<>'done'
+            """,
+            (owner_id, project_id),
+        ).fetchone()["count"]
+    )
+
+
+def _get_project_lifecycle_in_connection(connection, owner_id: str, project_id: UUID) -> ProjectLifecycle:
+    project = connection.execute(
+        """
+        SELECT status,
+               COALESCE(service_status, 'unknown') AS service_status,
+               development_ended_on,
+               COALESCE(lifecycle_version, 0)::bigint AS lifecycle_version,
+               lifecycle_confirmed_at
+        FROM projects
+        WHERE owner_id=%s AND id=%s
+        """,
+        (owner_id, project_id),
+    ).fetchone()
+    if project is None:
+        raise ProjectNotFoundError()
+    rows = connection.execute(
+        """
+        SELECT id::text, actor_owner_id, previous_status, next_status AS status,
+               previous_service_status, next_service_status AS service_status,
+               reason, incomplete_reason, development_ended_on, confirmed_at
+        FROM project_lifecycle_history
+        WHERE owner_id=%s AND project_id=%s
+        ORDER BY confirmed_at DESC, id DESC
+        LIMIT 20
+        """,
+        (owner_id, project_id),
+    ).fetchall()
+    return ProjectLifecycle(
+        status=project["status"],
+        service_status=project["service_status"],
+        development_ended_on=project.get("development_ended_on"),
+        lifecycle_version=project["lifecycle_version"],
+        lifecycle_confirmed_at=project.get("lifecycle_confirmed_at"),
+        pending_task_count=_pending_task_count(connection, owner_id, project_id),
+        history=[ProjectLifecycleHistoryItem(**{**row, "incomplete_reason": row.get("incomplete_reason") or ""}) for row in rows],
     )
 
 

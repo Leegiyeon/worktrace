@@ -117,6 +117,14 @@
   min-width: 0;
 }
 
+.lifecycleStates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
 .projectTitle {
   min-width: 0;
   color: var(--accent);
@@ -243,7 +251,7 @@
     grid-column: 1 / -1;
   }
 
-  .projectRow > :global(.meta-pill) {
+  .lifecycleStates {
     grid-column: 1;
     grid-row: 2;
     justify-self: start;

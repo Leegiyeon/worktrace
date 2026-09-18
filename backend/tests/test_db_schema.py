@@ -12,6 +12,7 @@ GITHUB_MANAGED_WORK_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" 
 PROJECT_GOALS_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "007_project_progress_goals.sql"
 GITHUB_EVIDENCE_PROGRESS_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "008_github_evidence_not_progress.sql"
 PROJECT_MILESTONE_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "009_project_milestones.sql"
+PROJECT_LIFECYCLE_SCHEMA = REPO_ROOT / "infrastructure" / "postgres" / "init" / "016_project_lifecycle.sql"
 
 
 def test_schema_loader_reads_canonical_sql_file() -> None:
@@ -130,3 +131,21 @@ def test_project_milestone_migration_has_weighted_progress_structure() -> None:
     assert "핵심 업무 전산화" in schema
     assert "Retrieval 품질" in schema
     assert "Career AI" in schema
+
+
+def test_project_lifecycle_migration_separates_development_and_service_state() -> None:
+    schema = PROJECT_LIFECYCLE_SCHEMA.read_text(encoding="utf-8")
+
+    assert "service_status TEXT NOT NULL DEFAULT 'unknown'" in schema
+    assert "lifecycle_version BIGINT NOT NULL DEFAULT 0" in schema
+    assert "development_ended_on DATE" in schema
+    assert "lifecycle_confirmed_at TIMESTAMPTZ" in schema
+    assert "CREATE TABLE IF NOT EXISTS project_lifecycle_history" in schema
+    assert "FOREIGN KEY (owner_id, project_id) REFERENCES projects(owner_id, id)" in schema
+    assert "request_snapshot JSONB NOT NULL" in schema
+    assert "confirmed_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()" in schema
+    assert "UNIQUE (owner_id, project_id, request_id)" in schema
+    assert "worktrace_guard_project_lifecycle_history_mutation" in schema
+    assert "NOT EXISTS" in schema
+    assert "BEFORE UPDATE ON project_lifecycle_history" in schema
+    assert "BEFORE DELETE ON project_lifecycle_history" in schema

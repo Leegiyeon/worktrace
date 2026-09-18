@@ -67,6 +67,13 @@ test("GitHub review proxies preserve scoped identifiers and query forwarding", (
   assert.doesNotMatch(collection + decision, /GITHUB_TOKEN|api.github.com/);
 });
 
+test("project lifecycle proxy supports explicit confirmation and history reads", () => {
+  const route = read("app/api/projects/[projectId]/lifecycle/route.ts");
+  assert.match(route, /export async function GET/);
+  assert.match(route, /export async function POST/);
+  assert.match(route, /`\/projects\/\$\{encodePathSegment\(projectId\)\}\/lifecycle`/);
+});
+
 test("dashboard, report, AI draft, and career routes keep expected proxy methods", () => {
   const projectsRoute = read("app/api/projects/route.ts");
   const workLogsRoute = read("app/api/work-logs/route.ts");

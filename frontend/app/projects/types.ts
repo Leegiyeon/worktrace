@@ -1,4 +1,5 @@
 export type ProjectStatus = "idea" | "review" | "in_progress" | "on_hold" | "done";
+export type ServiceStatus = "unknown" | "not_released" | "operating" | "retired";
 export type TaskStatus = "planned" | "in_progress" | "done" | "on_hold";
 export type TaskPriority = "low" | "medium" | "high";
 export type ProgressBasis = "milestone" | "wbs" | "unscoped";
@@ -14,6 +15,10 @@ export type ProjectSummary = {
   objective: string;
   success_criteria: string;
   status: ProjectStatus;
+  service_status?: ServiceStatus;
+  development_ended_on?: string | null;
+  lifecycle_version?: number;
+  lifecycle_confirmed_at?: string | null;
   role: string;
   total_tasks: number;
   completed_tasks: number;
@@ -157,7 +162,14 @@ export const projectStatusLabels: Record<ProjectStatus, string> = {
   review: "검토",
   in_progress: "진행",
   on_hold: "보류",
-  done: "완료"
+  done: "개발 종료"
+};
+
+export const serviceStatusLabels: Record<ServiceStatus, string> = {
+  unknown: "운영 미확인",
+  not_released: "미출시",
+  operating: "운영 중",
+  retired: "서비스 종료"
 };
 
 export const taskStatusLabels: Record<TaskStatus, string> = {

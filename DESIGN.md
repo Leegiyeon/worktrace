@@ -85,6 +85,7 @@
 - Touch/hover differences: actions remain visible without hover; hover polish is optional, while focus and disabled states are explicit.
 
 ## Interaction states
+- Project lifecycle: development phase and service operation are separate facts. Show both in project rows and the detail header. One unframed detail workflow records a reason, optional actual development end date, unfinished-work disposition and confirmation history. Unknown dates remain blank; project closure never completes WBS. General metadata forms cannot edit lifecycle state. Keep failed inputs and the same request identity on retry; a version conflict requires explicit reload. Same-project tabs retain the lifecycle draft, full navigation does not.
 - GitHub review contract: show stored collection/source timestamps, external state and pending/adopted/ignored counts separately. Use a paginated flat list with one expanded detail/editor, not nested cards. Keep a failed submission's input and request identity for safe retry; conflicts require an explicit reload before a new decision. Refresh parent planning totals without resetting other forms. Same-project tab changes retain the mounted evidence editor; full route changes/reloads do not persist drafts.
 - Loading: short Korean status text near the affected surface; branch page separates project loading from selected repository loading.
 - Empty: one concise state such as `표시할 프로젝트가 없습니다.`, `연결된 GitHub 저장소가 없습니다.`, or `표시할 브랜치가 없습니다.`.

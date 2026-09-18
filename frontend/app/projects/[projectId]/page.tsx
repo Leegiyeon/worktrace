@@ -7,6 +7,7 @@ import { FormEvent, use, useCallback, useEffect, useMemo, useRef, useState } fro
 import { parseApiErrorMessage } from "../../reports/api-error";
 import { CareerPanel } from "./CareerPanel";
 import { GitHubEvidencePanel } from "./GitHubEvidencePanel";
+import { ProjectLifecyclePanel } from "./ProjectLifecyclePanel";
 import styles from "./page.module.css";
 import type {
   CareerAsset,
@@ -16,7 +17,6 @@ import type {
   ProjectMilestone,
   ProjectOutcome,
   ProjectGitHubStatus,
-  ProjectStatus,
   ProjectSummary,
   ProjectTask,
   RepositorySource,
@@ -29,6 +29,7 @@ import type {
 import {
   outcomeTypeLabels,
   projectStatusLabels,
+  serviceStatusLabels,
   taskPriorityLabels,
   taskStatusLabels,
   workTypeLabels
@@ -59,7 +60,6 @@ type ProjectForm = {
   title: string;
   description: string;
   role: string;
-  status: ProjectStatus;
 };
 
 type WorkLogForm = {
@@ -143,8 +143,7 @@ function isTaskSortKey(value: string | null): value is TaskSortKey {
 const initialProjectForm: ProjectForm = {
   title: "",
   description: "",
-  role: "",
-  status: "idea"
+  role: ""
 };
 
 function createInitialWorkLogForm(): WorkLogForm {
@@ -479,8 +478,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
       setProjectForm({
         title: nextProject.title,
         description: nextProject.description,
-        role: nextProject.role,
-        status: nextProject.status
+        role: nextProject.role
       });
       setTasks((await tasksResponse.json()) as ProjectTask[]);
       const failures: DetailLoadFailure[] = [];
@@ -1017,6 +1015,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
         {project ? (
           <div className="task-meta">
             <span className="meta-pill status-navy">{projectStatusLabels[project.status]}</span>
+            <span className="meta-pill">{serviceStatusLabels[project.service_status ?? "unknown"]}</span>
             <span className="meta-pill">진척 {projectProgressDisplay(project).label}</span>
             <span className="meta-pill">잔여 {project.remaining_tasks}</span>
             <span className="meta-pill priority-high">지연 {dashboard.delayedTasks.length}</span>
@@ -1056,6 +1055,10 @@ export default function ProjectDetailPage({ params }: PageProps) {
               </button>
             ))}
           </nav>
+
+          <div hidden={activeTab !== "overview"}>
+            <ProjectLifecyclePanel key={projectId} project={project} onSaved={(value) => setProject((current) => current ? { ...current, status: value.status, service_status: value.service_status, development_ended_on: value.development_ended_on, lifecycle_version: value.lifecycle_version, lifecycle_confirmed_at: value.lifecycle_confirmed_at } : current)} />
+          </div>
 
           {activeTab === "overview" ? (
             <section aria-labelledby="tab-overview" className="overview-dashboard" id="panel-overview" role="tabpanel">
@@ -1145,7 +1148,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
               <details className="panel project-settings-panel">
                 <summary>프로젝트 수정</summary>
                 <form className="stacked-form compact-form" onSubmit={handleSaveProject}>
-                  <div className="form-grid two-columns"><label>프로젝트명<input placeholder="프로젝트 이름" value={projectForm.title} onChange={(event) => setProjectForm({ ...projectForm, title: event.target.value })} /></label><label>상태<select value={projectForm.status} onChange={(event) => setProjectForm({ ...projectForm, status: event.target.value as ProjectStatus })}>{Object.entries(projectStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label></div>
+                  <label>프로젝트명<input placeholder="프로젝트 이름" value={projectForm.title} onChange={(event) => setProjectForm({ ...projectForm, title: event.target.value })} /></label>
                   <div className="form-grid two-columns"><label>역할<input placeholder="내 역할" value={projectForm.role} onChange={(event) => setProjectForm({ ...projectForm, role: event.target.value })} /></label><label>설명<textarea placeholder="핵심 목표 또는 범위" value={projectForm.description} onChange={(event) => setProjectForm({ ...projectForm, description: event.target.value })} /></label></div>
                   <div className="form-actions"><button type="submit" disabled={isSavingProject}>{isSavingProject ? "저장 중" : "수정 저장"}</button></div>
                   <div className="danger-zone"><span>삭제는 되돌릴 수 없습니다.</span><button className="danger-button" type="button" onClick={() => void handleDeleteProject()}>프로젝트 삭제</button></div>

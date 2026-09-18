@@ -4,7 +4,7 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import type { ProjectSummary, ProjectTask, TaskStatus, WorkLogItem, WorkType } from "./projects/types";
-import { projectStatusLabels, taskPriorityLabels, taskStatusLabels, workTypeLabels } from "./projects/types";
+import { projectStatusLabels, serviceStatusLabels, taskPriorityLabels, taskStatusLabels, workTypeLabels } from "./projects/types";
 import { projectProgressDisplay, scopedProjectAverage, wbsActivityCounts } from "./projects/progress-display";
 import { parseApiErrorMessage } from "./reports/api-error";
 import styles from "./page.module.css";
@@ -353,6 +353,7 @@ export default function HomePage() {
                 <div className="progress-row-head">
                   <strong>{project.title}</strong>
                   <span className="meta-pill status-navy">{projectStatusLabels[project.status]}</span>
+                  <span className="meta-pill">{serviceStatusLabels[project.service_status ?? "unknown"]}</span>
                   <span className="meta-pill">잔여 {project.remaining_tasks}</span>
                   <span className={`meta-pill ${!tasksUnavailable && issueCount > 0 ? "priority-high" : "priority-medium"}`}>이슈 {tasksUnavailable ? "-" : issueCount}</span>
                 </div>

@@ -150,11 +150,9 @@ def decide_github_item(
                 except GitHubItemNotFoundError as exc:
                     raise GitHubItemConflictError() from exc
 
+            _lock_project_for_decision(connection, owner_id, project_id)
             item = _get_item_row(connection, owner_id, project_id, item_id, lock=True)
             if item is None:
-                project = connection.execute("SELECT id FROM projects WHERE owner_id=%s AND id=%s", (owner_id, project_id)).fetchone()
-                if project is None:
-                    raise ProjectNotFoundError()
                 raise GitHubItemNotFoundError()
             if item["version"] != payload.expected_version:
                 raise GitHubItemConflictError()
@@ -290,6 +288,15 @@ def _get_item_for_update(connection, owner_id: str, project_id: UUID, item_id: U
     if row is None:
         raise GitHubItemNotFoundError()
     return _item_from_row(row)
+
+
+def _lock_project_for_decision(connection, owner_id: str, project_id: UUID) -> None:
+    project = connection.execute(
+        "SELECT id FROM projects WHERE owner_id=%s AND id=%s FOR UPDATE",
+        (owner_id, project_id),
+    ).fetchone()
+    if project is None:
+        raise ProjectNotFoundError()
 
 
 def _get_item_row(connection, owner_id: str, project_id: UUID, item_id: UUID, *, lock: bool):

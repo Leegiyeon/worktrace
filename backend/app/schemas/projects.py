@@ -1,10 +1,11 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ProjectStatus = Literal["idea", "review", "in_progress", "on_hold", "done"]
+ProjectServiceStatus = Literal["unknown", "not_released", "operating", "retired"]
 TaskStatus = Literal["planned", "in_progress", "done", "on_hold"]
 TaskPriority = Literal["low", "medium", "high"]
 ProgressBasis = Literal["milestone", "wbs", "unscoped"]
@@ -29,6 +30,13 @@ class ProjectCreate(ProjectBaseModel):
     status: ProjectStatus = "idea"
     role: str = ""
 
+    @field_validator("status")
+    @classmethod
+    def initial_status_must_not_be_done(cls, value: ProjectStatus) -> ProjectStatus:
+        if value == "done":
+            raise ValueError("initial done status requires explicit lifecycle confirmation")
+        return value
+
 
 class ProjectUpdate(ProjectBaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=160)
@@ -46,6 +54,10 @@ class ProjectSummary(ProjectBaseModel):
     objective: str = ""
     success_criteria: str = ""
     status: ProjectStatus
+    service_status: ProjectServiceStatus = "unknown"
+    development_ended_on: date | None = None
+    lifecycle_version: int = 0
+    lifecycle_confirmed_at: datetime | None = None
     role: str = ""
     total_tasks: int = 0
     completed_tasks: int = 0
@@ -55,6 +67,53 @@ class ProjectSummary(ProjectBaseModel):
     progress_basis: ProgressBasis = "unscoped"
     progress_percent: int = 0
     updated_at: str
+
+
+class ProjectLifecycleConfirm(ProjectBaseModel):
+    status: ProjectStatus
+    service_status: ProjectServiceStatus
+    reason: str = Field(..., min_length=1, max_length=2000)
+    incomplete_reason: str | None = Field(default=None, max_length=2000)
+    development_ended_on: date | None = None
+    expected_version: int = Field(..., ge=0)
+    request_id: UUID
+
+    @field_validator("reason")
+    @classmethod
+    def reason_must_not_be_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("reason must not be blank")
+        return value
+
+    @field_validator("incomplete_reason", mode="before")
+    @classmethod
+    def blank_incomplete_reason_is_unknown(cls, value: str | None) -> str | None:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+
+class ProjectLifecycleHistoryItem(ProjectBaseModel):
+    id: str
+    actor_owner_id: str
+    previous_status: ProjectStatus
+    status: ProjectStatus
+    previous_service_status: ProjectServiceStatus
+    service_status: ProjectServiceStatus
+    reason: str
+    incomplete_reason: str = ""
+    development_ended_on: date | None = None
+    confirmed_at: datetime
+
+
+class ProjectLifecycle(ProjectBaseModel):
+    status: ProjectStatus
+    service_status: ProjectServiceStatus
+    development_ended_on: date | None = None
+    lifecycle_version: int
+    lifecycle_confirmed_at: datetime | None = None
+    pending_task_count: int
+    history: list[ProjectLifecycleHistoryItem] = Field(default_factory=list)
 
 
 class ProjectMilestoneCreate(ProjectBaseModel):

@@ -4,9 +4,9 @@ from fastapi.testclient import TestClient
 
 from app.api import projects
 from app.main import app
-from app.schemas.projects import GitHubDelivery, ProjectGitHubStatus, ProjectSummary, ProjectTask, RepositorySource
+from app.schemas.projects import GitHubDelivery, ProjectGitHubStatus, ProjectLifecycle, ProjectSummary, ProjectTask, RepositorySource
 from app.services.github_webhooks import GitHubDeliveryNotFoundError, GitHubWebhookResult
-from app.services.projects import ProjectNotFoundError, ProjectTaskNotFoundError, RepositorySourceConflictError
+from app.services.projects import ProjectLifecycleConflictError, ProjectNotFoundError, ProjectStatusUpdateForbiddenError, ProjectTaskNotFoundError, RepositorySourceConflictError
 
 HEADERS = {
     "X-Worktrace-Owner-Id": "local-owner",
@@ -49,6 +49,33 @@ def sample_task(**overrides) -> ProjectTask:
     return ProjectTask(**data)
 
 
+def sample_lifecycle(**overrides) -> ProjectLifecycle:
+    data = {
+        "status": "done",
+        "service_status": "operating",
+        "development_ended_on": None,
+        "lifecycle_version": 1,
+        "lifecycle_confirmed_at": "2026-09-18T01:00:00Z",
+        "pending_task_count": 1,
+        "history": [
+            {
+                "id": "00000000-0000-0000-0000-000000000401",
+                "previous_status": "in_progress",
+                "status": "done",
+                "previous_service_status": "unknown",
+                "service_status": "operating",
+                "reason": "Owner confirmed development closure.",
+                "incomplete_reason": "",
+                "development_ended_on": None,
+                "confirmed_at": "2026-09-18T01:00:00Z",
+                "actor_owner_id": "local-owner",
+            }
+        ],
+    }
+    data.update(overrides)
+    return ProjectLifecycle(**data)
+
+
 def test_project_list_exposes_progress_and_remaining_tasks(monkeypatch):
     def fake_list_projects(settings, owner_id):
         assert owner_id == "local-owner"
@@ -63,6 +90,99 @@ def test_project_list_exposes_progress_and_remaining_tasks(monkeypatch):
     body = response.json()
     assert body[0]["remaining_tasks"] == 3
     assert body[0]["progress_percent"] == 25
+
+
+def test_create_project_rejects_initial_done_status():
+    response = TestClient(app).post(
+        "/projects",
+        headers=HEADERS,
+        json={"title": "Closed without confirmation", "status": "done"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_patch_project_status_change_must_use_lifecycle_endpoint(monkeypatch):
+    def fake_update_project(settings, owner_id, project_id, payload):
+        raise ProjectStatusUpdateForbiddenError()
+
+    monkeypatch.setattr(projects, "update_project", fake_update_project)
+    response = TestClient(app).patch(f"/projects/{PROJECT_ID}", headers=HEADERS, json={"status": "done"})
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "PROJECT_STATUS_LIFECYCLE_REQUIRED"
+
+
+def test_project_lifecycle_routes_return_ui_contract(monkeypatch):
+    calls = []
+
+    def fake_get_lifecycle(settings, owner_id, project_id):
+        calls.append(("get", owner_id, project_id))
+        return sample_lifecycle()
+
+    def fake_confirm_lifecycle(settings, owner_id, project_id, payload):
+        calls.append(("post", owner_id, project_id, payload.request_id, payload.expected_version))
+        return sample_lifecycle()
+
+    monkeypatch.setattr(projects, "get_project_lifecycle", fake_get_lifecycle)
+    monkeypatch.setattr(projects, "confirm_project_lifecycle", fake_confirm_lifecycle)
+    client = TestClient(app)
+
+    get_response = client.get(f"/projects/{PROJECT_ID}/lifecycle", headers=HEADERS)
+    post_response = client.post(
+        f"/projects/{PROJECT_ID}/lifecycle",
+        headers=HEADERS,
+        json={
+            "status": "done",
+            "service_status": "operating",
+            "reason": "Owner confirmed development closure.",
+            "incomplete_reason": "",
+            "development_ended_on": None,
+            "expected_version": 0,
+            "request_id": "00000000-0000-0000-0000-000000000501",
+        },
+    )
+
+    assert get_response.status_code == 200
+    assert post_response.status_code == 200
+    assert post_response.json() == get_response.json()
+    history = post_response.json()["history"][0]
+    assert set(history) == {
+        "id",
+        "previous_status",
+        "status",
+        "previous_service_status",
+        "service_status",
+        "reason",
+        "incomplete_reason",
+        "development_ended_on",
+        "confirmed_at",
+        "actor_owner_id",
+    }
+    assert "request_snapshot" not in history
+    assert calls[1][3].hex == "00000000000000000000000000000501"
+
+
+def test_project_lifecycle_version_conflict_uses_stable_409(monkeypatch):
+    def fake_confirm_lifecycle(settings, owner_id, project_id, payload):
+        raise ProjectLifecycleConflictError()
+
+    monkeypatch.setattr(projects, "confirm_project_lifecycle", fake_confirm_lifecycle)
+    response = TestClient(app).post(
+        f"/projects/{PROJECT_ID}/lifecycle",
+        headers=HEADERS,
+        json={
+            "status": "done",
+            "service_status": "operating",
+            "reason": "Owner confirmed development closure.",
+            "development_ended_on": None,
+            "expected_version": 99,
+            "request_id": "00000000-0000-0000-0000-000000000502",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "PROJECT_LIFECYCLE_VERSION_CONFLICT"
 
 
 def test_project_tasks_crud_routes_use_owner_context(monkeypatch):

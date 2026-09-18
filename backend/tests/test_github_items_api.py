@@ -1,3 +1,4 @@
+from inspect import getsource
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -5,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.api import github_items
 from app.main import app
 from app.schemas.github_items import GitHubItem, GitHubItemCounts, GitHubItemListResponse
+from app.services import github_items as github_items_service
 from app.services.github_items import GitHubItemConflictError, GitHubItemNotFoundError, _isoformat, _safe_github_url
 
 
@@ -38,6 +40,15 @@ def sample_item(**overrides) -> GitHubItem:
     }
     data.update(overrides)
     return GitHubItem(**data)
+
+
+def test_github_item_task_adoption_locks_project_before_wbs_write():
+    decision_source = getsource(github_items_service.decide_github_item)
+    lock_source = getsource(github_items_service._lock_project_for_decision)
+
+    assert "FOR UPDATE" in lock_source
+    assert decision_source.index("_lock_project_for_decision") < decision_source.index("_get_item_row")
+    assert decision_source.index("_lock_project_for_decision") < decision_source.index("INSERT INTO project_tasks")
 
 
 def test_github_item_list_contract_uses_owner_project_scope(monkeypatch):

@@ -10,6 +10,8 @@ from app.schemas.projects import (
     GitHubCommit,
     ProjectCreate,
     ProjectGitHubStatus,
+    ProjectLifecycle,
+    ProjectLifecycleConfirm,
     ProjectMilestone,
     ProjectMilestoneCreate,
     ProjectMilestoneUpdate,
@@ -23,9 +25,13 @@ from app.schemas.projects import (
 )
 from app.services.github_webhooks import GitHubDeliveryNotFoundError, get_project_github_status, reprocess_github_delivery
 from app.services.projects import (
+    ProjectLifecycleConflictError,
+    ProjectLifecycleRequestConflictError,
+    ProjectLifecycleValidationError,
     ProjectMilestoneNotFoundError,
     ProjectMilestoneWeightError,
     ProjectNotFoundError,
+    ProjectStatusUpdateForbiddenError,
     ProjectTaskNotFoundError,
     RepositorySourceConflictError,
     create_project,
@@ -34,7 +40,9 @@ from app.services.projects import (
     delete_project,
     delete_project_milestone,
     delete_project_task,
+    confirm_project_lifecycle,
     get_project,
+    get_project_lifecycle,
     get_repository_source,
     list_project_commits,
     list_project_milestones,
@@ -97,6 +105,39 @@ def patch_project(project_id: UUID, payload: ProjectUpdate, owner_id: str = Depe
         return update_project(settings, owner_id, project_id, payload)
     except ProjectNotFoundError as exc:
         raise _project_not_found() from exc
+    except ProjectStatusUpdateForbiddenError as exc:
+        raise http_error(status.HTTP_409_CONFLICT, "PROJECT_STATUS_LIFECYCLE_REQUIRED", "Project status changes must use the lifecycle endpoint.") from exc
+    except psycopg.Error as exc:
+        raise http_error(status.HTTP_503_SERVICE_UNAVAILABLE, "DATABASE_UNAVAILABLE", "Database is unavailable.") from exc
+
+
+@router.get("/{project_id}/lifecycle", response_model=ProjectLifecycle)
+def get_lifecycle(project_id: UUID, owner_id: str = Depends(require_report_access), settings: Settings = Depends(get_settings)) -> ProjectLifecycle:
+    try:
+        return get_project_lifecycle(settings, owner_id, project_id)
+    except ProjectNotFoundError as exc:
+        raise _project_not_found() from exc
+    except psycopg.Error as exc:
+        raise http_error(status.HTTP_503_SERVICE_UNAVAILABLE, "DATABASE_UNAVAILABLE", "Database is unavailable.") from exc
+
+
+@router.post("/{project_id}/lifecycle", response_model=ProjectLifecycle)
+def post_lifecycle(
+    project_id: UUID,
+    payload: ProjectLifecycleConfirm,
+    owner_id: str = Depends(require_report_access),
+    settings: Settings = Depends(get_settings),
+) -> ProjectLifecycle:
+    try:
+        return confirm_project_lifecycle(settings, owner_id, project_id, payload)
+    except ProjectNotFoundError as exc:
+        raise _project_not_found() from exc
+    except ProjectLifecycleConflictError as exc:
+        raise http_error(status.HTTP_409_CONFLICT, "PROJECT_LIFECYCLE_VERSION_CONFLICT", "Project lifecycle version does not match.") from exc
+    except ProjectLifecycleRequestConflictError as exc:
+        raise http_error(status.HTTP_409_CONFLICT, "PROJECT_LIFECYCLE_REQUEST_CONFLICT", "Lifecycle request id was already used with a different payload.") from exc
+    except ProjectLifecycleValidationError as exc:
+        raise http_error(status.HTTP_422_UNPROCESSABLE_ENTITY, "PROJECT_LIFECYCLE_INVALID", "Project lifecycle confirmation is invalid.") from exc
     except psycopg.Error as exc:
         raise http_error(status.HTTP_503_SERVICE_UNAVAILABLE, "DATABASE_UNAVAILABLE", "Database is unavailable.") from exc
 
