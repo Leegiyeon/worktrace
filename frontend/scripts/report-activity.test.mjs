@@ -26,7 +26,7 @@ test("automatic reports accept optional activity payload with provenance fields"
 });
 
 test("report activity labels use actual period records without inferred completion wording", () => {
-  for (const label of ["기간 내 상태 변경", "기록된 막힘", "기간 내 수정된 확인 성과", "현재 잔여 WBS"]) {
+  for (const label of ["기간 내 상태 변경", "기록된 막힘", "기간 내 수정된 확인 성과", "보관 당시 잔여 WBS"]) {
     assert.match(reportActivity, new RegExp(label));
     assert.match(reportsPage, new RegExp(label));
   }
@@ -34,7 +34,7 @@ test("report activity labels use actual period records without inferred completi
   assert.match(reportActivity, /planStatusLabels/);
   assert.match(reportActivity, /unapproved: "계획 미승인"/);
   assert.match(reportActivity, /수정 \{formatDateTime\(outcome\.updated_at, timezone\)\}/);
-  assert.match(reportActivity, /현재 \{taskStatusLabel\(item\.current_status\)\}/);
+  assert.match(reportActivity, /\{snapshotView \? "보관 당시" : "현재"\} \{taskStatusLabel\(item\.current_status\)\}/);
   assert.doesNotMatch(reportActivity, /현재 진행 \{taskStatusLabel\(item\.current_status\)\}/);
   assert.match(reportActivity, /milestone_validation: "과거 자동 검증"/);
   assert.match(reportActivity, /종료 미포함/);
@@ -83,19 +83,26 @@ test("report generation invalidates stale responses and allows a newer filter re
   assert.match(reportsPage, /busyRequestRef/);
   assert.match(reportsPage, /busyRequestRef\.current\?\.filterKey === requestFilterKey && busyRequestRef\.current\.sequence === latestRequestRef\.current\.sequence/);
   assert.match(reportsPage, /latestRequestRef\.current = \{ sequence: latestRequestRef\.current\.sequence \+ 1, filterKey: reportFilterKey\(\) \}/);
-  assert.match(reportsPage, /setReport\(null\)/);
+  assert.match(reportsPage, /setGeneratedSnapshot\(null\)/);
   assert.match(reportsPage, /loadingFilterKey === currentFilterKey/);
   assert.match(reportsPage, /latestRequestRef\.current\.sequence !== requestSequence \|\| latestRequestRef\.current\.filterKey !== requestFilterKey/);
 });
 
 test("legacy responses without activity show unknown metrics instead of zero counts", () => {
-  assert.match(reportsPage, /if \(!report\.activity\) return \{ transitions: "기준 미확인", issues: "기준 미확인", currentTasks: "기준 미확인", outcomes: "기준 미확인" \}/);
+  assert.match(reportsPage, /const reportMetrics = !report\.activity \? \{ transitions: "기준 미확인", issues: "기준 미확인", currentTasks: "기준 미확인", outcomes: "기준 미확인" \}/);
   assert.doesNotMatch(reportsPage, /report\.activity\?\.transitions\.length \?\? 0/);
 });
 
 test("markdown copy and current WBS progress surfaces remain available", () => {
   assert.match(reportsPage, /Markdown 복사/);
   assert.match(reportsPage, /report\.markdown/);
-  assert.match(reportsPage, /현재 WBS 진척/);
+  assert.match(reportsPage, /보관 당시 WBS 진척/);
   assert.match(reportsPage, /report\.progress_candidates/);
+});
+
+test("snapshot project links are live project navigation, not archived content reloads", () => {
+  assert.match(reportActivity, /snapshotView \? "현재 프로젝트 열기" : "프로젝트 열기"/);
+  assert.match(reportActivity, /<ProjectLink projectId=\{task\.project_id\} snapshotView=\{snapshotView\} tab="tasks" \/>/);
+  assert.match(reportActivity, /<ProjectLink projectId=\{issue\.project_id\} snapshotView=\{snapshotView\} tab="logs" \/>/);
+  assert.match(reportActivity, /<ProjectLink projectId=\{outcome\.project_id\} snapshotView=\{snapshotView\} tab="outcomes" \/>/);
 });

@@ -53,9 +53,9 @@ function formatDateTime(value: string, timezone: string) {
   return date.toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short", timeZone: timezone });
 }
 
-function ProjectLink({ projectId, tab }: { projectId: string | null; tab: "tasks" | "logs" | "outcomes" }) {
+function ProjectLink({ projectId, snapshotView, tab }: { projectId: string | null; snapshotView: boolean; tab: "tasks" | "logs" | "outcomes" }) {
   if (!projectId) return null;
-  return <Link className={styles.projectLink} href={`/projects/${projectId}?tab=${tab}`}>프로젝트 열기</Link>;
+  return <Link className={styles.projectLink} href={`/projects/${projectId}?tab=${tab}`}>{snapshotView ? "현재 프로젝트 열기" : "프로젝트 열기"}</Link>;
 }
 
 function EmptyState({ label }: { label: string }) {
@@ -82,7 +82,7 @@ function ActivityMetadata({ activity }: { activity: ReportActivityPayload }) {
   );
 }
 
-function TransitionList({ transitions, timezone }: { transitions: ReportActivityTransition[]; timezone: string }) {
+function TransitionList({ transitions, timezone, snapshotView }: { transitions: ReportActivityTransition[]; timezone: string; snapshotView: boolean }) {
   return (
     <section className={styles.activityPanel}>
       <div className="panel-title-row">
@@ -98,11 +98,11 @@ function TransitionList({ transitions, timezone }: { transitions: ReportActivity
                 <strong>{item.task_title}</strong>
                 <span className={styles.metaLine}>{item.project_title} · {formatDateTime(item.changed_at, timezone)}</span>
               </div>
-              <ProjectLink projectId={item.project_id} tab="tasks" />
+              <ProjectLink projectId={item.project_id} snapshotView={snapshotView} tab="tasks" />
             </div>
             <div className={styles.pillRow}>
               <span className="meta-pill">{item.previous_status ? taskStatusLabel(item.previous_status) : "이전 없음"} -&gt; <span className={styles.statusLabel}>{taskStatusLabel(item.next_status)}</span></span>
-              <span className="meta-pill">현재 {taskStatusLabel(item.current_status)}</span>
+              <span className="meta-pill">{snapshotView ? "보관 당시" : "현재"} {taskStatusLabel(item.current_status)}</span>
               <span className="meta-pill">{sourceLabels[item.source]}</span>
               <span className="meta-pill">v{item.status_version}</span>
             </div>
@@ -118,11 +118,11 @@ function TransitionList({ transitions, timezone }: { transitions: ReportActivity
   );
 }
 
-function CurrentTaskList({ tasks }: { tasks: ReportActivityCurrentTask[] }) {
+function CurrentTaskList({ tasks, snapshotView }: { tasks: ReportActivityCurrentTask[]; snapshotView: boolean }) {
   return (
     <section className={styles.activityPanel}>
       <div className="panel-title-row">
-        <h2>현재 잔여 WBS</h2>
+        <h2>{snapshotView ? "보관 당시 잔여 WBS" : "현재 잔여 WBS"}</h2>
         <span className="count-badge">{tasks.length}개</span>
       </div>
       {tasks.length === 0 ? <EmptyState label="잔여 WBS 없음" /> : null}
@@ -134,7 +134,7 @@ function CurrentTaskList({ tasks }: { tasks: ReportActivityCurrentTask[] }) {
                 <strong>{task.title}</strong>
                 <span className={styles.metaLine}>{task.project_title}</span>
               </div>
-              <ProjectLink projectId={task.project_id} tab="tasks" />
+              <ProjectLink projectId={task.project_id} snapshotView={snapshotView} tab="tasks" />
             </div>
             <div className={styles.pillRow}>
               <span className="meta-pill">{taskStatusLabel(task.status)}</span>
@@ -150,7 +150,7 @@ function CurrentTaskList({ tasks }: { tasks: ReportActivityCurrentTask[] }) {
   );
 }
 
-function IssueList({ issues, timezone }: { issues: ReportActivityIssue[]; timezone: string }) {
+function IssueList({ issues, snapshotView, timezone }: { issues: ReportActivityIssue[]; snapshotView: boolean; timezone: string }) {
   return (
     <section className={styles.activityPanel}>
       <div className="panel-title-row">
@@ -166,7 +166,7 @@ function IssueList({ issues, timezone }: { issues: ReportActivityIssue[]; timezo
                 <strong>{issue.title}</strong>
                 <span className={styles.metaLine}>{issue.project_title || "프로젝트 미연결"} · 수행일 {issue.log_date}</span>
               </div>
-              <ProjectLink projectId={issue.project_id} tab="logs" />
+              <ProjectLink projectId={issue.project_id} snapshotView={snapshotView} tab="logs" />
             </div>
             <span>{issue.blockers}</span>
             <div className={styles.refs}>
@@ -180,7 +180,7 @@ function IssueList({ issues, timezone }: { issues: ReportActivityIssue[]; timezo
   );
 }
 
-function OutcomeList({ outcomes, timezone }: { outcomes: ReportActivityOutcome[]; timezone: string }) {
+function OutcomeList({ outcomes, snapshotView, timezone }: { outcomes: ReportActivityOutcome[]; snapshotView: boolean; timezone: string }) {
   return (
     <section className={styles.activityPanel}>
       <div className="panel-title-row">
@@ -196,7 +196,7 @@ function OutcomeList({ outcomes, timezone }: { outcomes: ReportActivityOutcome[]
                 <strong>{outcome.title}</strong>
                 <span className={styles.metaLine}>{outcome.project_title} · 수정 {formatDateTime(outcome.updated_at, timezone)}</span>
               </div>
-              <ProjectLink projectId={outcome.project_id} tab="outcomes" />
+              <ProjectLink projectId={outcome.project_id} snapshotView={snapshotView} tab="outcomes" />
             </div>
             <div className={styles.pillRow}>
               <span className="meta-pill">{outcomeTypeLabel(outcome.outcome_type)}</span>
@@ -219,14 +219,14 @@ function OutcomeList({ outcomes, timezone }: { outcomes: ReportActivityOutcome[]
   );
 }
 
-export default function ReportActivity({ activity }: { activity: ReportActivityPayload }) {
+export default function ReportActivity({ activity, snapshotView = false }: { activity: ReportActivityPayload; snapshotView?: boolean }) {
   return (
     <section className={styles.activityGrid} aria-label="기간 실제 활동 기록">
       <ActivityMetadata activity={activity} />
-      <TransitionList transitions={activity.transitions} timezone={activity.timezone} />
-      <CurrentTaskList tasks={activity.current_tasks} />
-      <IssueList issues={activity.issues} timezone={activity.timezone} />
-      <OutcomeList outcomes={activity.outcomes} timezone={activity.timezone} />
+      <TransitionList transitions={activity.transitions} timezone={activity.timezone} snapshotView={snapshotView} />
+      <CurrentTaskList tasks={activity.current_tasks} snapshotView={snapshotView} />
+      <IssueList issues={activity.issues} snapshotView={snapshotView} timezone={activity.timezone} />
+      <OutcomeList outcomes={activity.outcomes} snapshotView={snapshotView} timezone={activity.timezone} />
     </section>
   );
 }

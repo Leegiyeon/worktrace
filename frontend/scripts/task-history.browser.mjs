@@ -37,9 +37,14 @@ await page.route("**/api/**", async (route) => {
   else if (pathname.endsWith("/tasks")) result = [task];
   else if (pathname.endsWith("/lifecycle")) result = { ...project, lifecycle_version: 0, pending_task_count: 1, history: [] };
   else if (pathname.endsWith("/repository") || pathname.endsWith("/github-status")) result = null;
-  else if (pathname === "/api/reports/automatic") result = {
+  else if (pathname === "/api/reports/snapshots" && request.method() === "GET") result = { items: [], total: 0, limit: 20, offset: 0 };
+  else if (pathname === "/api/reports/snapshots") result = {
+    id: "snapshot-0", request_id: request.postDataJSON().request_id, report_type: "weekly",
+    start_date: "2026-09-14", end_date: "2026-09-18", as_of: stamp, created_at: stamp, fingerprint: "a".repeat(64), schema_version: "1",
+    report: {
     report_type: "weekly", start_date: "2026-09-14", end_date: "2026-09-18", markdown: "# Current WBS", work_logs: [], projects: [], remaining_tasks: [], delayed_tasks: [], monthly_performance_candidates: [],
     progress_candidates: ["산정 전", "0%", "참고 63%", "기준 미확인"].map((label, index) => ({ project_id: String(index), project_title: `프로젝트 ${index + 1}`, provenance: label, as_of: stamp, reason: "현재 등록 WBS 기준" })),
+    },
   };
   return route.fulfill({ json: result });
 });
@@ -101,8 +106,8 @@ try {
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
     await page.goto(`${base}/reports`);
-    await page.getByRole("button", { name: "리포트 생성" }).click();
-    await page.getByRole("heading", { name: "현재 WBS 진척" }).waitFor();
+    await page.getByRole("button", { name: "생성·보관", exact: true }).click();
+    await page.getByRole("heading", { name: "보관 당시 WBS 진척" }).waitFor();
     for (const label of ["산정 전", "0%", "참고 63%", "기준 미확인"]) await page.locator(".status-graph-panel").getByText(label, { exact: true }).waitFor();
     await noOverflow();
     await page.screenshot({ path: path.join(output, `report-${width}.png`), fullPage: true });

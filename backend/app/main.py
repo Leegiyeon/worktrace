@@ -12,6 +12,7 @@ from app.api.outcomes import router as outcomes_router
 from app.api.project_plans import router as project_plans_router
 from app.api.projects import router as projects_router
 from app.api.reports import router as reports_router
+from app.api.report_snapshots import router as report_snapshots_router
 from app.api.work_logs import router as work_logs_router
 from app.core.config import get_settings, validate_runtime_settings
 
@@ -47,6 +48,7 @@ app.include_router(milestone_evidence_router)
 app.include_router(career_assets_router)
 app.include_router(outcomes_router)
 app.include_router(reports_router)
+app.include_router(report_snapshots_router)
 app.include_router(work_logs_router)
 
 

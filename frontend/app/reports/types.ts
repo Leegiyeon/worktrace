@@ -145,3 +145,26 @@ export type AutoReportResponse = WeeklyReportResponse & {
   monthly_performance_candidates: MonthlyPerformanceCandidate[];
   activity?: ReportActivity;
 };
+
+export type ReportSnapshotSummary = {
+  id: string;
+  request_id: string;
+  report_type: ReportType;
+  start_date: string;
+  end_date: string;
+  as_of: string;
+  created_at: string;
+  fingerprint: string;
+  schema_version: "1";
+};
+
+export type ReportSnapshotDetail = ReportSnapshotSummary & {
+  report: AutoReportResponse;
+};
+
+export type ReportSnapshotListResponse = {
+  items: ReportSnapshotSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+};

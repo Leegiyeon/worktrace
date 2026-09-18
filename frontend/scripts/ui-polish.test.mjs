@@ -54,7 +54,7 @@ test("create and edit flows use explicit action labels", () => {
   assert.match(detailPage, /성과 추가/);
   assert.match(detailPage, /성과 수정/);
   assert.match(detailPage, /수정 저장/);
-  assert.match(reportsPage, /리포트 생성/);
+  assert.match(reportsPage, /생성·보관/);
 });
 
 test("project logs tab exposes editable work-log evidence fields", () => {
