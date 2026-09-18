@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime, timezone
 
+from app.schemas.projects import ProjectSummary
 from app.schemas.reports import (
     AutoReportResponse,
     MonthlyPerformanceCandidate,
@@ -19,14 +20,6 @@ from app.services.weekly_report import (
     build_weekly_report_response,
 )
 
-STATUS_PROGRESS = {
-    "idea": 10,
-    "review": 30,
-    "in_progress": 60,
-    "on_hold": 40,
-    "done": 100,
-}
-
 REPORT_TITLES = {
     "daily": "일일 업무 요약",
     "weekly": "주간 업무 리포트",
@@ -39,11 +32,14 @@ def build_auto_report_response(
     report_type: ReportType,
     start_date: date,
     end_date: date,
+    project_summaries: list[ProjectSummary] | None = None,
+    progress_as_of: str | None = None,
 ) -> AutoReportResponse:
+    as_of = progress_as_of or _utc_as_of()
     weekly = build_weekly_report_response(dataset, start_date, end_date)
     work_logs = [_work_log_to_schema(work_log) for work_log in dataset.work_logs]
     remaining_tasks, delayed_tasks = _task_alerts(weekly.projects, end_date)
-    progress_candidates = _progress_candidates(weekly.projects, work_logs)
+    progress_candidates = _progress_candidates(weekly.projects, project_summaries, as_of)
     performance_candidates = _monthly_performance_candidates(weekly.projects, work_logs) if report_type == "monthly" else []
     markdown = _render_auto_markdown(
         report_type=report_type,
@@ -55,6 +51,7 @@ def build_auto_report_response(
         delayed_tasks=delayed_tasks,
         progress_candidates=progress_candidates,
         performance_candidates=performance_candidates,
+        progress_as_of=as_of,
     )
     return AutoReportResponse(
         report_type=report_type,
@@ -93,35 +90,71 @@ def _task_alerts(projects: list[ProjectWeeklyReport], end_date: date) -> tuple[l
     return remaining, delayed
 
 
-def _progress_candidates(projects: list[ProjectWeeklyReport], work_logs: list[WorkLogItem]) -> list[ProjectProgressCandidate]:
-    logs_by_project: dict[str, list[WorkLogItem]] = defaultdict(list)
-    for work_log in work_logs:
-        if work_log.project_id:
-            logs_by_project[work_log.project_id].append(work_log)
-
+def _progress_candidates(
+    projects: list[ProjectWeeklyReport],
+    project_summaries: list[ProjectSummary] | None,
+    as_of: str,
+) -> list[ProjectProgressCandidate]:
+    summaries_by_project = {summary.id: summary for summary in project_summaries or []}
     candidates: list[ProjectProgressCandidate] = []
     for project in projects:
-        task_total = len(project.tasks)
-        task_done = sum(1 for task in project.tasks if task.status.lower() in DONE_STATUSES)
-        task_ratio = int((task_done / task_total) * 100) if task_total else 0
-        evidence_score = min(100, len(project.documents) * 10 + len(project.decisions) * 15 + len(logs_by_project[project.id]) * 10)
-        suggested = max(STATUS_PROGRESS[project.status], task_ratio, evidence_score)
-        if project.status != "done":
-            suggested = min(suggested, 95)
-        reason = (
-            f"문서 {len(project.documents)}건, 결정사항 {len(project.decisions)}건, "
-            f"업무 로그 {len(logs_by_project[project.id])}건, 완료 할 일 {task_done}/{task_total}건 기준의 업데이트 후보입니다."
-        )
+        summary = summaries_by_project.get(project.id)
+        if summary is None:
+            reason = "현재 프로젝트 WBS 요약 기준을 확인하지 못했습니다."
+            candidate = ProjectProgressCandidate(
+                project_id=project.id,
+                project_title=project.title,
+                current_status=project.status,
+                progress_basis="unknown",
+                provenance="기준 미확인",
+                as_of=as_of,
+                reason=reason,
+            )
+            candidates.append(candidate)
+            continue
+
+        progress_percent = None if summary.progress_basis == "unscoped" else summary.progress_percent
+        provenance = _progress_provenance(summary)
+        reason = _progress_reason(summary, provenance)
         candidates.append(
             ProjectProgressCandidate(
                 project_id=project.id,
                 project_title=project.title,
-                current_status=project.status,
-                suggested_progress_percent=suggested,
+                current_status=summary.status,
+                total_tasks=summary.total_tasks,
+                completed_tasks=summary.completed_tasks,
+                derived_task_count=summary.derived_task_count,
+                progress_basis=summary.progress_basis,
+                progress_percent=progress_percent,
+                suggested_progress_percent=progress_percent,
+                provenance=provenance,
+                as_of=as_of,
                 reason=reason,
             )
         )
     return candidates
+
+
+def _utc_as_of() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _progress_provenance(summary: ProjectSummary) -> str:
+    if summary.progress_basis == "unscoped":
+        return "산정 전"
+    label = f"{summary.progress_percent}%"
+    return f"참고 {label}" if summary.derived_task_count > 0 else label
+
+
+def _progress_reason(summary: ProjectSummary, provenance: str) -> str:
+    if summary.progress_basis == "unscoped":
+        return "산정 대상 WBS가 없어 현재 WBS 진척은 산정 전입니다."
+    basis = "마일스톤 가중 WBS" if summary.progress_basis == "milestone" else "등록 WBS 완료 비율"
+    derived = f" · 자동 구성 WBS {summary.derived_task_count}개 포함" if summary.derived_task_count > 0 else ""
+    return (
+        f"{basis}: 완료 {summary.completed_tasks}/{summary.total_tasks}개 기준의 현재 WBS 진척입니다"
+        f" ({provenance}{derived})."
+    )
 
 
 def _monthly_performance_candidates(
@@ -165,6 +198,7 @@ def _render_auto_markdown(
     delayed_tasks: list[TaskAlert],
     progress_candidates: list[ProjectProgressCandidate],
     performance_candidates: list[MonthlyPerformanceCandidate],
+    progress_as_of: str,
 ) -> str:
     lines = [f"# {REPORT_TITLES[report_type]} ({start_date.isoformat()} ~ {end_date.isoformat()})", ""]
     lines.extend(_render_work_logs(work_logs))
@@ -183,16 +217,17 @@ def _render_auto_markdown(
     else:
         lines.append("- 선택 기간에 연결된 프로젝트 기록이 없습니다.")
 
-    lines.extend(["", "## 프로젝트별 진행률 업데이트 후보"])
+    lines.extend(["", "## 현재 WBS 진척", f"- 기준 시각: {progress_as_of}"])
     if progress_candidates:
         for candidate in progress_candidates:
-            lines.append(f"- {candidate.project_title}: {candidate.suggested_progress_percent}% 후보 — {candidate.reason}")
+            lines.append(f"- {candidate.project_title}: {candidate.provenance} / {candidate.reason}")
     else:
-        lines.append("- 진행률 후보를 만들 프로젝트 기록이 없습니다.")
+        lines.append("- 현재 WBS 진척을 표시할 프로젝트 기록이 없습니다.")
 
-    lines.extend(["", "## 잔여 업무"])
+    lines.extend(["", "## 기간 내 문서 추출 잔여 항목"])
+    lines.append("- 기간 내 문서에서 추출한 항목 기준이며, 전체 WBS 잔여량과 다릅니다.")
     lines.extend(_render_task_alerts(remaining_tasks, empty="잔여 업무가 없습니다."))
-    lines.extend(["", "## 지연 업무"])
+    lines.extend(["", "## 기간 내 문서 추출 지연 항목"])
     lines.extend(_render_task_alerts(delayed_tasks, empty="지연 업무가 없습니다."))
 
     if report_type == "monthly":

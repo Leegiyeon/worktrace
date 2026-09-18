@@ -5,6 +5,7 @@ from app.api.errors import http_error
 from app.core.config import Settings, get_settings
 from app.api.security import require_report_access
 from app.schemas.reports import AutoReportRequest, AutoReportResponse, WeeklyReportRequest, WeeklyReportResponse
+from app.services.projects import list_projects
 from app.services.weekly_report import (
     ReportConfigurationError,
     ReportDataContractError,
@@ -61,7 +62,14 @@ def create_automatic_report(
 
     try:
         dataset = fetch_weekly_report_dataset(settings, request.start_date, request.end_date, owner_id)
-        return build_auto_report_response(dataset, request.report_type, request.start_date, request.end_date)
+        project_summaries = list_projects(settings, owner_id)
+        return build_auto_report_response(
+            dataset,
+            request.report_type,
+            request.start_date,
+            request.end_date,
+            project_summaries=project_summaries,
+        )
     except ReportConfigurationError as exc:
         raise http_error(
             status.HTTP_503_SERVICE_UNAVAILABLE,

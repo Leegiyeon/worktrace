@@ -41,7 +41,14 @@ export type ProjectProgressCandidate = {
   project_id: string;
   project_title: string;
   current_status: ProjectStatus;
-  suggested_progress_percent: number;
+  suggested_progress_percent: number | null;
+  progress_percent: number | null;
+  progress_basis: "milestone" | "wbs" | "unscoped" | "unknown";
+  total_tasks: number | null;
+  completed_tasks: number | null;
+  derived_task_count: number | null;
+  provenance: string;
+  as_of: string;
   reason: string;
 };
 

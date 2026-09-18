@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, model_validator
 
 ProjectStatus = Literal["idea", "review", "in_progress", "on_hold", "done"]
+ReportProgressBasis = Literal["milestone", "wbs", "unscoped", "unknown"]
 ItemType = Literal["task", "decision", "risk", "career_candidate", "next_check"]
 ReportType = Literal["daily", "weekly", "monthly"]
 WorkType = Literal[
@@ -127,7 +128,14 @@ class ProjectProgressCandidate(BaseModel):
     project_id: str
     project_title: str
     current_status: ProjectStatus
-    suggested_progress_percent: int
+    total_tasks: int | None = None
+    completed_tasks: int | None = None
+    derived_task_count: int | None = None
+    progress_basis: ReportProgressBasis = "unknown"
+    progress_percent: int | None = None
+    suggested_progress_percent: int | None = None
+    provenance: str
+    as_of: str
     reason: str
 
 

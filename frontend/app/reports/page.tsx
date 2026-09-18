@@ -171,8 +171,8 @@ export default function WeeklyReportPage() {
           <section className="summary-grid dashboard-metrics" aria-label="리포트 지표">
             <div className="metric-card"><span>프로젝트</span><strong>{reportMetrics.projects}</strong></div>
             <div className="metric-card"><span>업무 로그</span><strong>{reportMetrics.workLogs}</strong></div>
-            <div className="metric-card"><span>잔여 업무</span><strong>{reportMetrics.remaining}</strong></div>
-            <div className="metric-card"><span>지연 업무</span><strong>{reportMetrics.delayed}</strong></div>
+            <div className="metric-card"><span>문서 추출 잔여</span><strong>{reportMetrics.remaining}</strong></div>
+            <div className="metric-card"><span>문서 추출 지연</span><strong>{reportMetrics.delayed}</strong></div>
           </section>
           <section className="report-evidence-grid" aria-label="자동 리포트 근거">
             <section className="panel dashboard-main-panel">
@@ -196,20 +196,20 @@ export default function WeeklyReportPage() {
               ) : null}
             </section>
             <section className="panel status-graph-panel">
-              <div className="panel-title-row"><h2>진행률 후보</h2><span className="count-badge">{report.progress_candidates.length}개</span></div>
-              {report.progress_candidates.length === 0 ? <div className="empty-state">후보 없음</div> : null}
+              <div className="panel-title-row"><h2>현재 WBS 진척</h2><span className="count-badge">{report.progress_candidates.length}개</span></div>
+              {report.progress_candidates.length === 0 ? <div className="empty-state">해당 기간의 프로젝트 없음</div> : null}
               <div className="dense-list">
-                {report.progress_candidates.slice(0, 6).map((candidate) => (
+                {report.progress_candidates.map((candidate) => (
                   <div className="dense-list-row" key={candidate.project_id}>
                     <span>{candidate.project_title}</span>
-                    <small>{candidate.reason}</small>
-                    <b>{candidate.suggested_progress_percent}%</b>
+                    <small>{candidate.reason}<br />기준 시각: {candidate.as_of ? new Date(candidate.as_of).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }) : "미확인"} (한국 시간)</small>
+                    <b>{candidate.provenance || "기준 미확인"}</b>
                   </div>
                 ))}
               </div>
             </section>
             <section className="panel delayed-panel">
-              <div className="panel-title-row"><h2>지연 업무</h2><span className="count-badge danger-count">{report.delayed_tasks.length}개</span></div>
+              <div className="panel-title-row"><h2>기간 내 문서 추출 지연 항목</h2><span className="count-badge danger-count">{report.delayed_tasks.length}개</span></div>
               {report.delayed_tasks.length === 0 ? <div className="empty-state">지연 없음</div> : null}
               <div className="dense-list">
                 {report.delayed_tasks.slice(0, 6).map((task) => (
@@ -222,7 +222,7 @@ export default function WeeklyReportPage() {
               </div>
             </section>
             <section className="panel completed-panel">
-              <div className="panel-title-row"><h2>{report.report_type === "monthly" ? "월간 성과 후보" : "잔여 업무"}</h2><span className="count-badge">{report.report_type === "monthly" ? report.monthly_performance_candidates.length : report.remaining_tasks.length}개</span></div>
+              <div className="panel-title-row"><h2>{report.report_type === "monthly" ? "월간 성과 후보" : "기간 내 문서 추출 잔여 항목"}</h2><span className="count-badge">{report.report_type === "monthly" ? report.monthly_performance_candidates.length : report.remaining_tasks.length}개</span></div>
               {report.report_type === "monthly" ? (
                 <div className="dense-list">
                   {report.monthly_performance_candidates.length === 0 ? <div className="empty-state">성과 후보 없음</div> : null}
