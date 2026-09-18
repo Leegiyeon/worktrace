@@ -22,7 +22,7 @@ class Connection:
         return Result()
 
 
-def test_commit_creates_completed_task_and_daily_work_log():
+def test_commit_creates_only_an_insert_only_daily_work_log():
     connection = Connection()
 
     _sync_commit_work_items(
@@ -38,21 +38,20 @@ def test_commit_creates_completed_task_and_daily_work_log():
         },
     )
 
-    assert len(connection.calls) == 3
-    task_query, task_params = connection.calls[0]
-    assert "INSERT INTO project_tasks" in task_query
-    assert task_params["title"] == "Ship usable GitHub data"
-    assert task_params["source_key"] == "commit:source-id:abcdef123456"
-    log_query, log_params = connection.calls[2]
+    assert len(connection.calls) == 2
+    assert all("project_tasks" not in query for query, _ in connection.calls)
+    assert "repository_source_id = %(source_id)s" in connection.calls[0][0]
+    log_query, log_params = connection.calls[1]
     assert "INSERT INTO work_logs" in log_query
+    assert "DO NOTHING" in log_query
+    assert "DO UPDATE" not in log_query
     assert log_params["title"] == "GitHub 작업 · 2개 커밋"
     assert log_params["source_key"] == "day:source-id:2026-09-11"
 
 
-def test_commit_without_timestamp_still_creates_task():
+def test_commit_without_timestamp_does_not_invent_work():
     connection = Connection()
 
     _sync_commit_work_items(connection, "owner-id", "source-id", "project-id", "abc", {"message": ""})
 
-    assert len(connection.calls) == 1
-    assert connection.calls[0][1]["title"] == "제목 없는 커밋"
+    assert connection.calls == []

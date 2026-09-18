@@ -2,7 +2,7 @@
 
 ## Source of truth
 - Status: Active
-- Last refreshed: 2026-09-14
+- Last refreshed: 2026-09-18
 - Primary product surfaces: login, dashboard, project list, project detail, goals/milestones, verification center, branch graph, insights, reports
 - Evidence reviewed: `AGENTS.md`, `docs/DESIGN_SYSTEM.md`, `frontend/app/globals.css`, `frontend/app/ui-overflow-fixes.css`, `frontend/app/components/AppHeader.tsx`, `frontend/app/components/AppLogo.tsx`, `frontend/app/page.tsx`, `frontend/app/projects/page.tsx`, `frontend/app/projects/[projectId]/page.tsx`, `frontend/app/goals/page.tsx`, `frontend/app/verifications/page.tsx`, `frontend/app/branches/page.tsx`, `frontend/app/projects/[projectId]/BranchActivityGraph.tsx`, `frontend/app/insights/page.tsx`, `frontend/app/reports/page.tsx`, and current frontend contract tests under `frontend/scripts/`
 - Evidence boundary: this document records current implementation separately from intended design direction; unimplemented future behavior stays in Open questions or Implementation constraints.
@@ -29,6 +29,7 @@
 - Core routes/screens: `/login`, `/`, `/projects`, `/projects/[projectId]`, `/goals`, `/verifications`, `/branches`, `/insights`, and `/reports`.
 - Content hierarchy: dashboard attention and activity first; project list/detail for CRUD and evidence; goals/milestones for objective and acceptance criteria; verification center for AI-assisted review and explicit validation state; branch graph for selected repository inspection; insights and reports after project records exist.
 - Workflow sequence: define project and WBS -> connect repository/evidence -> review goals and milestone evidence -> use AI review as advisory output -> explicitly confirm validation state when needed -> use computed progress, reporting, and career assets without treating AI as the source of truth.
+- GitHub review slice: the project-local `GitHub 근거` tab separates collected Issue/PR facts from WBS decisions. Review one source at a time, create planned work with explicit progress inclusion, link existing work without changing its status, or exclude/restore the source. Collection itself is not approval or completion.
 
 ## Design principles
 - Action before summary: overdue, due-soon, and next-action records precede aggregate charts.
@@ -84,6 +85,7 @@
 - Touch/hover differences: actions remain visible without hover; hover polish is optional, while focus and disabled states are explicit.
 
 ## Interaction states
+- GitHub review contract: show stored collection/source timestamps, external state and pending/adopted/ignored counts separately. Use a paginated flat list with one expanded detail/editor, not nested cards. Keep a failed submission's input and request identity for safe retry; conflicts require an explicit reload before a new decision. Refresh parent planning totals without resetting other forms. Same-project tab changes retain the mounted evidence editor; full route changes/reloads do not persist drafts.
 - Loading: short Korean status text near the affected surface; branch page separates project loading from selected repository loading.
 - Empty: one concise state such as `표시할 프로젝트가 없습니다.`, `연결된 GitHub 저장소가 없습니다.`, or `표시할 브랜치가 없습니다.`.
 - Disconnected: repository absence is distinct from repository fetch failure on the branch page and graph component.

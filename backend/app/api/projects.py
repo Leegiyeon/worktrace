@@ -27,6 +27,7 @@ from app.services.projects import (
     ProjectMilestoneWeightError,
     ProjectNotFoundError,
     ProjectTaskNotFoundError,
+    RepositorySourceConflictError,
     create_project,
     create_project_milestone,
     create_project_task,
@@ -209,6 +210,8 @@ def put_repository_source(project_id: UUID, payload: RepositorySourceCreate, own
         return upsert_repository_source(settings, owner_id, project_id, payload)
     except ProjectNotFoundError as exc:
         raise _project_not_found() from exc
+    except RepositorySourceConflictError as exc:
+        raise http_error(status.HTTP_409_CONFLICT, "REPOSITORY_SOURCE_CONFLICT", "Repository is already linked to another project.") from exc
     except psycopg.Error as exc:
         raise http_error(status.HTTP_503_SERVICE_UNAVAILABLE, "DATABASE_UNAVAILABLE", "Database is unavailable.") from exc
 

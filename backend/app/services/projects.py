@@ -34,22 +34,38 @@ class ProjectMilestoneWeightError(Exception):
     pass
 
 
+class RepositorySourceConflictError(Exception):
+    pass
+
+
 def upsert_repository_source(settings: Settings, owner_id: str, project_id: UUID, payload: RepositorySourceCreate) -> RepositorySource:
     _ensure_project_exists(settings, owner_id, project_id)
     with connect(settings) as connection:
+        existing = connection.execute(
+            """
+            SELECT id::text, project_id::text
+            FROM repository_sources
+            WHERE owner_id=%(owner_id)s AND provider='github' AND repository_id=%(repository_id)s
+            """,
+            {"owner_id": owner_id, "repository_id": payload.repository_id},
+        ).fetchone()
+        if existing is not None and str(existing["project_id"]) != str(project_id):
+            raise RepositorySourceConflictError()
         row = connection.execute(
             """
             INSERT INTO repository_sources (owner_id, project_id, repository_id, full_name, default_branch)
             VALUES (%(owner_id)s, %(project_id)s, %(repository_id)s, %(full_name)s, %(default_branch)s)
             ON CONFLICT (owner_id, provider, repository_id) DO UPDATE
-            SET project_id = EXCLUDED.project_id,
-                full_name = EXCLUDED.full_name,
+            SET full_name = EXCLUDED.full_name,
                 default_branch = EXCLUDED.default_branch,
                 updated_at = now()
+            WHERE repository_sources.project_id = EXCLUDED.project_id
             RETURNING id::text, project_id::text, repository_id, full_name, default_branch, updated_at::text
             """,
             {"owner_id": owner_id, "project_id": project_id, **payload.model_dump()},
         ).fetchone()
+        if row is None:
+            raise RepositorySourceConflictError()
     return RepositorySource(**row)
 
 

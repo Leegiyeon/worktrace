@@ -6,7 +6,7 @@ from app.api import projects
 from app.main import app
 from app.schemas.projects import GitHubDelivery, ProjectGitHubStatus, ProjectSummary, ProjectTask, RepositorySource
 from app.services.github_webhooks import GitHubDeliveryNotFoundError, GitHubWebhookResult
-from app.services.projects import ProjectNotFoundError, ProjectTaskNotFoundError
+from app.services.projects import ProjectNotFoundError, ProjectTaskNotFoundError, RepositorySourceConflictError
 
 HEADERS = {
     "X-Worktrace-Owner-Id": "local-owner",
@@ -201,3 +201,18 @@ def test_reprocess_unknown_delivery_uses_stable_error(monkeypatch):
 
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "GITHUB_DELIVERY_NOT_FOUND"
+
+
+def test_repository_source_conflict_uses_stable_409(monkeypatch):
+    def fake_upsert(settings, owner_id, project_id, payload):
+        raise RepositorySourceConflictError()
+
+    monkeypatch.setattr(projects, "upsert_repository_source", fake_upsert)
+    response = TestClient(app).put(
+        f"/projects/{PROJECT_ID}/repository",
+        headers=HEADERS,
+        json={"repository_id": 123, "full_name": "Owner/repo", "default_branch": "main"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "REPOSITORY_SOURCE_CONFLICT"

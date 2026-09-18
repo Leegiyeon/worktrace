@@ -6,6 +6,7 @@ from app.api.branch_activity import router as branch_activity_router
 from app.api.career_assets import router as career_assets_router
 from app.api.health import router as health_router
 from app.api.github_webhooks import router as github_webhooks_router
+from app.api.github_items import router as github_items_router
 from app.api.milestone_evidence import router as milestone_evidence_router
 from app.api.outcomes import router as outcomes_router
 from app.api.projects import router as projects_router
@@ -36,6 +37,7 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(github_webhooks_router)
+app.include_router(github_items_router)
 app.include_router(ai_router)
 app.include_router(projects_router)
 app.include_router(branch_activity_router)

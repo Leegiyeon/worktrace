@@ -28,10 +28,12 @@ def test_schema_module_does_not_embed_table_ddl() -> None:
     assert "CREATE TABLE IF NOT EXISTS projects" not in schema_source
 
 
-def test_backend_compose_mounts_canonical_sql_for_container_init() -> None:
+def test_backend_compose_mounts_canonical_sql_for_runner_only() -> None:
     compose = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
 
     assert "./infrastructure/postgres/init:/app/infrastructure/postgres/init:ro" in compose
+    assert "/docker-entrypoint-initdb.d" not in compose
+    assert "python scripts/migrate_db.py && exec uvicorn" in compose
 
 
 def test_canonical_schema_contains_project_tasks() -> None:

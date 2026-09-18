@@ -9,10 +9,14 @@
 AI 검토, 경력 자료 생성까지 연결합니다. 저장소 이름은 `Leegiyeon/worktrace`,
 운영 대상 도메인은 `worktrace.cloud`입니다.
 
-이 문서는 2026-09-14 기준 저장소의 구현·설정을 설명합니다. 배포 성공 여부,
+이 문서는 2026-09-18 기준 저장소의 구현·설정을 설명합니다. 배포 성공 여부,
 운영 DB 데이터, DNS·인증서·웹훅의 현재 상태는 별도 운영 점검이 필요합니다.
 UI 구조는 [DESIGN.md](DESIGN.md), 공통 시각 규칙은
 [디자인 시스템](docs/DESIGN_SYSTEM.md)을 참조합니다.
+
+실사용을 위한 제품 방향·데이터 기준·우선순위·수용 기준은
+[요구사항 재정의](docs/PRODUCT_REQUIREMENTS.md)에 정리했습니다.
+이 문서는 앞으로의 제안 명세이며 아래 구현 현황과 구분합니다.
 
 ## 현재 구현된 범위
 
@@ -27,8 +31,8 @@ UI 구조는 [DESIGN.md](DESIGN.md), 공통 시각 규칙은
 - 문서 메타데이터/추출 항목/업무 로그 기반 주간 리포트 생성 API와 화면
 - 저장된 업무·프로젝트 기록 기반 일간/주간/월간 리포트와 성과 후보 표시
 - 대시보드 빠른 업무 기록과 지연·진행·고우선순위 실행 대기열
-- GitHub `main` push webhook 수집, 프로젝트별 커밋 근거 조회, WBS/이슈 관리
-- GitHub 이력·Issue·PR 동기화 스크립트와 웹훅 수신 상태·재처리
+- GitHub 기준 브랜치 push webhook 수집, 프로젝트별 커밋 근거 조회, WBS/이슈 관리
+- GitHub 이력·Issue·PR 동기화, 웹훅 상태·재처리, 원본 검토와 WBS 채택·연결
 - 프로젝트 목표·성취 기준·마일스톤 관리, 검증센터의 AI 검토 이력 저장과 재검토 판정
 - 인사이트의 Project Analyst: 목표·WBS·마일스톤·최근 커밋 기반 다음 행동과 확인 사항 제안
 - 프로젝트별 단일 커밋 네트워크: 실제 부모 SHA 연결, 브랜치별 색상, 현재 HEAD 이름 표시
@@ -47,8 +51,8 @@ UI 구조는 [DESIGN.md](DESIGN.md), 공통 시각 규칙은
 ## 실제 사용 흐름과 진척 기준
 
 1. 프로젝트에 저장소를 연결하고 목표·성취 기준·마일스톤을 확인합니다. 최초 이력은 동기화 스크립트로 가져옵니다.
-2. GitHub `main` push 웹훅으로 커밋 근거와 업무 로그를 축적합니다. Issue·PR 상태는 별도 동기화 스크립트 실행 때 반영되며 push 웹훅이 갱신하지 않습니다.
-3. WBS에서 실제 계획 업무와 마일스톤 연결, 진척 산정 포함 여부를 관리합니다. 커밋 수 자체를 완료 업무 수로 취급하지 않습니다.
+2. 저장소에 설정한 기준 브랜치(main 기본)의 push 웹훅으로 커밋 근거를 축적합니다. 일별 업무 로그는 최초 생성 시점의 요약이며 기존 내용은 덮어쓰지 않습니다. Issue·PR 원본은 별도 동기화 스크립트가 수집하며 push 웹훅이 갱신하지 않습니다.
+3. 프로젝트의 `GitHub 근거`에서 수집된 Issue·PR을 검토하고 예정 업무로 채택하거나 기존 WBS에 연결합니다. 제외한 원본은 삭제하지 않으며 검토 대기로 복원할 수 있습니다. WBS에서는 마일스톤 연결과 진척 산정 포함 여부를 관리합니다. 커밋 수 자체를 완료 업무 수로 취급하지 않습니다.
 4. 완료 검토(`/verifications`, 기존 검증센터)에서 프로젝트를 선택해 성취 기준·남은 WBS·저장된 확인 상태와 근거를 확인합니다. AI 검토는 필요할 때 명시적으로 실행하며 완료 확정은 사용자 동작으로 남습니다. 이 화면은 테스트 실행기나 서비스 가동 상태 감시 기능이 아닙니다.
 5. 업무 로그·성과를 검토하고 경력 자료/주간 리포트를 생성합니다. AI 문장은 저장된 근거에 한정해 검토하고 확인되지 않은 수치를 성과로 확정하지 않습니다.
 
@@ -70,14 +74,17 @@ UI 구조는 [DESIGN.md](DESIGN.md), 공통 시각 규칙은
 - 프로젝트 `status=done`은 사용자가 정한 개발 종료 상태이며 WBS 완료율·성취 기준 확인과 별개입니다. 운영 중인 완료 프로젝트도 표현할 수 있고, GitHub 동기화는 기존 프로젝트 상태를 다시 진행 중으로 덮어쓰지 않습니다.
 - 대시보드의 `이번 주 갱신된 완료 업무`는 완료 상태이면서 `updated_at`이 이번 주인 업무입니다. 실제 완료 시각을 별도로 기록한 값은 아닙니다. 상세의 `조회된 커밋 근거`는 조회 응답 건수이며 전체 저장 건수는 GitHub 수집 상태의 `저장 커밋`과 구분합니다.
 - AI가 반환하는 confidence는 측정된 정확도가 아니므로 화면에 신뢰도 백분율로 표시하지 않습니다. 경력 자산 생성에는 확정 성과만 사용하고, 자동 구성 WBS는 실제 완료 실적에서 제외하며 AI 입력에 그 출처를 전달합니다. 기존 저장된 경력 자료는 자동 재작성하지 않습니다.
-- GitHub 동기화는 Issue를 산정 대상으로, PR을 산정 제외로 저장합니다. Issue/PR은 closed면 `done`, 그 외에는 `in_progress`이며 병합 여부와 프로젝트 검증 완료를 같은 의미로 보지 않습니다.
+- `014` 이후 GitHub 동기화는 Issue·PR 원본을 `github_items`에 저장하고 WBS를 생성·수정하지 않습니다. 이전에 생성된 WBS의 상태·산정 여부는 보존합니다. 외부 closed 상태를 로컬 done으로 변환하지 않으며 PR 종료를 병합으로 간주하지 않습니다.
+- `015`의 원본 검토는 `pending / adopted / ignored`와 판단 이력을 보존합니다. 명시적으로 채택한 신규 WBS는 `planned`, `source_provider=github-adopted`이며 진척 포함 여부를 선택합니다. 기존 업무 연결은 상태·산정 여부를 변경하지 않습니다. 이것은 전체 WBS 승인 계획·완료 확인 모델을 대체하지 않습니다.
+- `014`는 기존 자동 WBS를 삭제하거나 비율을 소급 수정하지 않고, 새 근거로 자동 WBS를 생성·덮어쓰기·삭제하던 트리거를 중단합니다. 기존 항목의 재분류는 별도 사용자 검토가 필요합니다.
 - AI 검토는 DB에 저장되어 재진입 시 복원됩니다. WBS·근거·성취 기준이 바뀌면 이전 검토는 오래된 결과로 표시되며 완료 확정 근거로 사용할 수 없습니다.
 - 프로젝트 전체 AI 검토는 기본적으로 최신 검토와 이미 검증된 항목을 건너뜁니다. 강제 재검토도 이미 검증된 항목을 자동 변경하지 않습니다.
 - WBS 추가/수정에서 마일스톤과 `진척 산정에 포함`을 선택합니다. 개별 업무는 상태와 산정 여부로 표시하며 진행 중=50% 같은 임의 비율은 사용하지 않습니다.
 - 목표 저장은 다른 프로젝트의 미저장 입력과 저장 중 추가 편집을 보존합니다. 내부 링크·모바일 메뉴 이동 전 확인하며, 프로젝트 전환과 앱의 뒤로/앞으로 이동에도 현재 탭 메모리의 초안을 유지합니다. 탭 닫기/새로고침은 경고 후 승인하면 초안이 사라집니다.
 - 목표·검증센터의 조회 실패는 빈 데이터와 구분하고 개별 재시도를 제공합니다. 검토 조회 실패 중에는 일괄 AI 실행을 차단합니다.
 
-화면별 구현 현황과 다음 우선순위는 [UI 개선 현황](docs/UI_IMPROVEMENT_PLAN.md)을 참고하세요.
+화면별 구현 현황과 기존 개선 목록은 [UI 개선 현황](docs/UI_IMPROVEMENT_PLAN.md)을 참고하세요.
+제품 전체의 후속 우선순위는 [요구사항 재정의](docs/PRODUCT_REQUIREMENTS.md)를 기준으로 합니다.
 
 프로젝트 목록은 검색·상태·정렬을 먼저 제공하며 생성 폼은 `프로젝트 추가`로 엽니다.
 WBS는 목록이 기본이고 추가·수정할 때만 같은 폼을 사용합니다. 양식 숨기기는 페이지 안의
@@ -114,7 +121,7 @@ Squash/rebase 병합은 Git 부모 관계에 원래 작업 브랜치의 병합 �
 - 각 HEAD에서 도달 가능한 최근 커밋을 최대 100개 읽습니다. 커밋 조회에는 `since` 날짜 조건이 없으며 main 외 브랜치의 이력도 포함합니다. 같은 SHA는 합쳐서 표시합니다.
 - x축은 부모가 자식보다 먼저 오도록 배치한 연결 순서이며 시간에 비례하는 축이 아닙니다. API의 최근 30일 `activity` 집계는 그래프 좌표에 사용하지 않습니다.
 - ahead/behind는 기준 브랜치 HEAD SHA와 해당 HEAD SHA를 GitHub compare API로 비교한 결과입니다. 정상적으로 기준 브랜치가 포함되면 N개 브랜치 조회에 GitHub 요청 2N회, 기준 브랜치 별도 조회 시 1회가 추가됩니다.
-- 웹훅의 main push 처리와 별도 이력 수집 스크립트가 DB의 커밋 근거·업무 로그를 저장하는 경로이며 그래프 조회와는 별개입니다.
+- 웹훅의 기준 브랜치 push 처리와 별도 이력 수집 스크립트가 DB의 커밋 근거·업무 로그를 저장하는 경로이며 그래프 조회와는 별개입니다.
 
 ## 기술 스택
 
@@ -269,8 +276,8 @@ source .venv/bin/activate
 pip install -e '.[dev]'
 cp .env.example .env
 # backend/.env에서 POSTGRES_PASSWORD를 루트 .env와 같은 값으로 채웁니다.
-# 새 Docker DB는 전체 초기화 SQL이 적용됩니다.
-# 기존 DB라면 아래 'DB 초기화 / migration 방법'의 전체 migration을 먼저 실행합니다.
+# 아래 'DB 초기화 / migration 방법'의 로컬 Python runner로 먼저 스키마를 준비합니다.
+# DB 컨테이너만 시작하면 앱 테이블은 아직 생성되지 않습니다.
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
@@ -351,12 +358,12 @@ cp .env.example .env
 - `GITHUB_SYNC_TOKEN`: GitHub API 조회용 서버 전용 토큰. 비공개 저장소 접근에 필요하며 웹훅 서명 비밀값과 다릅니다.
 - `WORKTRACE_GITHUB_REPOSITORIES`: 기본 3개 외에 동기화할 `owner/repository`의 쉼표 구분 목록. 기본 저장소를 대체하지 않습니다.
 
-### GitHub main push 자동 수집
+### GitHub 기준 브랜치 push 자동 수집
 
 1. 프로젝트 상세의 `GitHub 저장소 연결`에서 GitHub repository ID와 `owner/repository`를 저장합니다.
 2. GitHub 저장소의 Webhooks 설정에 `https://worktrace.cloud/webhooks/github`를 추가합니다. 다른 환경에서는 도메인을 해당 `APP_DOMAIN`으로 바꿉니다.
 3. Content type은 `application/json`, 이벤트는 `Just the push event`, Secret은 `GITHUB_WEBHOOK_SECRET`과 같은 값으로 설정합니다.
-4. `main`에 push하면 delivery와 커밋 근거가 중복 없이 저장되고 프로젝트 상세의 `최근 커밋 근거`에 표시됩니다.
+4. 연결 설정의 기준 브랜치(main 기본)에 push하면 delivery와 커밋 근거가 저장되고 프로젝트 상세의 `최근 커밋 근거`에 표시됩니다. 다른 delivery에 포함된 동일 SHA도 중복 저장하지 않습니다.
 
 커밋은 수행 활동의 근거로만 취급합니다. WBS 완료나 성과 확정은 자동으로 단정하지 않으며, 경력 자산 생성 시 커밋·WBS·업무 로그·확정 성과를 함께 분석합니다.
 
@@ -365,9 +372,12 @@ cp .env.example .env
 
 GitHub API로 전체 사용 데이터를 준비하는 경로는 `backend/scripts/sync_github_data.py`입니다.
 기본 대상은 `Leegiyeon/oncc`, `RotemSRS/emanual`, `Leegiyeon/worktrace`입니다.
-기본 브랜치의 커밋, 날짜별 업무 로그, Issue·PR, 프로젝트 목표·마일스톤을 반영하며
+설정된 기준 브랜치의 커밋, 최초 일별 요약 로그, Issue·PR 원본을 수집합니다.
+기존 프로젝트 제목·설명·역할·목표·마일스톤과 기준 브랜치는 변경하지 않습니다.
+새 저장소는 repository ID로 연결하며 같은 제목의 수동 프로젝트에 임의 연결하지 않습니다.
+신규 프로젝트는 `idea`, 역할 미입력으로 생성하고 실제 계획을 추측해 채우지 않습니다.
 커밋과 마일스톤의 키워드 연결은 검증 완료 증거가 아닌 분류 후보입니다.
-페이지당 100개, 최대 100페이지를 읽으므로 무제한 이력 수집은 아닙니다.
+페이지당 100개, 최대 100페이지를 읽습니다. 상한까지 마지막 페이지가 꽉 차면 부분 성공으로 취급하지 않고 실패하여 해당 동기화 트랜잭션을 되돌립니다. 대규모 이력의 분할 수집·재개 기능은 아직 없습니다.
 
 ```bash
 # 로컬 Compose, GitHub 토큰은 루트 .env에 설정한 뒤 backend 컨테이너에 반영
@@ -375,16 +385,31 @@ docker compose exec -T backend python scripts/sync_github_data.py
 docker compose exec -T backend python scripts/report_progress_snapshot.py
 ```
 
-재실행 시 GitHub 유래 로그·Issue·PR 필드는 갱신됩니다. 과거 커밋에서 자동 생성한
-`source_provider=github`, `source_key=commit:*` 업무는 정리되므로 DB 백업 후 실행합니다.
+실행 전 `014_github_source_preservation.sql`까지 적용되어 있어야 합니다.
+재실행 시 GitHub 원본만 갱신하며 오래된 Issue·PR 응답은 최신 원본을 되돌리지 않습니다.
+사용자 편집 여부를 판별할 과거 이력이 없으므로 기존 업무 로그는 모두 보존합니다.
+일별 로그의 제목/건수/내용은 최초 수집 시점의 스냅샷으로, 하루의 최종 집계가 아닙니다.
+최신 커밋은 근거 목록에서 확인하며 로그 자동 갱신은 편집 이력·버전 정책 구현 후 재검토합니다.
+기존 WBS는 삭제하지 않습니다. `015_github_item_review.sql`까지 적용하면 프로젝트의 `GitHub 근거` 탭에서 신규 Issue·PR을 검토·채택할 수 있습니다.
+
+### GitHub 원본 검토 기준
+
+- `GET /projects/{project_id}/github-items`는 GitHub 실시간 호출이 아니라 DB에 수집된 원본을 조회합니다. 화면의 새로고침도 DB 재조회이며 GitHub 동기화를 실행하지 않습니다.
+- `review_status=pending|adopted|ignored|all`, `limit`(기본 20, 최대 100), `offset`으로 페이지를 조회합니다. 표시 건수는 전체 프로젝트의 상태별 건수이며 목록은 해당 필터의 결과입니다. 원본 수정일·수집일을 함께 표시합니다.
+- `POST /projects/{project_id}/github-items/{item_id}/decision`은 `create / link / ignore / restore`를 처리합니다. `expected_version`, `expected_source_updated_at`, UUID `request_id`가 필요합니다. 다른 프로젝트·소유자의 업무에는 연결할 수 없습니다.
+- 동일 요청의 재전송은 업무를 중복 생성하지 않습니다. 같은 요청 ID의 다른 내용·대상, 오래된 원본이나 판단 버전은 409로 거절합니다. 화면은 충돌 시 원본 재확인을 요구하고 저장 결과 미확인 시 같은 요청을 재전송합니다.
+- 원본 내용 또는 수정 시각이 달라지면 버전이 증가합니다. 같은 초에 수정된 원문도 충돌 검사에 포함하고, 판단 이후 변경 여부는 저장한 원문 SHA-256과 수정 시각을 비교합니다. 동일 원문 재수집만으로 버전을 올리지는 않습니다.
+- 판단 시점의 원본·요청·이전/이후 연결·시각을 감사 이력에 보존합니다. 재수집은 판단 상태를 되돌리지 않습니다. 연결한 WBS가 삭제되면 원본은 채택 상태로 남고 연결 없음으로 표시되어 기존 업무에 다시 연결할 수 있습니다.
+- 현재 한 원본은 한 WBS에 연결되며 여러 원본을 같은 WBS에 연결할 수 있습니다. 임의 재배정, 커밋·로그의 다대다 근거 편집, 승인 계획 버전은 후속 범위입니다.
+- UI의 입력은 같은 프로젝트 내 탭 이동 중 유지되지만 페이지 재로드·프로젝트 이탈 후 복원되지는 않습니다. 서버의 요청 중복 방지는 유지됩니다.
 `--cleanup-samples`는 `[샘플]`/`[user_project_seed]` 프로젝트를 삭제하는 명시적 옵션이며
 일반 수동 동기화에는 넣지 않습니다. `--max-commit-tasks`는 호환용이며 더 이상 커밋 업무를 만들지 않습니다.
 독립 Python 실행에서는 토큰/추가 저장소 값을 환경변수로 export해야 합니다.
 이 스크립트의 GitHub 클라이언트는 `.env`가 아닌 프로세스 환경에서 토큰을 읽습니다.
 
 웹훅 성공은 HTTP 200만으로 판단하지 않고 응답의 `status`, `reason`, `commits_stored`와
-프로젝트의 수신 이력을 확인합니다. `ping`은 `unsupported_event`, main 이외 push는
-`non_main_ref`, 연결되지 않은 저장소는 `repository_not_linked`로 무시됩니다.
+프로젝트의 수신 이력을 확인합니다. `ping`은 `unsupported_event`, 기준 브랜치 이외 push는
+`non_default_ref`, 연결되지 않은 저장소는 `repository_not_linked`로 무시됩니다. 과거 `non_main_ref` 이력도 표시합니다.
 서명 불일치는 403, 서버 비밀값 누락은 503입니다. 동일 delivery 재전송은 중복 처리되므로
 저장소 연결을 수정한 뒤에는 서비스의 재처리 기능으로 저장된 delivery를 다시 처리합니다.
 
@@ -408,19 +433,20 @@ backend 테스트, frontend 테스트·타입 검사·lint·build, 운영 Compos
 `main` 실행의 검증이 성공하면 GitHub `production` environment의 SSH secrets로 Oracle 서버를 배포합니다. PR에서는 배포하지 않습니다.
 
 - Environment secrets: `ORACLE_HOST`, `ORACLE_USER`, `ORACLE_SSH_KEY`, `ORACLE_KNOWN_HOSTS`
-- GitHub 연동 secrets: `WORKTRACE_GH_TOKEN`, `WORKTRACE_WEBHOOK_SECRET`. 워크플로는 이를 각각 `GITHUB_SYNC_TOKEN`, `GITHUB_WEBHOOK_SECRET`으로 원격 프로세스에 전달합니다.
+- GitHub 연동 값 `GITHUB_SYNC_TOKEN`, `GITHUB_WEBHOOK_SECRET`은 서버 `.env.production`에서 관리합니다. 워크플로는 해당 값을 SSH 명령문으로 전달하지 않습니다.
 
 DB·로그인·OpenAI 등 나머지 애플리케이션 설정은 서버의 `/home/ubuntu/worktrace/.env.production`에서 관리합니다.
 `ORACLE_KNOWN_HOSTS`는 별도 신뢰 경로로 지문을 확인한 서버 키여야 합니다.
-현재 워크플로는 GitHub 연동 secrets를 항상 전달하므로 두 값을 비워두면 `.env.production`의 값을 가릴 수 있습니다.
+이전 워크플로 secrets에만 연동 값을 넣었다면 새 배포 전 서버 환경 파일 설정을 확인해야 합니다. 비밀값을 CI 로그나 커밋에 옮기지 않습니다.
 키·토큰·환경 파일은 커밋하지 않습니다.
 
-배포 스크립트는 원격 `main`을 fast-forward로 갱신하고 기존 컨테이너를 내린 뒤 재빌드합니다.
-backend 시작의 체크섬 migration 외에 모든 SQL을 `psql`로 재적용하는 단계도 현재 남아 있습니다.
-readiness와 로그인 응답을 확인한 뒤 `sync_github_data.py --cleanup-samples`와 진척 스냅샷을 실행합니다.
-따라서 배포는 코드뿐 아니라 GitHub 유래 DB 데이터와 샘플 프로젝트에도 영향을 줍니다.
-현재 방식은 중단 시간이 발생하며 검증한 SHA 고정 배포·자동 롤백이 아닙니다.
-이중 migration 제거, 검증 SHA 고정, 배포 전 백업/복원 검증은 운영 보강 과제입니다.
+CI는 검증한 SHA와 같은 checkout의 배포 스크립트를 SSH 표준 입력으로 전달합니다.
+서버에 남은 이전 스크립트를 먼저 실행하지 않으며 `bash scripts/deploy_oracle.sh <40자리 SHA>` 형식을 사용합니다.
+스크립트는 해당 SHA를 detached checkout하고 HEAD를 대조합니다. 기존 앱을 내리기 전에 migration 이력·체크섬을 사전 검증합니다.
+서버 checkout에 미커밋 소스가 있으면 중단하며 자동 초기화·삭제하지 않습니다. Git에서 제외된 서버 환경 파일은 유지합니다.
+SQL은 체크섬 runner로만 적용하며 배포 중 GitHub 동기화·샘플 삭제를 실행하지 않습니다.
+readiness·로그인 응답과 읽기 전용 진척 스냅샷으로 기동을 확인합니다.
+중단 시간과 자동 롤백 부재는 남아 있습니다. 이력 없는 기존 DB는 의도적으로 배포를 중단하며 아래 baseline 점검 절차가 필요합니다.
 
 ### Backend 로컬 `.env`
 
@@ -471,20 +497,20 @@ FastAPI/Pydantic 요청 검증 실패는 기본 422 응답을 유지합니다.
 
 ## DB 초기화 / migration 방법
 
-canonical SQL source는 `infrastructure/postgres/init/*.sql` 전체이며 현재 `001`부터 `013`까지 있습니다.
+canonical SQL source는 `infrastructure/postgres/init/*.sql` 전체이며 현재 `001`부터 `015`까지 있습니다.
 `backend/scripts/migrate_db.py`가 파일명 순서대로 적용하고 advisory lock·트랜잭션·체크섬을 관리합니다.
 `002_work_support_schema.sql`은 기본 스키마 한 부분일 뿐이며 파일명은 migration 식별자 호환을 위해 유지합니다.
 
 ### 새 DB 첫 실행
 
-`docker compose up -d db` 또는 `docker compose up --build`로
-PostgreSQL 컨테이너를 처음 만들면 `infrastructure/postgres/init/`의
-SQL이 자동 실행됩니다.
+DB 컨테이너는 빈 데이터베이스만 준비합니다. 로컬·운영 Compose 모두 backend 기동 전에
+체크섬 runner가 전체 SQL과 적용 이력을 하나의 트랜잭션으로 기록합니다.
+DB 초기화 디렉터리에 앱 SQL을 다시 마운트하지 않습니다.
 
 ### 기존 DB에 새 migration 적용
 
-먼저 백업을 확보합니다. 운영 backend는 기동 전에 runner를 실행하지만 로컬 개발
-Compose는 uvicorn만 실행하므로 기존 volume에는 아래 명령을 별도로 실행합니다.
+먼저 백업을 확보합니다. 로컬·운영 backend 모두 기동 전에 runner를 실행합니다.
+실행 중인 backend에서 명시적으로 적용할 때는 아래 명령을 사용합니다.
 이미 적용한 SQL을 편집하지 말고 다음 번호의 migration을 추가합니다.
 
 ```bash
@@ -509,6 +535,36 @@ PY
 
 `init_db.py`는 여전히 `002`만 적용하는 이전 초기화 도구입니다. 최신 기능 준비에는
 이 도구나 개별 SQL 직접 실행 대신 전체 runner를 사용합니다.
+
+### 이력이 없는 기존 DB의 전환
+
+앱 테이블이 있는데 migration 이력이 없거나 `001`~`013` baseline 기록이 빠져 있으면 runner가 중단합니다.
+이때 오류를 우회해 전체 SQL을 다시 실행하거나 임의의 체크섬으로 적용 이력을 채우면 안 됩니다.
+
+1. 기존 DB를 백업하고 격리된 DB로 복원하여 자료·관계가 보존되는지 확인합니다.
+2. 실제 스키마와 데이터 변환 결과를 `001`~`013` 및 당시 배포 버전과 대조합니다. 모르는 적용 상태는 미확인으로 둡니다.
+3. 이미 적용됐음을 확인한 파일만 운영 변경 승인 후 정확한 파일 SHA-256과 함께 baseline에 기록합니다. 부분 적용 상태는 별도 전환 계획으로 해결하며 미적용 파일을 적용 완료로 표시하지 않습니다.
+4. `python scripts/migrate_db.py --preflight`를 통과한 뒤 같은 검증 SHA를 배포합니다. 이후 `014` 등 미적용 migration만 실행됩니다.
+
+baseline 자동 승인 도구와 실제 운영 복원 검증은 이번 변경에 포함되지 않습니다.
+
+### 수집 보호·근거 검토 DB 통합 테스트
+
+`backend/tests/test_github_preservation_postgres.py`, `backend/tests/test_github_items_postgres.py`는 `WORKTRACE_TEST_DATABASE_URL`이 있을 때만 실행됩니다.
+데이터베이스 이름은 반드시 `worktrace_test`여야 하며 임의 스키마 안에서 검증 후 rollback합니다. 독립 연결을 사용하는 동시 요청 테스트는 임시 스키마를 커밋한 후 해당 스키마만 제거합니다. 같은 테스트 DB에서 여러 suite를 동시에 실행하지 않습니다.
+GitHub Actions는 격리된 pgvector 테스트 서비스를 사용합니다. 환경변수가 없는 로컬 테스트에서는 이 검증이 skip됩니다.
+운영 URL을 테스트 변수에 넣지 않습니다. 테스트는 개발자의 `.env`를 읽지 않으며, 필요한 설정은 테스트 환경 또는 fixture로 주입합니다.
+
+GitHub 근거 UI 브라우저 검증은 별도로 설치된 Playwright로 실행합니다. 애플리케이션 런타임 의존성은 추가하지 않았습니다.
+
+```bash
+cd frontend
+WORKTRACE_BROWSER_URL=http://127.0.0.1:3100 \
+WORKTRACE_PLAYWRIGHT_PATH=/absolute/path/to/playwright/index.mjs \
+node scripts/github-evidence.browser.mjs
+```
+
+필요하면 `WORKTRACE_CHROME_PATH`로 Chrome 실행 파일을 지정합니다. 이 테스트는 API를 모의 응답으로 대체하며 실서비스 자료를 쓰지 않습니다. 320/390/768/1440px 캡처, 넘침·버튼 겹침, 채택/연결/제외/복원, 충돌, 조회 실패, 응답 유실 재시도를 검증합니다. 실제 SQL 검증 및 운영 smoke를 대체하지 않습니다.
 
 ### 로컬 DB를 완전히 초기화해야 할 때
 
@@ -819,7 +875,8 @@ docker compose ps
 
 - 문서 업로드·텍스트 추출·AI 문서 분석
 - 문서 청크 검색·임베딩·근거 기반 Q&A
-- 검증 SHA 고정 배포, 자동 롤백, 무중단 배포
+- 자동 롤백, 무중단 배포, 기존 운영 DB baseline·복원 검증
+- 전체 WBS 승인 계획·버전 모델, 개인 기여·완료 전이 이력
 - 원격 백업 자동 복제·복원 리허설 자동화
 - Issue·PR 변경 이벤트의 실시간 동기화와 GitHub 이력 정기 동기화 스케줄러
 - 다중 사용자 인증과 owner-scoped 권한 체계

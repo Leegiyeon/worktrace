@@ -6,6 +6,7 @@ import { FormEvent, use, useCallback, useEffect, useMemo, useRef, useState } fro
 
 import { parseApiErrorMessage } from "../../reports/api-error";
 import { CareerPanel } from "./CareerPanel";
+import { GitHubEvidencePanel } from "./GitHubEvidencePanel";
 import styles from "./page.module.css";
 import type {
   CareerAsset,
@@ -39,7 +40,7 @@ type PageProps = {
   params: Promise<{ projectId: string }>;
 };
 
-type DetailTab = "overview" | "tasks" | "logs" | "outcomes" | "career";
+type DetailTab = "overview" | "tasks" | "github" | "logs" | "outcomes" | "career";
 type TaskViewMode = "board" | "list" | "calendar";
 type DetailLoadFailure = "logs" | "outcomes" | "career" | "commits" | "githubStatus" | "milestones";
 type OutcomeStage = "candidates" | "review" | "confirmed";
@@ -94,6 +95,7 @@ type OutcomeCandidate = OutcomeForm & {
 const tabs: { id: DetailTab; label: string }[] = [
   { id: "overview", label: "현황" },
   { id: "tasks", label: "WBS · 이슈" },
+  { id: "github", label: "GitHub 근거" },
   { id: "logs", label: "업무 로그" },
   { id: "outcomes", label: "성과" },
   { id: "career", label: "경력 자산" }
@@ -199,6 +201,7 @@ function deliveryReasonLabel(delivery: GitHubDelivery) {
   return {
     unsupported_event: "지원하지 않는 이벤트",
     non_main_ref: "main 이외 브랜치",
+    non_default_ref: "기준 브랜치 외 push",
     repository_not_linked: "연결되지 않은 저장소",
     duplicate_delivery: "중복 전달"
   }[delivery.reason] ?? delivery.reason;
@@ -379,6 +382,11 @@ export default function ProjectDetailPage({ params }: PageProps) {
   const [successMessage, setSuccessMessage] = useState("");
   const [loadFailures, setLoadFailures] = useState<DetailLoadFailure[]>([]);
   const [careerMessage, setCareerMessage] = useState("");
+  const planningRefreshSequence = useRef(0);
+
+  useEffect(() => {
+    return () => { planningRefreshSequence.current += 1; };
+  }, [projectId]);
 
   const updateProjectDetailUrl = useCallback((updates: Partial<Record<"tab" | "view" | "status" | "priority" | "issue" | "sort", string>>) => {
     const nextParams = new URLSearchParams(searchParams.toString());
@@ -501,6 +509,21 @@ export default function ProjectDetailPage({ params }: PageProps) {
       setIsLoading(false);
     }
   }, [projectId]);
+
+  async function refreshPlanningData() {
+    const sequence = ++planningRefreshSequence.current;
+    const responses = await Promise.all([
+      fetch(`/api/projects/${projectId}`, { cache: "no-store" }),
+      fetch(`/api/projects/${projectId}/tasks`, { cache: "no-store" }),
+      fetch(`/api/projects/${projectId}/milestones`, { cache: "no-store" })
+    ]);
+    if (responses.some((response) => !response.ok)) throw new Error("WBS 현황 조회 실패");
+    const [nextProject, nextTasks, nextMilestones] = await Promise.all(responses.map((response) => response.json()));
+    if (sequence !== planningRefreshSequence.current) return;
+    setProject(nextProject as ProjectSummary);
+    setTasks(nextTasks as ProjectTask[]);
+    setMilestones(nextMilestones as ProjectMilestone[]);
+  }
 
   async function handleSaveRepository(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1131,7 +1154,12 @@ export default function ProjectDetailPage({ params }: PageProps) {
             </section>
           ) : null}
 
-          {activeTab === "tasks" ? (
+      <section aria-labelledby="tab-github" id="panel-github" role="tabpanel" hidden={activeTab !== "github"}>
+        <GitHubEvidencePanel key={projectId} projectId={projectId} active={activeTab === "github"} tasks={tasks}
+          onPlanningChanged={refreshPlanningData} onOpenTask={startEdit} />
+      </section>
+
+      {activeTab === "tasks" ? (
             <section aria-labelledby="tab-tasks" className="task-workspace" id="panel-tasks" role="tabpanel">
               <div className={styles.taskCommandBar}>
                 <div className="view-switcher" aria-label="업무 보기 방식">

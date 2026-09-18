@@ -142,8 +142,8 @@ class GitHubClient:
                 raise RuntimeError(f"Unexpected GitHub response for {path}")
             items.extend(batch)
             if len(batch) < 100:
-                break
-        return items
+                return items
+        raise RuntimeError(f"Incomplete GitHub pagination for {path}; no sync changes were committed")
 
     def readme(self, full_name: str) -> str:
         payload = self.try_get(f"/repos/{full_name}/readme")
@@ -245,6 +245,10 @@ def milestone_id_for(connection, owner_id: str, project_id: str, project_title: 
 
 
 def project_for(connection, owner_id: str, metadata: dict, title: str, fallback: str, role: str, readme: str = "") -> tuple[str, str]:
+    connection.execute(
+        "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+        (f"github-source:{owner_id}:{metadata['id']}",),
+    )
     source = connection.execute(
         "SELECT project_id::text FROM repository_sources WHERE owner_id=%s AND repository_id=%s",
         (owner_id, metadata["id"]),
@@ -252,38 +256,29 @@ def project_for(connection, owner_id: str, metadata: dict, title: str, fallback:
     if source:
         project_id = source["project_id"]
     else:
-        project = connection.execute(
-            "SELECT id::text FROM projects WHERE owner_id=%s AND lower(title)=lower(%s) ORDER BY updated_at DESC LIMIT 1",
-            (owner_id, title),
-        ).fetchone()
-        project_id = project["id"] if project else connection.execute(
-            "INSERT INTO projects(owner_id,title,description,status,role) VALUES(%s,%s,%s,'in_progress',%s) RETURNING id::text",
-            (owner_id, title, metadata.get("description") or fallback, role),
+        project_id = connection.execute(
+            "INSERT INTO projects(owner_id,title,description,status) VALUES(%s,%s,%s,'idea') RETURNING id::text",
+            (owner_id, title, metadata.get("description") or fallback),
         ).fetchone()["id"]
-    connection.execute(
-        "UPDATE projects SET title=%s, description=%s, role=%s, updated_at=now() WHERE owner_id=%s AND id=%s",
-        (title, metadata.get("description") or fallback, role, owner_id, project_id),
-    )
     connection.execute(
         """INSERT INTO repository_sources(owner_id,project_id,repository_id,full_name,default_branch)
            VALUES(%s,%s,%s,%s,%s)
-           ON CONFLICT(owner_id,provider,repository_id) DO UPDATE SET project_id=excluded.project_id,
-             full_name=excluded.full_name, default_branch=excluded.default_branch, updated_at=now()""",
+           ON CONFLICT(owner_id,provider,repository_id) DO UPDATE SET
+             full_name=excluded.full_name, updated_at=now()""",
         (owner_id, project_id, metadata["id"], metadata["full_name"], metadata.get("default_branch") or "main"),
     )
-    ensure_project_blueprint(connection, owner_id, project_id, title, metadata, readme)
     return project_id, metadata["full_name"]
 
 
 def sync_repo(connection, client: GitHubClient, owner_id: str, config: tuple[str, str, str, str], max_tasks: int) -> tuple[int, int, int]:
     requested, title, fallback, role = config
     metadata = client.get(f"/repos/{requested}")
-    readme = client.readme(str(metadata.get("full_name") or requested))
-    project_id, full_name = project_for(connection, owner_id, metadata, title, fallback, role, readme)
-    source_id = connection.execute(
-        "SELECT id::text FROM repository_sources WHERE owner_id=%s AND repository_id=%s", (owner_id, metadata["id"])
-    ).fetchone()["id"]
-    commits = client.pages(f"/repos/{full_name}/commits", sha=metadata.get("default_branch") or "main")
+    project_id, full_name = project_for(connection, owner_id, metadata, title, fallback, role)
+    source = connection.execute(
+        "SELECT id::text, default_branch FROM repository_sources WHERE owner_id=%s AND repository_id=%s", (owner_id, metadata["id"])
+    ).fetchone()
+    source_id = source["id"]
+    commits = client.pages(f"/repos/{full_name}/commits", sha=source["default_branch"])
     by_day: dict[str, list[str]] = defaultdict(list)
     for item in commits:
         commit = item.get("commit") or {}
@@ -311,39 +306,30 @@ def sync_repo(connection, client: GitHubClient, owner_id: str, config: tuple[str
         if committed_at:
             by_day[committed_at[:10]].append(commit_title)
 
-    connection.execute(
-        "DELETE FROM project_tasks WHERE owner_id=%s AND project_id=%s AND source_provider='github' AND source_key LIKE 'commit:%%'",
-        (owner_id, project_id),
-    )
-
     for day, titles in by_day.items():
         content = "\n".join(f"- {value}" for value in titles[:20])
         if len(titles) > 20:
             content += f"\n- 외 {len(titles) - 20}개 커밋"
+        # Insert-only snapshots protect legacy edits; github_commits remains the live evidence.
         connection.execute(
             """INSERT INTO work_logs(owner_id,project_id,log_date,work_type,title,content,decisions,next_actions,duration_minutes,source_provider,source_key)
-               VALUES(%s,%s,%s,'development',%s,%s,'main 브랜치 커밋 근거 자동 동기화','후속 WBS와 성과 근거를 검토한다.',0,'github',%s)
+               VALUES(%s,%s,%s,'development',%s,%s,'기준 브랜치 커밋 근거 수집 시점의 요약','최신 근거는 프로젝트 커밋 목록에서 확인한다.',0,'github',%s)
                ON CONFLICT(owner_id,source_provider,source_key) WHERE source_provider IS NOT NULL AND source_key IS NOT NULL
-               DO UPDATE SET title=excluded.title,content=excluded.content,updated_at=now()""",
+               DO NOTHING""",
             (owner_id, project_id, date.fromisoformat(day), f"GitHub 작업 · {len(titles)}개 커밋", content, f"day:{source_id}:{day}"),
         )
     issues = client.pages(f"/repos/{full_name}/issues", state="all")
     for issue in issues:
-        kind = "pr" if issue.get("pull_request") else "issue"
-        prefix = "PR" if kind == "pr" else "Issue"
-        issue_title = str(issue.get("title") or "")
-        milestone_id = milestone_id_for(connection, owner_id, project_id, title, issue_title)
-        counts_toward_progress = kind == "issue"
+        kind = "pr" if "pull_request" in issue else "issue"
         connection.execute(
-            """INSERT INTO project_tasks(owner_id,project_id,title,description,status,priority,source_provider,source_key,milestone_id,counts_toward_progress)
-               VALUES(%s,%s,%s,%s,%s,%s,'github',%s,%s,%s)
-               ON CONFLICT(owner_id,source_provider,source_key) WHERE source_provider IS NOT NULL AND source_key IS NOT NULL
-               DO UPDATE SET title=excluded.title,description=excluded.description,status=excluded.status,
-                 priority=excluded.priority,milestone_id=excluded.milestone_id,
-                 counts_toward_progress=excluded.counts_toward_progress,updated_at=now()""",
-            (owner_id, project_id, f"{prefix} #{issue['number']} · {issue_title[:200]}", issue.get("html_url") or "",
-             "done" if issue.get("state") == "closed" else "in_progress", priority(issue.get("labels") or []),
-             f"{kind}:{full_name}:{issue['number']}", milestone_id, counts_toward_progress),
+            """INSERT INTO github_items(owner_id,repository_source_id,external_id,number,kind,source_updated_at,payload)
+               VALUES(%s,%s,%s,%s,%s,%s,%s::jsonb)
+               ON CONFLICT(owner_id,repository_source_id,number) DO UPDATE SET
+                 payload=excluded.payload,source_updated_at=excluded.source_updated_at,collected_at=now()
+               WHERE github_items.external_id=excluded.external_id
+                 AND github_items.kind=excluded.kind
+                 AND github_items.source_updated_at <= excluded.source_updated_at""",
+            (owner_id, source_id, issue["id"], issue["number"], kind, issue["updated_at"], json.dumps(issue)),
         )
     return len(commits), len(issues), len(by_day)
 
@@ -365,7 +351,7 @@ def main() -> None:
         for config in repository_configs(args.repository):
             counts = sync_repo(connection, client, settings.default_owner_id, config, args.max_commit_tasks)
             totals = [left + right for left, right in zip(totals, counts)]
-    print(f"GitHub sync complete: commits={totals[0]}, issue_pr_tasks={totals[1]}, work_logs={totals[2]}")
+    print(f"GitHub sync complete: commits_fetched={totals[0]}, issue_pr_fetched={totals[1]}, work_log_days_seen={totals[2]}")
 
 
 if __name__ == "__main__":

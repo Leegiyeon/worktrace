@@ -42,7 +42,8 @@ def test_project_for_does_not_reset_existing_project_status(existing_status, mon
 
     assert connection.status == existing_status
     assert all("status='in_progress'" not in query for query in connection.queries)
-    assert any("UPDATE projects SET title=%s, description=%s, role=%s" in query for query in connection.queries)
+    assert all("UPDATE projects" not in query for query in connection.queries)
+    assert all("INSERT INTO project_milestones" not in query for query in connection.queries)
 
 
 def test_project_summary_exposes_derived_task_count_mapping() -> None:

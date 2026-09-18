@@ -56,6 +56,17 @@ test("project task proxy routes preserve encoded collection and mutation paths",
   assert.match(detailRoute, /`\/projects\/\$\{encodePathSegment\(projectId\)\}\/tasks\/\$\{encodePathSegment\(taskId\)\}`/);
 });
 
+test("GitHub review proxies preserve scoped identifiers and query forwarding", () => {
+  const collection = read("app/api/projects/[projectId]/github-items/route.ts");
+  const decision = read("app/api/projects/[projectId]/github-items/[itemId]/decision/route.ts");
+  assert.match(collection, /export async function GET/);
+  assert.match(collection, /`\/projects\/\$\{encodePathSegment\(projectId\)\}\/github-items`/);
+  assert.match(decision, /export async function POST/);
+  assert.match(decision, /`\/projects\/\$\{encodePathSegment\(projectId\)\}\/github-items\/\$\{encodePathSegment\(itemId\)\}\/decision`/);
+  assert.match(read("app/api/backend.ts"), /request.nextUrl.searchParams.forEach/);
+  assert.doesNotMatch(collection + decision, /GITHUB_TOKEN|api.github.com/);
+});
+
 test("dashboard, report, AI draft, and career routes keep expected proxy methods", () => {
   const projectsRoute = read("app/api/projects/route.ts");
   const workLogsRoute = read("app/api/work-logs/route.ts");

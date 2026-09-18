@@ -45,12 +45,16 @@ def test_commit_evidence_synthesizes_wbs_only_without_real_issues() -> None:
     assert "trg_refresh_commit_derived_wbs_issue" in schema
 
 
-def test_deploy_reapplies_idempotent_migrations_to_existing_volume() -> None:
+def test_deploy_uses_checksum_runner_without_raw_sql_replay() -> None:
     script = DEPLOY_SCRIPT.read_text(encoding="utf-8")
 
-    assert "for migration in infrastructure/postgres/init/*.sql" in script
-    assert "psql" in script
-    assert "ON_ERROR_STOP=1" in script
+    assert "for migration in infrastructure/postgres/init/*.sql" not in script
+    assert "psql" not in script
+    assert "up -d --wait db" in script
+    assert "python scripts/migrate_db.py --preflight" in script
+    assert "exec -T backend python scripts/migrate_db.py" in script
+    assert "sync_github_data.py" not in script
+    assert "--cleanup-samples" not in script
 
 
 def test_milestone_progress_requires_complete_wbs_coverage() -> None:

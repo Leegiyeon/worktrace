@@ -52,6 +52,10 @@ def ingest_github_event(
     ref = str(payload.get("ref") or "")
 
     with connect(settings) as connection:
+        connection.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%(delivery_id)s, 0))",
+            {"delivery_id": delivery_id},
+        )
         existing = connection.execute(
             "SELECT status, reason FROM github_deliveries WHERE delivery_id = %(delivery_id)s",
             {"delivery_id": delivery_id},
@@ -61,12 +65,9 @@ def ingest_github_event(
 
         if event_name != "push":
             return _record_ignored(connection, settings, delivery_id, event_name, repository_id, full_name, ref, payload, "unsupported_event")
-        if ref != "refs/heads/main":
-            return _record_ignored(connection, settings, delivery_id, event_name, repository_id, full_name, ref, payload, "non_main_ref")
-
         source = connection.execute(
             """
-            SELECT id::text, project_id::text
+            SELECT id::text, project_id::text, default_branch
             FROM repository_sources
             WHERE owner_id = %(owner_id)s AND provider = 'github' AND repository_id = %(repository_id)s
             """,
@@ -74,6 +75,8 @@ def ingest_github_event(
         ).fetchone()
         if source is None:
             return _record_ignored(connection, settings, delivery_id, event_name, repository_id, full_name, ref, payload, "repository_not_linked")
+        if ref != f"refs/heads/{source['default_branch']}":
+            return _record_ignored(connection, settings, delivery_id, event_name, repository_id, full_name, ref, payload, "non_default_ref")
 
         stored = _store_push_commits(connection, settings.default_owner_id, source, payload)
 
@@ -143,7 +146,7 @@ def reprocess_github_delivery(
         delivery = connection.execute(
             """
             SELECT d.id::text, d.event_name, d.payload, d.processing_attempts,
-                   r.id::text AS source_id, r.project_id::text
+                   r.id::text AS source_id, r.project_id::text, r.default_branch
             FROM github_deliveries d
             JOIN repository_sources r
               ON r.owner_id = d.owner_id AND r.repository_id = d.repository_id
@@ -161,8 +164,8 @@ def reprocess_github_delivery(
         stored = 0
         if event_name != "push":
             status, reason = "ignored", "unsupported_event"
-        elif ref != "refs/heads/main":
-            status, reason = "ignored", "non_main_ref"
+        elif ref != f"refs/heads/{delivery['default_branch']}":
+            status, reason = "ignored", "non_default_ref"
         else:
             stored = _store_push_commits(
                 connection,
@@ -220,32 +223,13 @@ def _store_push_commits(connection, owner_id: str, source: dict[str, Any], paylo
             },
         )
         stored += max(result.rowcount, 0)
-        _sync_commit_work_items(connection, owner_id, source["id"], source["project_id"], sha, commit)
+        if result.rowcount > 0:
+            _sync_commit_work_items(connection, owner_id, source["id"], source["project_id"], sha, commit)
     return stored
 
 
 def _sync_commit_work_items(connection, owner_id: str, source_id: str, project_id: str, sha: str, commit: dict[str, Any]) -> None:
-    message = str(commit.get("message") or "")
-    lines = message.splitlines()
-    title = (((lines[0] if lines else "").strip()) or "제목 없는 커밋")[:240]
-    url = str(commit.get("url") or "")
     committed_at = commit.get("timestamp")
-    connection.execute(
-        """
-        INSERT INTO project_tasks (
-            owner_id, project_id, title, description, status, priority, source_provider, source_key
-        ) VALUES (
-            %(owner_id)s, %(project_id)s, %(title)s, %(description)s,
-            'done', 'medium', 'github', %(source_key)s
-        )
-        ON CONFLICT (owner_id, source_provider, source_key)
-            WHERE source_provider IS NOT NULL AND source_key IS NOT NULL
-        DO UPDATE SET title = excluded.title, description = excluded.description,
-                      status = 'done', updated_at = now()
-        """,
-        {"owner_id": owner_id, "project_id": project_id, "title": title,
-         "description": f"main 커밋 {sha[:7]} · {url}", "source_key": f"commit:{source_id}:{sha}"},
-    )
     if not committed_at:
         return
     summary = connection.execute(
@@ -253,14 +237,15 @@ def _sync_commit_work_items(connection, owner_id: str, source_id: str, project_i
         SELECT committed_at::date AS log_date, COUNT(*)::int AS commit_count,
                string_agg('- ' || split_part(message, E'\n', 1), E'\n' ORDER BY committed_at) AS content
         FROM github_commits
-        WHERE owner_id = %(owner_id)s AND project_id = %(project_id)s
+        WHERE owner_id = %(owner_id)s AND repository_source_id = %(source_id)s
           AND committed_at::date = %(committed_at)s::timestamptz::date
         GROUP BY committed_at::date
         """,
-        {"owner_id": owner_id, "project_id": project_id, "committed_at": committed_at},
+        {"owner_id": owner_id, "source_id": source_id, "committed_at": committed_at},
     ).fetchone()
     if summary is None:
         return
+    # Legacy logs may contain edits without an audit trail. Preserve every existing row.
     connection.execute(
         """
         INSERT INTO work_logs (
@@ -268,12 +253,12 @@ def _sync_commit_work_items(connection, owner_id: str, source_id: str, project_i
             next_actions, duration_minutes, source_provider, source_key
         ) VALUES (
             %(owner_id)s, %(project_id)s, %(log_date)s, 'development', %(title)s,
-            %(content)s, 'main 브랜치 커밋 근거 자동 동기화',
-            '후속 WBS와 성과 근거를 검토한다.', 0, 'github', %(source_key)s
+            %(content)s, '기준 브랜치 커밋 근거 수집 시점의 요약',
+            '최신 근거는 프로젝트 커밋 목록에서 확인한다.', 0, 'github', %(source_key)s
         )
         ON CONFLICT (owner_id, source_provider, source_key)
             WHERE source_provider IS NOT NULL AND source_key IS NOT NULL
-        DO UPDATE SET title = excluded.title, content = excluded.content, updated_at = now()
+        DO NOTHING
         """,
         {"owner_id": owner_id, "project_id": project_id, "log_date": summary["log_date"],
          "title": f"GitHub 작업 · {summary['commit_count']}개 커밋", "content": summary["content"],
