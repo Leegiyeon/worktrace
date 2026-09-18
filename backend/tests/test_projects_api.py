@@ -263,6 +263,20 @@ def test_task_history_route_uses_authenticated_owner(monkeypatch):
     assert client.get(path, headers=HEADERS).json() == {"items": [], "total": 0}
 
 
+def test_legacy_validation_mutations_return_stable_protection_error(monkeypatch):
+    def protected(*args):
+        raise projects.ProjectTaskValidationProtectedError()
+
+    monkeypatch.setattr(projects, "update_project_task", protected)
+    monkeypatch.setattr(projects, "delete_project_task", protected)
+    client = TestClient(app)
+    path = f"/projects/{PROJECT_ID}/tasks/{TASK_ID}"
+    responses = [client.patch(path, headers=HEADERS, json={"title": "Changed"}), client.delete(path, headers=HEADERS)]
+    for response in responses:
+        assert response.status_code == 409
+        assert response.json()["detail"]["code"] == "PROJECT_TASK_VALIDATION_PROTECTED"
+
+
 def test_project_and_task_not_found_use_stable_errors(monkeypatch):
     def fake_get_project(settings, owner_id, project_id):
         raise ProjectNotFoundError()

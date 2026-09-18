@@ -2,17 +2,9 @@ from uuid import UUID
 
 from app.core.config import Settings
 from app.db.connection import connect
-from app.schemas.milestone_evidence import MilestoneEvidenceItem, MilestoneEvidenceSummary, MilestoneWorkItem
-from app.services.milestone_review_state import latest_review_allows_completion
-from app.services.projects import ProjectMilestoneNotFoundError, ProjectNotFoundError, _lock_project_for_write, _set_task_status_context
-
-
-class MilestoneValidationTaskNotFoundError(Exception):
-    pass
-
-
-class MilestoneValidationBlockedError(Exception):
-    pass
+from app.schemas.milestone_evidence import MilestoneEvidenceItem, MilestoneEvidenceSummary, MilestoneWorkItem, MilestoneValidationUpdate
+from app.services.milestone_completion import confirm_milestone, get_milestone_completion_in_connection
+from app.services.projects import ProjectMilestoneNotFoundError
 
 
 def get_milestone_evidence(
@@ -22,6 +14,7 @@ def get_milestone_evidence(
     milestone_id: UUID,
 ) -> MilestoneEvidenceSummary:
     with connect(settings) as connection:
+        completion = get_milestone_completion_in_connection(connection, owner_id, project_id, milestone_id)
         milestone = connection.execute(
             """
             SELECT id::text, acceptance_criteria
@@ -109,19 +102,21 @@ def get_milestone_evidence(
     evidence.sort(key=lambda item: item.occurred_at or "", reverse=True)
 
     work_items = [_work_item_from_row(row) for row in wbs_rows]
-    completed_wbs = sum(1 for row in wbs_rows if row["status"] == "done")
-    pending = [item for item in work_items if item.status != "done"]
+    substantive_items = [item for item in work_items if not item.is_validation_task]
+    completed_wbs = sum(1 for item in substantive_items if item.status == "done")
+    pending = [item for item in substantive_items if item.status != "done"]
     validation = next((item for item in work_items if item.is_validation_task), None)
 
     return MilestoneEvidenceSummary(
         milestone_id=milestone["id"],
         acceptance_criteria=milestone.get("acceptance_criteria") or "",
-        total_wbs=len(wbs_rows),
+        total_wbs=len(substantive_items),
         completed_wbs=completed_wbs,
         pending_wbs=pending,
         validation_wbs=validation,
         evidence_count=int(evidence_count or 0),
         recent_evidence=evidence[:20],
+        completion=completion,
     )
 
 
@@ -130,73 +125,9 @@ def update_milestone_validation_status(
     owner_id: str,
     project_id: UUID,
     milestone_id: UUID,
-    next_status: str,
+    payload: MilestoneValidationUpdate,
 ) -> MilestoneEvidenceSummary:
-    with connect(settings) as connection:
-        try:
-            _lock_project_for_write(connection, owner_id, project_id)
-        except ProjectNotFoundError as exc:
-            raise ProjectMilestoneNotFoundError() from exc
-        milestone = connection.execute(
-            """
-            SELECT id, COALESCE(acceptance_criteria, '') AS acceptance_criteria
-            FROM project_milestones
-            WHERE owner_id=%s AND project_id=%s AND id=%s
-            """,
-            (owner_id, project_id, milestone_id),
-        ).fetchone()
-        if milestone is None:
-            raise ProjectMilestoneNotFoundError()
-
-        validation = connection.execute(
-            """
-            SELECT id
-            FROM project_tasks
-            WHERE owner_id=%s AND project_id=%s AND milestone_id=%s
-              AND source_provider='derived-github'
-              AND source_key='milestone-validation:' || %s::text
-            """,
-            (owner_id, project_id, milestone_id, milestone_id),
-        ).fetchone()
-        if validation is None:
-            raise MilestoneValidationTaskNotFoundError()
-
-        if next_status == "done":
-            substantive_pending = connection.execute(
-                """
-                SELECT COUNT(*)::int AS total
-                FROM project_tasks
-                WHERE owner_id=%s AND project_id=%s AND milestone_id=%s
-                  AND counts_toward_progress
-                  AND status <> 'done'
-                  AND NOT (
-                    source_provider='derived-github'
-                    AND source_key='milestone-validation:' || %s::text
-                  )
-                """,
-                (owner_id, project_id, milestone_id, milestone_id),
-            ).fetchone()["total"]
-            if substantive_pending > 0 or not milestone["acceptance_criteria"].strip():
-                raise MilestoneValidationBlockedError()
-            if not latest_review_allows_completion(settings, owner_id, project_id, milestone_id):
-                raise MilestoneValidationBlockedError()
-
-        _set_task_status_context(connection, actor_owner_id=owner_id, source="milestone_validation")
-        connection.execute(
-            """
-            UPDATE project_tasks
-            SET status=%s, updated_at=now()
-            WHERE owner_id=%s AND project_id=%s AND milestone_id=%s
-              AND source_provider='derived-github'
-              AND source_key='milestone-validation:' || %s::text
-            """,
-            (next_status, owner_id, project_id, milestone_id, milestone_id),
-        )
-        connection.execute(
-            "UPDATE projects SET updated_at=now() WHERE owner_id=%s AND id=%s",
-            (owner_id, project_id),
-        )
-
+    confirm_milestone(settings, owner_id, project_id, milestone_id, payload)
     return get_milestone_evidence(settings, owner_id, project_id, milestone_id)
 
 

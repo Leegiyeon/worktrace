@@ -55,6 +55,10 @@ class ProjectTaskStatusConflictError(Exception):
     pass
 
 
+class ProjectTaskValidationProtectedError(Exception):
+    pass
+
+
 class ProjectMilestoneNotFoundError(Exception):
     pass
 
@@ -463,7 +467,7 @@ def update_project_task(settings: Settings, owner_id: str, project_id: UUID, tas
             SELECT t.id::text, t.project_id::text, t.title, t.description, t.status, t.priority,
                    t.completed_at::text, COALESCE(t.status_version, 0)::bigint AS status_version,
                    t.due_date::text, t.milestone_id::text, t.counts_toward_progress,
-                   t.source_provider, t.created_at::text, t.updated_at::text
+                   t.source_provider, t.source_key, t.created_at::text, t.updated_at::text
             FROM project_tasks t
             WHERE t.owner_id=%s AND t.project_id=%s AND t.id=%s
             FOR UPDATE
@@ -474,6 +478,9 @@ def update_project_task(settings: Settings, owner_id: str, project_id: UUID, tas
             raise ProjectTaskNotFoundError()
         if "status" in updates and int(existing.get("status_version") or 0) != int(updates["expected_status_version"]):
             raise ProjectTaskStatusConflictError()
+        if (existing.get("source_provider") == "derived-github"
+                and (existing.get("source_key") or "").startswith("milestone-validation:")):
+            raise ProjectTaskValidationProtectedError()
         milestone_id = updates["milestone_id"] if "milestone_id" in updates else existing.get("milestone_id")
         if "milestone_id" in updates and milestone_id is not None:
             _ensure_milestone_exists_in_connection(connection, owner_id, project_id, UUID(str(milestone_id)))
@@ -513,6 +520,15 @@ def update_project_task(settings: Settings, owner_id: str, project_id: UUID, tas
 def delete_project_task(settings: Settings, owner_id: str, project_id: UUID, task_id: UUID) -> None:
     with connect(settings) as connection:
         _lock_project_for_write(connection, owner_id, project_id)
+        existing = connection.execute(
+            "SELECT source_provider, source_key FROM project_tasks WHERE owner_id=%s AND project_id=%s AND id=%s FOR UPDATE",
+            (owner_id, project_id, task_id),
+        ).fetchone()
+        if existing is None:
+            raise ProjectTaskNotFoundError()
+        if (existing.get("source_provider") == "derived-github"
+                and (existing.get("source_key") or "").startswith("milestone-validation:")):
+            raise ProjectTaskValidationProtectedError()
         result = connection.execute(
             """DELETE FROM project_tasks t USING projects p
                WHERE p.id=t.project_id AND p.owner_id=%(owner_id)s AND t.owner_id=%(owner_id)s

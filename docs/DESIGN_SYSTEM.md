@@ -12,7 +12,7 @@ worktrace UI는 실무형 개인 프로젝트 관리 도구를 기준으로 한�
 - 브랜치 그래프: 한 번에 하나의 selected project만 검사한다. native `프로젝트` select와 프로젝트 링크를 같은 toolbar에 두고, selected repository만 fetch한다.
 - 진행률: `counts_toward_progress=true`인 WBS만 계산한다. 산정 대상이 있고 모두 마일스톤에 배정되면 가중 평균을 사용한다. 미배정 업무가 하나라도 있으면 전체 WBS 완료 비율을 사용하며, 산정 대상이 없으면 `산정 전`으로 표시한다.
 - 자동 리포트는 `현재 WBS 진척`과 조회 기준 시각을 표시한다. 프로젝트 요약의 비율·출처를 그대로 사용하고 미산정·실제 0%·참고 비율·미확인을 구분한다. 기간 내 문서 추출 잔여/지연 항목은 전체 WBS 잔여량과 별도로 이름 붙인다.
-- 완료 검토(`/verifications`): 프로젝트 한 개를 선택하여 성취 기준·남은 WBS·실제 근거와 저장된 확인 상태를 먼저 본다. AI 검토는 요청 시 실행하는 판단 보조이며 테스트 실행이나 서비스 상태 감시가 아니다. stale/current review를 구분하고, `성취 기준 확인 · 검증 완료`는 사용자의 별도 명시 확인 flow다.
+- 완료 검토(`/verifications`): 프로젝트 한 개를 선택하여 성취 기준·남은 WBS·실제 근거와 저장된 확인 상태를 먼저 본다. AI 검토는 요청 시 실행하는 판단 보조이며 테스트 실행이나 서비스 상태 감시가 아니다. `수동 완료 확인`을 펼쳐 사유·Evidence 메모를 입력하며 AI 설정·판단과 독립적으로 저장한다.
 - 데이터 출처: 공통 progress formatter는 자동 구성 WBS 포함 시 `참고 N%`, 출처 필드 누락 시 `기준 미확인`을 표시한다. 두 경우 모두 평균에서 제외한다. 프로젝트 상태와 계산된 WBS 비율을 동일시하지 않는다. 상세에서는 `수치 산정 근거`를 펼쳐 분모·분자·출처·계산식을 확인한다.
 - AI confidence는 객관적 정확도 백분율로 노출하지 않는다. 수정일 기반 목록은 완료일로 표기하지 않고, 조회된 커밋 수를 전체 저장 건수로 표현하지 않는다.
 - 브랜드: `frontend/public/brand/worktrace-mark.svg`가 단일 원본이다. 녹색 `#126B5C` 바탕의 흰 W 경로와 금색 `#F2BE5C` 최신 지점을 사용한다. 헤더 34px, 로그인 40px로 고정하고 모바일에서는 심볼만 유지한다. 아이콘 색을 전체 UI 팔레트로 확장하지 않는다.
@@ -118,7 +118,7 @@ Source of truth: `frontend/app/globals.css`.
 - input, select, primary command button은 기본 40px 높이다.
 - table/nav control은 필요하면 32px compact 높이를 쓴다.
 - 목표, 성취 기준, 근거, 성과처럼 긴 값은 textarea를 우선한다.
-- button label은 결과 중심으로 쓴다: `프로젝트 추가`, `목표 저장`, `AI 검토`, `성취 기준 확인 · 검증 완료`, `리포트 생성`.
+- button label은 결과 중심으로 쓴다: `프로젝트 추가`, `목표 저장`, `AI 검토`, `완료 확인 저장`, `리포트 생성`.
 - 프로젝트 생성과 WBS 추가/수정은 필요할 때만 폼을 연다. WBS 편집은 항목명으로 포커스를 이동하며 양식을 숨겨도 같은 페이지의 초안을 보존한다.
 - WBS 기본 보기는 목록이며 탭·보기·필터·정렬은 URL을 따른다. 프로젝트 목록의 검색·상태·정렬도 URL에 보존한다. 새로고침 시 입력 초안까지 보존하는 기능은 아니다.
 
@@ -162,9 +162,10 @@ Source of truth: `frontend/app/globals.css`.
 - project card는 progress, milestone count, valid AI review count, needed review count, batch action을 보여준다.
 - 기본 batch review는 missing/stale review만 AI 호출한다. force review는 명시적 action이다.
 - 마일스톤 또는 저장된 검토 조회가 실패한 프로젝트에서는 일괄 실행을 비활성화하고 조회 복구를 우선한다.
-- validation done milestone은 batch AI review에서 유지된다.
-- stale persisted review는 stale reason과 함께 보이지만 validation 완료 action을 unlock하지 않는다.
-- `성취 기준 확인 · 검증 완료`와 취소는 사용자의 별도 확인 flow다. 이는 progress 계산식 자체의 전역 prerequisite이 아니다.
+- 현재 문맥과 일치하는 사용자 완료 확인은 batch AI review에서 유지된다. 이전 자동 검증 WBS의 done 상태는 사용자 확인으로 간주하지 않는다.
+- stale AI review는 이전 판단으로 표시하며 수동 확인을 차단하지 않는다. 사용자 확인도 별도로 문맥 변경 여부를 표시한다.
+- 확인 입력과 최근 이력은 행 내부 disclosure에 배치한다. 사유·Evidence 메모·변경 주체·한국 시간 확인 시각을 유지한다. 저장 중과 응답 유실 시 입력을 잠그고 동일 요청만 재시도한다. 409는 명시적 근거 재조회 후 초안을 보존한 채 다시 저장한다.
+- 완료 확인/계획 재전환은 별도 이력이며 WBS·프로젝트 상태와 진척 산식을 변경하지 않는다. 실제 미완료 산정 업무와 빈 성취 기준은 서버에서 차단한다. 승인 계획·범위 제외 정책은 후속 범위다.
 
 ## 7. Accessibility
 

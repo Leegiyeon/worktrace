@@ -35,6 +35,7 @@ from app.services.projects import (
     ProjectStatusUpdateForbiddenError,
     ProjectTaskNotFoundError,
     ProjectTaskStatusConflictError,
+    ProjectTaskValidationProtectedError,
     RepositorySourceConflictError,
     create_project,
     create_project_milestone,
@@ -233,6 +234,8 @@ def patch_task(project_id: UUID, task_id: UUID, payload: ProjectTaskUpdate, owne
         raise _task_not_found() from exc
     except ProjectTaskStatusConflictError as exc:
         raise http_error(status.HTTP_409_CONFLICT, "PROJECT_TASK_STATUS_VERSION_CONFLICT", "Project task status version does not match.") from exc
+    except ProjectTaskValidationProtectedError as exc:
+        raise http_error(status.HTTP_409_CONFLICT, "PROJECT_TASK_VALIDATION_PROTECTED", "이전 자동 검증 WBS는 수정할 수 없습니다. 완료 검토에서 마일스톤을 확인하세요.") from exc
     except ProjectMilestoneNotFoundError as exc:
         raise _milestone_not_found() from exc
     except psycopg.Error as exc:
@@ -256,6 +259,8 @@ def delete_task(project_id: UUID, task_id: UUID, owner_id: str = Depends(require
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     except ProjectTaskNotFoundError as exc:
         raise _task_not_found() from exc
+    except ProjectTaskValidationProtectedError as exc:
+        raise http_error(status.HTTP_409_CONFLICT, "PROJECT_TASK_VALIDATION_PROTECTED", "이전 자동 검증 WBS는 이력 보존을 위해 삭제할 수 없습니다.") from exc
     except psycopg.Error as exc:
         raise http_error(status.HTTP_503_SERVICE_UNAVAILABLE, "DATABASE_UNAVAILABLE", "Database is unavailable.") from exc
 

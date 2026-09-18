@@ -195,7 +195,7 @@
 .detailColumns {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .detailColumns {
@@ -254,6 +254,55 @@
   padding-left: 18px;
 }
 
+.confirmationPanel {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding-top: 10px;
+}
+
+.confirmationSummary {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.confirmationPanel label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.confirmationPanel label span,
+.historyDisclosure summary {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.confirmationPanel textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+.blockList {
+  color: var(--muted);
+  margin: 0;
+  padding-left: 18px;
+}
+
+.historyDisclosure {
+  min-width: 0;
+}
+
+.historyDisclosure summary {
+  cursor: pointer;
+}
+
 .rowActions {
   justify-content: flex-start;
 }
@@ -284,6 +333,10 @@
 
   .detailColumns {
     grid-template-columns: 1fr;
+  }
+
+  .evidenceGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

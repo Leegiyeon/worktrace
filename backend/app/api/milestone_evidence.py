@@ -7,9 +7,8 @@ from app.api.errors import http_error
 from app.api.security import require_report_access
 from app.core.config import Settings, get_settings
 from app.schemas.milestone_evidence import MilestoneEvidenceSummary, MilestoneValidationUpdate
+from app.services.milestone_completion import MilestoneValidationBlockedError, MilestoneConfirmationConflictError
 from app.services.milestone_evidence import (
-    MilestoneValidationBlockedError,
-    MilestoneValidationTaskNotFoundError,
     get_milestone_evidence,
     update_milestone_validation_status,
 )
@@ -61,7 +60,7 @@ def patch_project_milestone_validation(
             owner_id,
             project_id,
             milestone_id,
-            payload.status,
+            payload,
         )
     except ProjectMilestoneNotFoundError as exc:
         raise http_error(
@@ -69,17 +68,17 @@ def patch_project_milestone_validation(
             "PROJECT_MILESTONE_NOT_FOUND",
             "Project milestone was not found.",
         ) from exc
-    except MilestoneValidationTaskNotFoundError as exc:
+    except MilestoneConfirmationConflictError as exc:
         raise http_error(
-            status.HTTP_404_NOT_FOUND,
-            "MILESTONE_VALIDATION_TASK_NOT_FOUND",
-            "검증 WBS를 찾을 수 없습니다.",
+            status.HTTP_409_CONFLICT,
+            "MILESTONE_CONFIRMATION_CONFLICT",
+            "성취 기준·업무·근거 또는 확인 이력이 변경되었습니다. 최신 근거를 다시 확인하세요.",
         ) from exc
     except MilestoneValidationBlockedError as exc:
         raise http_error(
             status.HTTP_409_CONFLICT,
             "MILESTONE_VALIDATION_BLOCKED",
-            "최신 AI 검토가 완료 후보가 아니거나 검토 이후 Evidence·WBS·성취 기준이 변경되었습니다. 다시 AI 검토한 뒤 완료해 주세요.",
+            "성취 기준이 없거나 산정 대상 WBS가 미완료입니다. 최신 근거와 업무 상태를 확인하세요.",
         ) from exc
     except psycopg.Error as exc:
         raise http_error(

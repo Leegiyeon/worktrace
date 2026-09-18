@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { milestoneProgressDisplay, projectProgressDisplay } from "../projects/progress-display";
 import type { MilestoneReview, ProjectMilestone, ProjectSummary } from "../projects/types";
@@ -28,6 +28,25 @@ type RecentEvidence = {
   occurred_at: string | null;
   status: string;
 };
+type CompletionHistoryEntry = {
+  id: string;
+  status: "planned" | "done";
+  version: number;
+  actor_owner_id: string;
+  reason: string;
+  evidence_note: string;
+  confirmed_at: string;
+  context_fingerprint: string;
+};
+type CompletionState = {
+  status: "planned" | "done";
+  version: number;
+  context_fingerprint: string;
+  is_stale: boolean;
+  can_confirm: boolean;
+  block_reasons: string[];
+  history: CompletionHistoryEntry[];
+};
 type EvidenceSummary = {
   milestone_id: string;
   acceptance_criteria: string;
@@ -37,6 +56,22 @@ type EvidenceSummary = {
   validation_wbs: ValidationWbs | null;
   evidence_count: number;
   recent_evidence: RecentEvidence[];
+  completion: CompletionState;
+};
+type ConfirmationRequestPayload = {
+  status: "done" | "planned";
+  expected_version: number;
+  expected_context_fingerprint: string;
+  request_id: string;
+  reason: string;
+  evidence_note: string;
+};
+type ConfirmationDraft = {
+  reason: string;
+  evidence_note: string;
+  request_id: string;
+  conflictNeedsRefresh: boolean;
+  pending_request: ConfirmationRequestPayload | null;
 };
 
 async function loadProjectMilestones(project: ProjectSummary): Promise<ProjectMilestone[]> {
@@ -132,12 +167,66 @@ function formatDate(value: string | null) {
   return date.toLocaleDateString("ko-KR");
 }
 
+function formatDateTimeSeoul(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(date);
+}
+
+function createRequestId() {
+  return crypto.randomUUID();
+}
+
+function emptyConfirmationDraft(): ConfirmationDraft {
+  return {
+    reason: "",
+    evidence_note: "",
+    request_id: "",
+    conflictNeedsRefresh: false,
+    pending_request: null
+  };
+}
+
+function editableConfirmationDraft(): ConfirmationDraft {
+  return {
+    ...emptyConfirmationDraft(),
+    request_id: createRequestId()
+  };
+}
+
+function defaultCompletion(): CompletionState {
+  return {
+    status: "planned",
+    version: 0,
+    context_fingerprint: "",
+    is_stale: false,
+    can_confirm: false,
+    block_reasons: [],
+    history: []
+  };
+}
+
+function completionFor(evidence: EvidenceSummary | undefined) {
+  return evidence?.completion ?? defaultCompletion();
+}
+
+function isConfirmedCompletion(evidence: EvidenceSummary | undefined) {
+  const completion = completionFor(evidence);
+  return completion.status === "done" && !completion.is_stale;
+}
+
 function validationStateLabel(evidence: EvidenceSummary | undefined, review: MilestoneReview | StoredMilestoneReview | undefined) {
   if (!evidence) return "확인 대기";
-  if (evidence.validation_wbs?.status === "done") return "확인 완료";
+  const completion = completionFor(evidence);
+  if (completion.status === "done" && !completion.is_stale) return "확인 완료";
+  if (completion.status === "done" && completion.is_stale) return "재확인 필요";
   if (evidence.pending_wbs.length > 0) return "검토 필요";
   if (review && isStoredReview(review) && review.is_stale) return "검토 필요";
-  if (review?.verdict === "ready_candidate") return "확인 가능";
+  if (completion.can_confirm || review?.verdict === "ready_candidate") return "확인 가능";
   if (review?.verdict === "not_ready") return "확인 대기";
   return "근거 확인";
 }
@@ -162,6 +251,7 @@ export default function VerificationsPage() {
   const [milestoneErrors, setMilestoneErrors] = useState<Record<string, string>>({});
   const [reviewLoadErrors, setReviewLoadErrors] = useState<Record<string, string>>({});
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
+  const [confirmationDrafts, setConfirmationDrafts] = useState<Record<string, ConfirmationDraft>>({});
   const [loadingMilestoneProjectId, setLoadingMilestoneProjectId] = useState<string | null>(null);
   const [loadingReviewProjectId, setLoadingReviewProjectId] = useState<string | null>(null);
   const [loadingEvidenceProjectId, setLoadingEvidenceProjectId] = useState<string | null>(null);
@@ -171,6 +261,7 @@ export default function VerificationsPage() {
   const [loadError, setLoadError] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const savingMilestonesRef = useRef<Set<string>>(new Set());
 
   const loadVerificationData = useCallback(async () => {
     setIsLoading(true);
@@ -189,12 +280,6 @@ export default function VerificationsPage() {
       setIsLoading(false);
     }
   }, []);
-
-  async function refreshProjects() {
-    const next = await loadProjects();
-    setProjects(next.projects);
-    setMilestoneErrors(next.milestoneErrors);
-  }
 
   useEffect(() => {
     void loadVerificationData();
@@ -271,7 +356,7 @@ export default function VerificationsPage() {
     }
   }
 
-  async function getEvidence(projectId: string, milestoneId: string) {
+  async function getEvidence(projectId: string, milestoneId: string, options: { resolveConfirmationDraft?: boolean } = {}) {
     const response = await fetch(`/api/projects/${projectId}/milestones/${milestoneId}/evidence`, { cache: "no-store" });
     if (!response.ok) throw new Error("마일스톤 근거를 불러오지 못했습니다.");
     const payload = (await response.json()) as EvidenceSummary;
@@ -281,6 +366,21 @@ export default function VerificationsPage() {
       delete next[milestoneId];
       return next;
     });
+    if (options.resolveConfirmationDraft) {
+      setConfirmationDrafts((current) => {
+        const existing = current[milestoneId];
+        if (!existing?.conflictNeedsRefresh && !existing?.pending_request) return current;
+        return {
+          ...current,
+          [milestoneId]: {
+            ...existing,
+            request_id: createRequestId(),
+            conflictNeedsRefresh: false,
+            pending_request: null
+          }
+        };
+      });
+    }
     return payload;
   }
 
@@ -289,7 +389,12 @@ export default function VerificationsPage() {
     setError("");
     setMessage("");
     try {
-      await getEvidence(projectId, milestoneId);
+      await getEvidence(projectId, milestoneId, { resolveConfirmationDraft: true });
+      setActionErrors((current) => {
+        const next = { ...current };
+        delete next[milestoneId];
+        return next;
+      });
     } catch (reason) {
       setEvidenceLoadErrors((current) => ({ ...current, [milestoneId]: reason instanceof Error ? reason.message : "마일스톤 근거를 불러오지 못했습니다." }));
     } finally {
@@ -340,6 +445,10 @@ export default function VerificationsPage() {
     let failed = 0;
     try {
       for (const milestone of project.milestones) {
+        if (isConfirmedCompletion(evidence[milestone.id])) {
+          skippedDone += 1;
+          continue;
+        }
         const currentReview = reviews[milestone.id];
         if (!force && !needsReview(currentReview)) {
           skippedCurrent += 1;
@@ -354,7 +463,7 @@ export default function VerificationsPage() {
         });
         try {
           const milestoneEvidence = await getEvidence(project.id, milestone.id);
-          if (milestoneEvidence.validation_wbs?.status === "done") {
+          if (isConfirmedCompletion(milestoneEvidence)) {
             skippedDone += 1;
             continue;
           }
@@ -377,34 +486,96 @@ export default function VerificationsPage() {
     }
   }
 
+  function updateConfirmationDraft(milestoneId: string, patch: Partial<ConfirmationDraft>) {
+    setConfirmationDrafts((current) => {
+      const existing = current[milestoneId] ?? editableConfirmationDraft();
+      if (existing.pending_request) return current;
+      return { ...current, [milestoneId]: { ...existing, ...patch } };
+    });
+  }
+
+  function draftFor(milestoneId: string) {
+    return confirmationDrafts[milestoneId] ?? emptyConfirmationDraft();
+  }
+
   async function changeValidation(projectId: string, milestoneId: string, status: "done" | "planned") {
-    if (status === "done" && !window.confirm("성취 기준과 Evidence를 직접 확인했습니다. 검증 완료로 반영할까요?")) return;
+    if (savingMilestonesRef.current.has(milestoneId)) return;
+    const currentEvidence = evidence[milestoneId];
+    if (!currentEvidence) return;
+    const completion = completionFor(currentEvidence);
+    const draft = draftFor(milestoneId);
+    if (draft.conflictNeedsRefresh) {
+      setActionErrors((current) => ({ ...current, [milestoneId]: "근거를 새로고침한 뒤 다시 저장해 주세요." }));
+      return;
+    }
+    const pendingRequest = draft.pending_request;
+    if (pendingRequest && pendingRequest.status !== status) {
+      setActionErrors((current) => ({ ...current, [milestoneId]: "이전 요청 결과를 확인할 때까지 같은 요청만 다시 시도할 수 있습니다." }));
+      return;
+    }
+    const reason = pendingRequest?.reason ?? draft.reason.trim();
+    const evidenceNote = pendingRequest?.evidence_note ?? draft.evidence_note.trim();
+    if (!pendingRequest && !reason) {
+      setActionErrors((current) => ({ ...current, [milestoneId]: "변경 사유를 입력해 주세요." }));
+      return;
+    }
+    if (!pendingRequest && status === "done" && !evidenceNote) {
+      setActionErrors((current) => ({ ...current, [milestoneId]: "검증 완료에는 수동 Evidence 메모가 필요합니다." }));
+      return;
+    }
+    const requestPayload: ConfirmationRequestPayload = pendingRequest ?? {
+      status,
+      expected_version: completion.version,
+      expected_context_fingerprint: completion.context_fingerprint,
+      request_id: draft.request_id || createRequestId(),
+      reason,
+      evidence_note: status === "done" ? evidenceNote : ""
+    };
+    savingMilestonesRef.current.add(milestoneId);
     setWorkingId(milestoneId);
     setError("");
     setMessage("");
+    setActionErrors((current) => {
+      const next = { ...current };
+      delete next[milestoneId];
+      return next;
+    });
+    setConfirmationDrafts((current) => ({
+      ...current,
+      [milestoneId]: {
+        ...(current[milestoneId] ?? editableConfirmationDraft()),
+        pending_request: requestPayload
+      }
+    }));
     try {
       const response = await fetch(`/api/projects/${projectId}/milestones/${milestoneId}/validation`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status })
+        body: JSON.stringify(requestPayload)
       });
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as { detail?: { message?: string } | string } | null;
         const detail = typeof payload?.detail === "object" ? payload.detail.message : payload?.detail;
+        if (response.status === 409) {
+          setConfirmationDrafts((current) => {
+            const existing = current[milestoneId] ?? editableConfirmationDraft();
+            return { ...current, [milestoneId]: { ...existing, conflictNeedsRefresh: true, pending_request: null } };
+          });
+          throw new Error(detail || "근거가 변경되었습니다. 근거 새로고침 후 다시 저장해 주세요.");
+        }
         throw new Error(detail || "검증 상태를 변경하지 못했습니다.");
       }
       const payload = (await response.json()) as EvidenceSummary;
       setEvidence((current) => ({ ...current, [milestoneId]: payload }));
-      setReviews((current) => {
-        const next = { ...current };
-        delete next[milestoneId];
-        return next;
-      });
-      await refreshProjects();
-      setMessage(status === "done" ? "검증 완료를 진척률에 반영했습니다." : "검증 완료를 취소했습니다.");
+      setConfirmationDrafts((current) => ({
+        ...current,
+        [milestoneId]: editableConfirmationDraft()
+      }));
+      setMessage(status === "done" ? "마일스톤 완료 확인을 저장했습니다." : "마일스톤 완료 확인을 다시 계획 상태로 열었습니다.");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "검증 상태 변경 중 오류가 발생했습니다.");
+      setActionErrors((current) => ({ ...current, [milestoneId]: reason instanceof Error ? reason.message : "검증 상태 변경 중 오류가 발생했습니다." }));
     } finally {
+      savingMilestonesRef.current.delete(milestoneId);
       setWorkingId(null);
     }
   }
@@ -445,13 +616,7 @@ export default function VerificationsPage() {
           const review = reviews[milestone.id];
           return Boolean(review && (!isStoredReview(review) || !review.is_stale));
         }).length;
-        const staleCount = project.milestones.filter((milestone) => {
-          if (evidence[milestone.id]?.validation_wbs?.status === "done") return false;
-          const review = reviews[milestone.id];
-          return Boolean(review && isStoredReview(review) && review.is_stale);
-        }).length;
-        const missingCount = project.milestones.filter((milestone) => evidence[milestone.id]?.validation_wbs?.status !== "done" && !reviews[milestone.id]).length;
-        const neededCount = staleCount + missingCount;
+        const neededCount = project.milestones.filter((milestone) => !isConfirmedCompletion(evidence[milestone.id]) && needsReview(reviews[milestone.id])).length;
         const batchBusy = batchWorkingProjectId === project.id;
         const milestoneError = milestoneErrors[project.id];
         const reviewLoadError = reviewLoadErrors[project.id];
@@ -460,7 +625,7 @@ export default function VerificationsPage() {
         const evidenceReady = project.milestones.length > 0 && allEvidenceLoaded && !hasEvidenceErrors && !evidenceBusy;
         const countsUnavailable = Boolean(milestoneError || reviewLoadError || !evidenceReady);
         const progress = projectProgressDisplay(project);
-        const verifiedCount = project.milestones.filter((milestone) => evidence[milestone.id]?.validation_wbs?.status === "done").length;
+        const verifiedCount = project.milestones.filter((milestone) => isConfirmedCompletion(evidence[milestone.id])).length;
         const pendingWbsCount = project.milestones.reduce((sum, milestone) => sum + (evidence[milestone.id]?.pending_wbs.length ?? 0), 0);
         const visibleMilestones = project.milestones.filter((milestone) => {
           if (wbsFilter === "all") return true;
@@ -541,7 +706,13 @@ export default function VerificationsPage() {
                 {visibleMilestones.map((milestone) => {
                   const milestoneEvidence = evidence[milestone.id];
                   const reviewResult = reviews[milestone.id];
-                  const validation = milestoneEvidence?.validation_wbs;
+                  const completion = completionFor(milestoneEvidence);
+                  const currentConfirmed = isConfirmedCompletion(milestoneEvidence);
+                  const draft = draftFor(milestone.id);
+                  const pendingRequest = draft.pending_request;
+                  const confirmationEditLocked = Boolean(pendingRequest || draft.conflictNeedsRefresh);
+                  const doneRetryPending = pendingRequest?.status === "done";
+                  const plannedRetryPending = pendingRequest?.status === "planned";
                   const busy = workingId === milestone.id || batchBusy;
                   const storedReview = reviewResult && isStoredReview(reviewResult) ? reviewResult : null;
                   const isStale = storedReview?.is_stale ?? false;
@@ -549,6 +720,8 @@ export default function VerificationsPage() {
                   const evidenceError = evidenceLoadErrors[milestone.id];
                   const stateLabel = validationStateLabel(milestoneEvidence, reviewResult);
                   const milestoneProgress = milestoneProgressDisplay(milestone);
+                  const reasonInputId = `confirmation-reason-${milestone.id}`;
+                  const evidenceNoteInputId = `confirmation-evidence-note-${milestone.id}`;
                   return (
                     <article className={styles.milestoneRow} key={milestone.id}>
                       <div className={styles.milestoneMain}>
@@ -574,6 +747,10 @@ export default function VerificationsPage() {
                         <div>
                           <strong>Evidence</strong>
                           <p>{milestoneEvidence ? `${milestoneEvidence.evidence_count}건` : "조회 대기"}</p>
+                        </div>
+                        <div>
+                          <strong>사용자 확인</strong>
+                          <p>{milestoneEvidence ? `${completion.status === "done" ? "완료" : "계획"} · v${completion.version}${completion.is_stale ? " · 재확인 필요" : ""}` : "조회 대기"}</p>
                         </div>
                       </div>
 
@@ -640,21 +817,84 @@ export default function VerificationsPage() {
                       {actionError ? (
                         <div className="alert error" role="alert">
                           {actionError}
-                          <button className="secondary-button" type="button" disabled={busy || batchWorkingProjectId !== null} onClick={() => void review(project.id, milestone.id)}>
-                            다시 시도
-                          </button>
+                          {!draft.conflictNeedsRefresh && actionError.includes("AI") ? (
+                            <button className="secondary-button" type="button" disabled={busy || batchWorkingProjectId !== null} onClick={() => void review(project.id, milestone.id)}>
+                              다시 시도
+                            </button>
+                          ) : null}
                         </div>
+                      ) : null}
+                      {milestoneEvidence ? (
+                        <details className={styles.confirmationPanel} open={actionError || confirmationEditLocked ? true : undefined}>
+                          <summary className={styles.confirmationSummary}>
+                            <span>수동 완료 확인</span>
+                            <span className="count-badge">{currentConfirmed ? "확인 완료" : completion.can_confirm ? "확인 가능" : "확인 제한"}</span>
+                          </summary>
+                          {completion.block_reasons.length > 0 ? (
+                            <ul className={styles.blockList}>
+                              {completion.block_reasons.map((item) => <li key={item}>{item}</li>)}
+                            </ul>
+                          ) : null}
+                          <label htmlFor={reasonInputId}>
+                            <span>사유</span>
+                          </label>
+                          <input
+                            id={reasonInputId}
+                            disabled={confirmationEditLocked}
+                            maxLength={2000}
+                            placeholder="예: 수용 기준과 남은 WBS를 직접 확인"
+                            value={draft.reason}
+                            onChange={(event) => updateConfirmationDraft(milestone.id, { reason: event.target.value })}
+                          />
+                          <label htmlFor={evidenceNoteInputId}>
+                            <span>Evidence 메모</span>
+                          </label>
+                          <textarea
+                            id={evidenceNoteInputId}
+                            disabled={confirmationEditLocked}
+                            maxLength={8000}
+                            placeholder="완료 확인에 사용한 수동 근거를 기록"
+                            rows={3}
+                            value={draft.evidence_note}
+                            onChange={(event) => updateConfirmationDraft(milestone.id, { evidence_note: event.target.value })}
+                          />
+                          <div className={styles.rowActions}>
+                            <button
+                              type="button"
+                              disabled={busy || batchWorkingProjectId !== null || draft.conflictNeedsRefresh || (currentConfirmed && !doneRetryPending) || (!pendingRequest && (!completion.can_confirm || !draft.reason.trim() || !draft.evidence_note.trim())) || (Boolean(pendingRequest) && !doneRetryPending)}
+                              onClick={() => void changeValidation(project.id, milestone.id, "done")}
+                            >
+                              {doneRetryPending ? "같은 완료 확인 다시 시도" : "완료 확인 저장"}
+                            </button>
+                            <button
+                              className="secondary-button"
+                              type="button"
+                              disabled={busy || batchWorkingProjectId !== null || draft.conflictNeedsRefresh || (!pendingRequest && (completion.status !== "done" || !draft.reason.trim())) || (Boolean(pendingRequest) && !plannedRetryPending)}
+                              onClick={() => void changeValidation(project.id, milestone.id, "planned")}
+                            >
+                              {plannedRetryPending ? "같은 다시 열기 요청 재시도" : "다시 계획으로 열기"}
+                            </button>
+                          </div>
+                          <details className={styles.historyDisclosure}>
+                            <summary>최근 확인 이력 {completion.history.length}</summary>
+                            <div className={styles.compactList}>
+                              {completion.history.map((entry) => (
+                                <div className={styles.compactRow} key={entry.id}>
+                                  <span>{entry.status === "done" ? "완료 확인" : "계획 전환"} · v{entry.version}</span>
+                                  <small>{formatDateTimeSeoul(entry.confirmed_at)} Asia/Seoul · {entry.actor_owner_id} · {entry.reason}</small>
+                                  {entry.evidence_note ? <small>{entry.evidence_note}</small> : null}
+                                </div>
+                              ))}
+                              {completion.history.length === 0 ? <div className="empty-state">확인 이력이 없습니다.</div> : null}
+                            </div>
+                          </details>
+                        </details>
                       ) : null}
                       <div className={styles.rowActions}>
                         <button className="secondary-button" type="button" disabled={busy || batchWorkingProjectId !== null} onClick={() => void retryEvidence(project.id, milestone.id)}>근거 새로고침</button>
                         <button className="secondary-button" type="button" disabled={busy || batchWorkingProjectId !== null} onClick={() => void review(project.id, milestone.id)}>
                           {workingId === milestone.id ? "처리 중" : reviewResult ? "AI 다시 검토" : "AI 검토"}
                         </button>
-                        {validation?.status === "done" ? (
-                          <button className="secondary-button" type="button" disabled={busy || batchWorkingProjectId !== null} onClick={() => void changeValidation(project.id, milestone.id, "planned")}>검증 완료 취소</button>
-                        ) : reviewResult?.verdict === "ready_candidate" && validation && !isStale ? (
-                          <button type="button" disabled={busy || batchWorkingProjectId !== null} onClick={() => void changeValidation(project.id, milestone.id, "done")}>성취 기준 확인 · 검증 완료</button>
-                        ) : null}
                       </div>
                     </article>
                   );
