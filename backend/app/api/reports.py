@@ -5,14 +5,13 @@ from app.api.errors import http_error
 from app.core.config import Settings, get_settings
 from app.api.security import require_report_access
 from app.schemas.reports import AutoReportRequest, AutoReportResponse, WeeklyReportRequest, WeeklyReportResponse
-from app.services.projects import list_projects
 from app.services.weekly_report import (
     ReportConfigurationError,
     ReportDataContractError,
     build_weekly_report_response,
     fetch_weekly_report_dataset,
 )
-from app.services.auto_report import build_auto_report_response
+from app.services.auto_report import generate_auto_report
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -61,15 +60,7 @@ def create_automatic_report(
     """Generate an internal automatic report from stored work/project records."""
 
     try:
-        dataset = fetch_weekly_report_dataset(settings, request.start_date, request.end_date, owner_id)
-        project_summaries = list_projects(settings, owner_id)
-        return build_auto_report_response(
-            dataset,
-            request.report_type,
-            request.start_date,
-            request.end_date,
-            project_summaries=project_summaries,
-        )
+        return generate_auto_report(settings, owner_id, request)
     except ReportConfigurationError as exc:
         raise http_error(
             status.HTTP_503_SERVICE_UNAVAILABLE,

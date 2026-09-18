@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from datetime import datetime
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -133,12 +134,12 @@ def list_project_commits(settings: Settings, owner_id: str, project_id: UUID) ->
     return [GitHubCommit(**row) for row in rows]
 
 
-def list_projects(settings: Settings, owner_id: str) -> list[ProjectSummary]:
-    with connect(settings) as connection:
+def list_projects(settings: Settings, owner_id: str, *, connection=None) -> list[ProjectSummary]:
+    with (nullcontext(connection) if connection is not None else connect(settings)) as connection:
         rows = connection.execute(
             _PROJECT_SUMMARY_SQL + """
             WHERE p.owner_id = %(owner_id)s
-            ORDER BY p.updated_at DESC, p.title ASC
+            ORDER BY p.updated_at DESC, p.title ASC, p.id ASC
             """,
             {"owner_id": owner_id},
         ).fetchall()

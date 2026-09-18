@@ -1,14 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { parseApiErrorMessage } from "./api-error";
+import ReportActivity from "./ReportActivity";
 import type { AutoReportResponse, ReportType, TaskAlert } from "./types";
 
 const reportTypeLabels: Record<ReportType, string> = {
   daily: "일일",
   weekly: "주간",
   monthly: "월간"
+};
+
+type ReportRequestState = {
+  sequence: number;
+  filterKey: string;
 };
 
 function formatDate(date: Date) {
@@ -61,40 +67,59 @@ export default function WeeklyReportPage() {
   const [endDate, setEndDate] = useState(getDefaultEndDate);
   const [report, setReport] = useState<AutoReportResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingFilterKey, setLoadingFilterKey] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
+  const reportTypeRef = useRef(reportType);
+  const startDateRef = useRef(startDate);
+  const endDateRef = useRef(endDate);
+  const latestRequestRef = useRef<ReportRequestState>({ sequence: 0, filterKey: "" });
+  const busyRequestRef = useRef<ReportRequestState | null>(null);
 
+  const currentFilterKey = `${reportType}:${startDate}:${endDate}`;
+  const isCurrentFilterLoading = isLoading && loadingFilterKey === currentFilterKey;
   const periodLabel = useMemo(() => `${reportTypeLabels[reportType]} · ${startDate} ~ ${endDate}`, [endDate, reportType, startDate]);
   const reportPeriodLabel = useMemo(() => {
     if (!report) return periodLabel;
     return `${reportTypeLabels[report.report_type]} · ${report.start_date} ~ ${report.end_date}`;
   }, [periodLabel, report]);
   const reportMetrics = useMemo(() => {
-    if (!report) return { projects: 0, workLogs: 0, remaining: 0, delayed: 0 };
+    if (!report) return { transitions: "기준 미확인", issues: "기준 미확인", currentTasks: "기준 미확인", outcomes: "기준 미확인" };
+    if (!report.activity) return { transitions: "기준 미확인", issues: "기준 미확인", currentTasks: "기준 미확인", outcomes: "기준 미확인" };
     return {
-      projects: report.projects.length,
-      workLogs: report.work_logs.length,
-      remaining: report.remaining_tasks.length,
-      delayed: report.delayed_tasks.length
+      transitions: report.activity.transitions.length,
+      issues: report.activity.issues.length,
+      currentTasks: report.activity.current_tasks.length,
+      outcomes: report.activity.outcomes.length
     };
   }, [report]);
 
+  function reportFilterKey(nextReportType = reportTypeRef.current, nextStartDate = startDateRef.current, nextEndDate = endDateRef.current) {
+    return `${nextReportType}:${nextStartDate}:${nextEndDate}`;
+  }
+
   function clearGeneratedReport() {
+    latestRequestRef.current = { sequence: latestRequestRef.current.sequence + 1, filterKey: reportFilterKey() };
     setReport(null);
+    setIsLoading(false);
+    setLoadingFilterKey("");
     setCopyMessage("");
   }
 
   function updateReportType(value: ReportType) {
+    reportTypeRef.current = value;
     setReportType(value);
     clearGeneratedReport();
   }
 
   function updateStartDate(value: string) {
+    startDateRef.current = value;
     setStartDate(value);
     clearGeneratedReport();
   }
 
   function updateEndDate(value: string) {
+    endDateRef.current = value;
     setEndDate(value);
     clearGeneratedReport();
   }
@@ -102,13 +127,25 @@ export default function WeeklyReportPage() {
   async function handleGenerateReport() {
     setErrorMessage("");
     setCopyMessage("");
-    const validationMessage = validateReportPeriod(reportType, startDate, endDate);
+    const requestReportType = reportTypeRef.current;
+    const requestStartDate = startDateRef.current;
+    const requestEndDate = endDateRef.current;
+    const requestFilterKey = reportFilterKey(requestReportType, requestStartDate, requestEndDate);
+    if (busyRequestRef.current?.filterKey === requestFilterKey && busyRequestRef.current.sequence === latestRequestRef.current.sequence) return;
+
+    const validationMessage = validateReportPeriod(requestReportType, requestStartDate, requestEndDate);
     if (validationMessage) {
       setErrorMessage(validationMessage);
       return;
     }
 
+    const requestSequence = latestRequestRef.current.sequence + 1;
+    const requestState = { sequence: requestSequence, filterKey: requestFilterKey };
+    latestRequestRef.current = requestState;
+    busyRequestRef.current = requestState;
+    setReport(null);
     setIsLoading(true);
+    setLoadingFilterKey(requestFilterKey);
 
     try {
       const response = await fetch("/api/reports/automatic", {
@@ -116,7 +153,7 @@ export default function WeeklyReportPage() {
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ report_type: reportType, start_date: startDate, end_date: endDate })
+        body: JSON.stringify({ report_type: requestReportType, start_date: requestStartDate, end_date: requestEndDate })
       });
 
       if (!response.ok) {
@@ -125,11 +162,19 @@ export default function WeeklyReportPage() {
       }
 
       const data = (await response.json()) as AutoReportResponse;
+      if (latestRequestRef.current.sequence !== requestSequence || latestRequestRef.current.filterKey !== requestFilterKey) return;
       setReport(data);
     } catch (error) {
+      if (latestRequestRef.current.sequence !== requestSequence || latestRequestRef.current.filterKey !== requestFilterKey) return;
       setErrorMessage(error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.");
     } finally {
-      setIsLoading(false);
+      if (latestRequestRef.current.sequence === requestSequence && latestRequestRef.current.filterKey === requestFilterKey) {
+        setIsLoading(false);
+        setLoadingFilterKey("");
+      }
+      if (busyRequestRef.current?.sequence === requestSequence) {
+        busyRequestRef.current = null;
+      }
     }
   }
 
@@ -161,7 +206,7 @@ export default function WeeklyReportPage() {
         </label>
         <label>시작일<input required type="date" value={startDate} onChange={(event) => updateStartDate(event.target.value)} /></label>
         <label>종료일<input required type="date" value={endDate} onChange={(event) => updateEndDate(event.target.value)} /></label>
-        <button type="button" onClick={handleGenerateReport} disabled={isLoading}>{isLoading ? "생성 중" : "리포트 생성"}</button>
+        <button type="button" onClick={handleGenerateReport} disabled={isCurrentFilterLoading}>{isCurrentFilterLoading ? "생성 중" : "리포트 생성"}</button>
       </section>
 
       {errorMessage ? <div className="alert error" role="alert">{errorMessage}</div> : null}
@@ -169,11 +214,12 @@ export default function WeeklyReportPage() {
       {report ? (
         <>
           <section className="summary-grid dashboard-metrics" aria-label="리포트 지표">
-            <div className="metric-card"><span>프로젝트</span><strong>{reportMetrics.projects}</strong></div>
-            <div className="metric-card"><span>업무 로그</span><strong>{reportMetrics.workLogs}</strong></div>
-            <div className="metric-card"><span>문서 추출 잔여</span><strong>{reportMetrics.remaining}</strong></div>
-            <div className="metric-card"><span>문서 추출 지연</span><strong>{reportMetrics.delayed}</strong></div>
+            <div className="metric-card"><span>기간 내 상태 변경</span><strong>{reportMetrics.transitions}</strong></div>
+            <div className="metric-card"><span>기록된 막힘</span><strong>{reportMetrics.issues}</strong></div>
+            <div className="metric-card"><span>현재 잔여 WBS</span><strong>{reportMetrics.currentTasks}</strong></div>
+            <div className="metric-card"><span>기간 내 수정된 확인 성과</span><strong>{reportMetrics.outcomes}</strong></div>
           </section>
+          {report.activity ? <ReportActivity activity={report.activity} /> : null}
           <section className="report-evidence-grid" aria-label="자동 리포트 근거">
             <section className="panel dashboard-main-panel">
               <div className="panel-title-row"><h2>업무 로그</h2><span className="count-badge">{report.work_logs.length}개</span></div>
@@ -182,7 +228,7 @@ export default function WeeklyReportPage() {
                 <div className="data-table-wrap">
                   <table className="data-table dense-task-table">
                     <thead><tr><th>일자</th><th>업무</th><th>프로젝트</th><th>소요</th><th>다음 액션</th></tr></thead>
-                    <tbody>{report.work_logs.slice(0, 10).map((workLog) => (
+                    <tbody>{report.work_logs.map((workLog) => (
                       <tr key={workLog.id}>
                         <td>{workLog.log_date}</td>
                         <td>{workLog.title}</td>
@@ -212,7 +258,7 @@ export default function WeeklyReportPage() {
               <div className="panel-title-row"><h2>기간 내 문서 추출 지연 항목</h2><span className="count-badge danger-count">{report.delayed_tasks.length}개</span></div>
               {report.delayed_tasks.length === 0 ? <div className="empty-state">지연 없음</div> : null}
               <div className="dense-list">
-                {report.delayed_tasks.slice(0, 6).map((task) => (
+                {report.delayed_tasks.map((task) => (
                   <div className="dense-list-row" key={`${task.project_id}-${task.title}`}>
                     <span>{task.title}</span>
                     <small>{task.project_title}</small>
@@ -237,7 +283,7 @@ export default function WeeklyReportPage() {
               ) : (
                 <div className="dense-list">
                   {report.remaining_tasks.length === 0 ? <div className="empty-state">잔여 업무 없음</div> : null}
-                  {report.remaining_tasks.slice(0, 8).map((task) => (
+                  {report.remaining_tasks.map((task) => (
                     <div className="dense-list-row" key={`${task.project_id}-${task.title}`}>
                       <span>{renderTaskAlert(task)}</span>
                       <small>{task.status}</small>

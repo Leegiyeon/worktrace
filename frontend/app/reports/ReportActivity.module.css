@@ -1,0 +1,158 @@
+.activityGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.activityGrid > * {
+  min-width: 0;
+}
+
+.fullSpan {
+  grid-column: 1 / -1;
+}
+
+.activityPanel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border-top: 1px solid var(--border);
+  padding: 12px 0 0;
+}
+
+.activityPanel :global(.panel-title-row) {
+  min-height: 32px;
+}
+
+.metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.metadata code,
+.shortId {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.scrollList {
+  display: grid;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.record {
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  padding: 10px 0;
+  min-width: 0;
+}
+
+.record:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.recordHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.recordTitle {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.recordTitle strong,
+.recordTitle span,
+.metaLine {
+  overflow-wrap: anywhere;
+}
+
+.metaLine {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+
+.pillRow,
+.refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.refs {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.fingerprint {
+  max-width: 100%;
+  min-width: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.fingerprint summary {
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.fingerprint code {
+  display: inline;
+  white-space: normal;
+}
+
+.projectLink {
+  color: var(--accent-blue);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.projectLink:hover,
+.projectLink:focus-visible {
+  text-decoration: underline;
+}
+
+.statusLabel {
+  font-weight: 800;
+}
+
+.details {
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+
+.details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 800;
+}
+
+.details[open] summary {
+  color: var(--accent);
+}
+
+@media (max-width: 900px) {
+  .activityGrid {
+    grid-template-columns: 1fr;
+  }
+}

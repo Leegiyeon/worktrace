@@ -1,4 +1,5 @@
-from datetime import date
+from datetime import date, datetime, timezone
+from contextlib import contextmanager
 
 import psycopg
 import pytest
@@ -8,6 +9,8 @@ from app.api import reports
 from app.main import app
 from app.schemas.projects import ProjectSummary
 from app.services.auto_report import build_auto_report_response
+from app.services import auto_report
+from app.schemas.report_activity import ReportActivity
 from test_weekly_report import sample_dataset
 
 AS_OF = "2026-09-18T00:00:00Z"
@@ -60,14 +63,38 @@ def test_report_never_presents_unapproved_or_stale_progress_as_percent(state, la
     assert "100%" not in report.markdown
 
 
-def test_report_api_fetches_owner_scoped_canonical_summary(monkeypatch):
-    monkeypatch.setattr(reports, "fetch_weekly_report_dataset", lambda *args: sample_dataset())
+def fake_snapshot(monkeypatch):
+    class Connection:
+        def execute(self, statement):
+            return self
 
-    def current(settings, owner):
+        def fetchone(self):
+            return {"as_of": datetime(2026, 9, 18, tzinfo=timezone.utc)}
+
+    connection = Connection()
+
+    @contextmanager
+    def connect(settings):
+        yield connection
+
+    monkeypatch.setattr(auto_report, "connect", connect)
+    monkeypatch.setattr(auto_report, "fetch_weekly_report_dataset", lambda *args, **kwargs: sample_dataset())
+    monkeypatch.setattr(auto_report, "fetch_report_activity", lambda *args: ReportActivity(
+        as_of=AS_OF, timezone="Asia/Seoul", start_at=AS_OF, end_exclusive=AS_OF,
+        transitions=[], current_tasks=[], issues=[], outcomes=[],
+    ))
+    return connection
+
+
+def test_report_api_fetches_owner_scoped_canonical_summary(monkeypatch):
+    shared_connection = fake_snapshot(monkeypatch)
+
+    def current(settings, owner, *, connection):
         assert owner == "local-owner"
+        assert connection is shared_connection
         return [summary()]
 
-    monkeypatch.setattr(reports, "list_projects", current)
+    monkeypatch.setattr(auto_report, "list_projects", current)
     response = TestClient(app).post("/reports/automatic", headers=HEADERS,
         json={"report_type": "weekly", "start_date": "2026-06-01", "end_date": "2026-06-07"})
     assert response.status_code == 200
@@ -75,12 +102,12 @@ def test_report_api_fetches_owner_scoped_canonical_summary(monkeypatch):
 
 
 def test_report_does_not_fallback_to_estimates_when_summary_query_fails(monkeypatch):
-    monkeypatch.setattr(reports, "fetch_weekly_report_dataset", lambda *args: sample_dataset())
+    fake_snapshot(monkeypatch)
 
-    def unavailable(*args):
+    def unavailable(*args, **kwargs):
         raise psycopg.OperationalError("unavailable")
 
-    monkeypatch.setattr(reports, "list_projects", unavailable)
+    monkeypatch.setattr(auto_report, "list_projects", unavailable)
     response = TestClient(app).post("/reports/automatic", headers=HEADERS,
         json={"report_type": "weekly", "start_date": "2026-06-01", "end_date": "2026-06-07"})
     assert response.status_code == 503

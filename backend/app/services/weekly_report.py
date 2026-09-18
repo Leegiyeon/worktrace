@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -99,7 +100,7 @@ class WeeklyReportDataset:
     work_logs: list[WorkLogRecord] = field(default_factory=list)
 
 
-def fetch_weekly_report_dataset(settings: Settings, start_date: date, end_date: date, owner_id: str) -> WeeklyReportDataset:
+def fetch_weekly_report_dataset(settings: Settings, start_date: date, end_date: date, owner_id: str, *, connection=None) -> WeeklyReportDataset:
     """Fetch projects and period activity that can support a grounded weekly report."""
 
     report_timezone = _report_timezone(settings.report_timezone)
@@ -107,7 +108,7 @@ def fetch_weekly_report_dataset(settings: Settings, start_date: date, end_date: 
     start_at = datetime.combine(start_date, time.min, tzinfo=report_timezone).astimezone(timezone.utc)
     end_exclusive = datetime.combine(end_date + timedelta(days=1), time.min, tzinfo=report_timezone).astimezone(timezone.utc)
 
-    with connect(settings) as connection:
+    with (nullcontext(connection) if connection is not None else connect(settings)) as connection:
         project_rows = connection.execute(
             """
             WITH active_project_ids AS (
@@ -132,7 +133,7 @@ def fetch_weekly_report_dataset(settings: Settings, start_date: date, end_date: 
             FROM projects p
             JOIN active_project_ids active ON active.project_id = p.id
             WHERE p.owner_id = %(owner_id)s
-            ORDER BY p.updated_at DESC, p.title ASC
+            ORDER BY p.updated_at DESC, p.title ASC, p.id ASC
             """,
             {"start_at": start_at, "end_exclusive": end_exclusive, "start_date": start_date, "end_date": end_date, "owner_id": owner_id},
         ).fetchall()
@@ -141,12 +142,12 @@ def fetch_weekly_report_dataset(settings: Settings, start_date: date, end_date: 
             """
             SELECT wl.id::text, wl.log_date, wl.work_type, wl.title, wl.content, wl.decisions,
                    wl.collaborators, wl.next_actions, wl.duration_minutes, wl.blockers,
-                   wl.project_id::text, COALESCE(p.title, '') AS project_title, wl.updated_at::text
+                   p.id::text AS project_id, COALESCE(p.title, '') AS project_title, wl.updated_at::text
             FROM work_logs wl
             LEFT JOIN projects p ON p.id = wl.project_id AND p.owner_id = %(owner_id)s
             WHERE wl.owner_id = %(owner_id)s
               AND wl.log_date >= %(start_date)s AND wl.log_date <= %(end_date)s
-            ORDER BY wl.log_date DESC, wl.updated_at DESC
+            ORDER BY wl.log_date DESC, wl.updated_at DESC, wl.id ASC
             """,
             {"start_date": start_date, "end_date": end_date, "owner_id": owner_id},
         ).fetchall()
@@ -164,7 +165,7 @@ def fetch_weekly_report_dataset(settings: Settings, start_date: date, end_date: 
               AND owner_id = %(owner_id)s
               AND updated_at >= %(start_at)s
               AND updated_at < %(end_exclusive)s
-            ORDER BY updated_at DESC, filename ASC
+            ORDER BY updated_at DESC, filename ASC, id ASC
             """,
             {"project_ids": project_ids, "start_at": start_at, "end_exclusive": end_exclusive, "owner_id": owner_id},
         ).fetchall()
@@ -178,7 +179,7 @@ def fetch_weekly_report_dataset(settings: Settings, start_date: date, end_date: 
               AND owner_id = %(owner_id)s
               AND updated_at >= %(start_at)s
               AND updated_at < %(end_exclusive)s
-            ORDER BY updated_at DESC, item_type ASC, title ASC
+            ORDER BY updated_at DESC, item_type ASC, title ASC, id ASC
             """,
             {"project_ids": project_ids, "start_at": start_at, "end_exclusive": end_exclusive, "owner_id": owner_id},
         ).fetchall()

@@ -3,6 +3,7 @@ from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
+from app.schemas.report_activity import ReportActivity
 
 ProjectStatus = Literal["idea", "review", "in_progress", "on_hold", "done"]
 ReportProgressBasis = Literal["milestone", "wbs", "unscoped", "unknown"]
@@ -183,3 +184,4 @@ class AutoReportResponse(BaseModel):
     delayed_tasks: list[TaskAlert]
     progress_candidates: list[ProjectProgressCandidate]
     monthly_performance_candidates: list[MonthlyPerformanceCandidate]
+    activity: ReportActivity | None = None

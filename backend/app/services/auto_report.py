@@ -2,9 +2,15 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date, datetime, timezone
+import hashlib
+import json
 
+from app.core.config import Settings
+from app.db.connection import connect
+from app.schemas.report_activity import ReportActivity
 from app.schemas.projects import ProjectSummary
 from app.schemas.reports import (
+    AutoReportRequest,
     AutoReportResponse,
     MonthlyPerformanceCandidate,
     ProjectProgressCandidate,
@@ -16,15 +22,35 @@ from app.schemas.reports import (
 from app.services.weekly_report import (
     DONE_STATUSES,
     WeeklyReportDataset,
+    ProjectRecord,
     _work_log_to_schema,
     build_weekly_report_response,
+    fetch_weekly_report_dataset,
 )
+from app.services.projects import list_projects
+from app.services.report_activity import fetch_report_activity
 
 REPORT_TITLES = {
     "daily": "일일 업무 요약",
     "weekly": "주간 업무 리포트",
     "monthly": "월간 성과 후보 리포트",
 }
+
+
+def generate_auto_report(settings: Settings, owner_id: str, request: AutoReportRequest) -> AutoReportResponse:
+    # All source rows and current progress share the same PostgreSQL MVCC snapshot.
+    with connect(settings) as connection:
+        connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        as_of = connection.execute("SELECT transaction_timestamp() AS as_of").fetchone()["as_of"].isoformat()
+        dataset = fetch_weekly_report_dataset(settings, request.start_date, request.end_date, owner_id, connection=connection)
+        summaries = list_projects(settings, owner_id, connection=connection)
+        activity = fetch_report_activity(connection, settings, owner_id, request.start_date, request.end_date, as_of, summaries)
+    included_ids = {project.id for project in dataset.projects}
+    activity_ids = {row.project_id for rows in (activity.transitions, activity.current_tasks, activity.outcomes) for row in rows}
+    for summary in summaries:
+        if summary.id in activity_ids and summary.id not in included_ids:
+            dataset.projects.append(ProjectRecord(summary.id, summary.title, summary.description, summary.status, summary.role, summary.updated_at))
+    return build_auto_report_response(dataset, request.report_type, request.start_date, request.end_date, summaries, as_of, activity)
 
 
 def build_auto_report_response(
@@ -34,6 +60,7 @@ def build_auto_report_response(
     end_date: date,
     project_summaries: list[ProjectSummary] | None = None,
     progress_as_of: str | None = None,
+    activity: ReportActivity | None = None,
 ) -> AutoReportResponse:
     as_of = progress_as_of or _utc_as_of()
     weekly = build_weekly_report_response(dataset, start_date, end_date)
@@ -53,7 +80,7 @@ def build_auto_report_response(
         performance_candidates=performance_candidates,
         progress_as_of=as_of,
     )
-    return AutoReportResponse(
+    response = AutoReportResponse(
         report_type=report_type,
         start_date=start_date,
         end_date=end_date,
@@ -64,7 +91,68 @@ def build_auto_report_response(
         delayed_tasks=delayed_tasks,
         progress_candidates=progress_candidates,
         monthly_performance_candidates=performance_candidates,
+        activity=activity,
     )
+    if response.activity is not None:
+        response.activity.fingerprint = _report_fingerprint(response)
+        heading, _, body = response.markdown.partition("\n")
+        response.markdown = heading + "\n\n" + _render_activity(response.activity) + "\n" + body
+    return response
+
+
+def _report_fingerprint(report: AutoReportResponse) -> str:
+    content = report.model_dump(mode="json", exclude={"markdown"})
+    if content["activity"]:
+        content["activity"].pop("as_of")
+        content["activity"].pop("fingerprint")
+    for candidate in content["progress_candidates"]:
+        candidate.pop("as_of")
+    serialized = json.dumps(content, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def _render_activity(activity: ReportActivity) -> str:
+    labels = {"planned": "예정", "in_progress": "진행", "done": "완료", "on_hold": "보류"}
+    sources = {"user": "사용자", "system": "시스템", "milestone_validation": "과거 검증"}
+    plans = {"approved": "승인됨", "stale": "재승인 필요", "unapproved": "미승인"}
+    lines = [
+        "## 조회 기준",
+        f"- 조회 시각: {activity.as_of} / 시간대: {activity.timezone}",
+        f"- 상태 변경·성과 수정: [{activity.start_at}, {activity.end_exclusive})",
+        "- 업무 로그·막힘: 기록일 기준 / 업무명·현재 상태·잔여 WBS: 조회 시점 기준",
+        f"- 내용 해시 (스키마 {activity.schema_version}): {activity.fingerprint}",
+        "", "## 기간 내 상태 변경",
+    ]
+    for row in activity.transitions:
+        previous = labels.get(row.previous_status, "신규")
+        lines.append(f"- {row.changed_at} · {row.project_title} / {row.task_title}: {previous} → {labels.get(row.next_status, row.next_status)} / 현재 {labels.get(row.current_status, row.current_status)} / {sources.get(row.source, row.source)} / 이력 {row.id} · 업무 {row.task_id} · v{row.status_version}")
+        if row.reason:
+            lines.append(f"  - 사유: {row.reason}")
+    if not activity.transitions:
+        lines.append("- 기록된 상태 변경 없음")
+    lines.extend(["", "## 기록된 막힘"])
+    for row in activity.issues:
+        lines.append(f"- {row.log_date} · {row.project_title or '프로젝트 미연결'} / {row.title}: {row.blockers} / 로그 {row.id}")
+    if not activity.issues:
+        lines.append("- 기간 내 기록 없음")
+    lines.extend(["", "## 기간 내 수정된 확인 성과"])
+    for row in activity.outcomes:
+        lines.append(f"- {row.updated_at} · {row.project_title} / {row.title} / 성과 {row.id}")
+        if row.before_state or row.after_state:
+            lines.append(f"  - 이전: {row.before_state or '미기록'} / 이후: {row.after_state or '미기록'}")
+        if row.outcome_type == "quantitative" and row.metric_value is not None:
+            lines.append(f"  - 사용자 확인 수치: {row.metric_name} {row.metric_value} {row.metric_unit}")
+        evidence = [f"로그 {item}" for item in row.evidence_work_log_ids] + [f"문서 {item}" for item in row.evidence_document_ids]
+        lines.append(f"  - 연결 근거: {', '.join(evidence) if evidence else '현재 조회 가능한 근거 없음'}")
+    if not activity.outcomes:
+        lines.append("- 기간 내 수정된 확인 성과 없음")
+    lines.extend(["", "## 현재 잔여 WBS", "- 전체 프로젝트의 조회 시점 산정 업무이며 기간 종료일의 잔여량이 아닙니다."])
+    for row in activity.current_tasks:
+        due = f" / 기한 {row.due_date}" if row.due_date else ""
+        lines.append(f"- {row.project_title} / {row.title}: {labels.get(row.status, row.status)}{due} / 계획 {plans[row.progress_plan_status]} v{row.progress_plan_version} / 업무 {row.id}")
+    if not activity.current_tasks:
+        lines.append("- 현재 잔여 WBS 없음")
+    return "\n".join(lines) + "\n"
 
 
 def _task_alerts(projects: list[ProjectWeeklyReport], end_date: date) -> tuple[list[TaskAlert], list[TaskAlert]]:
@@ -261,7 +349,7 @@ def _render_work_logs(work_logs: list[WorkLogItem]) -> list[str]:
     for work_log in work_logs:
         project_label = f" ({work_log.project_title})" if work_log.project_title else ""
         duration = f" · {work_log.duration_minutes}분" if work_log.duration_minutes else ""
-        lines.append(f"- {work_log.log_date.isoformat()} · {work_log.title}{project_label}{duration}: {work_log.content or '내용 없음'}")
+        lines.append(f"- {work_log.log_date.isoformat()} · {work_log.title}{project_label}{duration}: {work_log.content or '내용 없음'} / 로그 {work_log.id}")
         if work_log.decisions:
             lines.append(f"  - 판단/결정: {work_log.decisions}")
         if work_log.collaborators:
