@@ -185,6 +185,8 @@ def patch_milestone(project_id: UUID, milestone_id: UUID, payload: ProjectMilest
         return update_project_milestone(settings, owner_id, project_id, milestone_id, payload)
     except ProjectMilestoneNotFoundError as exc:
         raise _milestone_not_found() from exc
+    except ProjectNotFoundError as exc:
+        raise _project_not_found() from exc
     except ProjectMilestoneWeightError as exc:
         raise _milestone_weight_invalid() from exc
     except psycopg.Error as exc:
@@ -198,6 +200,8 @@ def delete_milestone(project_id: UUID, milestone_id: UUID, owner_id: str = Depen
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     except ProjectMilestoneNotFoundError as exc:
         raise _milestone_not_found() from exc
+    except ProjectNotFoundError as exc:
+        raise _project_not_found() from exc
     except psycopg.Error as exc:
         raise http_error(status.HTTP_503_SERVICE_UNAVAILABLE, "DATABASE_UNAVAILABLE", "Database is unavailable.") from exc
 

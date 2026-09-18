@@ -57,10 +57,11 @@ def test_deploy_uses_checksum_runner_without_raw_sql_replay() -> None:
     assert "--cleanup-samples" not in script
 
 
-def test_milestone_progress_requires_complete_wbs_coverage() -> None:
+def test_progress_policy_is_explicit_and_approval_scoped() -> None:
     service = PROJECT_SERVICE.read_text(encoding="utf-8")
 
-    assert "COALESCE(ms.scoped_task_count, 0) = COALESCE(ts.total_tasks, 0)" in service
-    assert "WHEN COALESCE(ts.total_tasks, 0) > 0 THEN 'wbs'" in service
-    assert "ELSE 'unscoped' END AS progress_basis" in service
-    assert "COALESCE(SUM(mt.task_count), 0)::int AS scoped_task_count" in service
+    assert "worktrace_project_plan_context(p.owner_id, p.id)" in service
+    assert "pa.policy='milestone'" in service
+    assert "pa.policy='wbs'" in service
+    assert 'progress_percent=row.get("progress_percent") if approved else None' in service
+    assert "milestone-validation:%%" in service

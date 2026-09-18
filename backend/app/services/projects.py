@@ -6,6 +6,7 @@ from psycopg.types.json import Jsonb
 
 from app.core.config import Settings
 from app.db.connection import connect
+from app.services.project_plan_state import approval_status
 from app.schemas.projects import (
     GitHubCommit,
     ProjectCreate,
@@ -339,6 +340,7 @@ def list_project_milestones(settings: Settings, owner_id: str, project_id: UUID)
 def create_project_milestone(settings: Settings, owner_id: str, project_id: UUID, payload: ProjectMilestoneCreate) -> ProjectMilestone:
     _ensure_project_exists(settings, owner_id, project_id)
     with connect(settings) as connection:
+        _lock_project_for_write(connection, owner_id, project_id)
         current_weight = connection.execute(
             "SELECT COALESCE(SUM(weight), 0)::int AS total FROM project_milestones WHERE owner_id=%s AND project_id=%s",
             (owner_id, project_id),
@@ -371,10 +373,17 @@ def get_project_milestone(settings: Settings, owner_id: str, project_id: UUID, m
 
 
 def update_project_milestone(settings: Settings, owner_id: str, project_id: UUID, milestone_id: UUID, payload: ProjectMilestoneUpdate) -> ProjectMilestone:
-    existing = get_project_milestone(settings, owner_id, project_id, milestone_id)
     updates = payload.model_dump(exclude_unset=True)
-    next_weight = updates.get("weight", existing.weight)
     with connect(settings) as connection:
+        _lock_project_for_write(connection, owner_id, project_id)
+        current = connection.execute(
+            _MILESTONE_SQL + " WHERE m.owner_id=%(owner_id)s AND m.project_id=%(project_id)s AND m.id=%(milestone_id)s GROUP BY m.id",
+            {"owner_id": owner_id, "project_id": project_id, "milestone_id": milestone_id},
+        ).fetchone()
+        if current is None:
+            raise ProjectMilestoneNotFoundError()
+        existing = _milestone_from_row(current)
+        next_weight = updates.get("weight", existing.weight)
         other_weight = connection.execute(
             "SELECT COALESCE(SUM(weight), 0)::int AS total FROM project_milestones WHERE owner_id=%s AND project_id=%s AND id<>%s",
             (owner_id, project_id, milestone_id),
@@ -407,6 +416,7 @@ def update_project_milestone(settings: Settings, owner_id: str, project_id: UUID
 
 def delete_project_milestone(settings: Settings, owner_id: str, project_id: UUID, milestone_id: UUID) -> None:
     with connect(settings) as connection:
+        _lock_project_for_write(connection, owner_id, project_id)
         result = connection.execute(
             "DELETE FROM project_milestones WHERE owner_id=%s AND project_id=%s AND id=%s",
             (owner_id, project_id, milestone_id),
@@ -423,7 +433,7 @@ def list_project_tasks(settings: Settings, owner_id: str, project_id: UUID) -> l
             SELECT t.id::text, t.project_id::text, t.title, t.description, t.status,
                    t.completed_at::text, COALESCE(t.status_version, 0)::bigint AS status_version,
                    t.priority, t.due_date::text, t.milestone_id::text, t.counts_toward_progress,
-                   t.source_provider, t.created_at::text, t.updated_at::text
+                   t.source_provider, t.source_key, t.created_at::text, t.updated_at::text
             FROM project_tasks t
             JOIN projects p ON p.id = t.project_id AND p.owner_id = %(owner_id)s
             WHERE t.owner_id = %(owner_id)s AND t.project_id = %(project_id)s
@@ -450,7 +460,7 @@ def create_project_task(settings: Settings, owner_id: str, project_id: UUID, pay
             VALUES (%(owner_id)s, %(project_id)s, %(title)s, %(description)s, %(status)s, %(priority)s, %(due_date)s, %(milestone_id)s, %(counts_toward_progress)s)
             RETURNING id::text, project_id::text, title, description, status, priority, due_date::text,
                       completed_at::text, COALESCE(status_version, 0)::bigint AS status_version,
-                      milestone_id::text, counts_toward_progress, source_provider, created_at::text, updated_at::text
+                      milestone_id::text, counts_toward_progress, source_provider, source_key, created_at::text, updated_at::text
             """,
             {"owner_id": owner_id, "project_id": project_id, **payload.model_dump(exclude={"status_reason"})},
         ).fetchone()
@@ -507,7 +517,7 @@ def update_project_task(settings: Settings, owner_id: str, project_id: UUID, tas
             RETURNING t.id::text, t.project_id::text, t.title, t.description, t.status, t.priority,
                       t.completed_at::text, COALESCE(t.status_version, 0)::bigint AS status_version,
                       t.due_date::text, t.milestone_id::text, t.counts_toward_progress,
-                      t.source_provider, t.created_at::text, t.updated_at::text
+                      t.source_provider, t.source_key, t.created_at::text, t.updated_at::text
             """,
             {"owner_id": owner_id, "project_id": project_id, "task_id": task_id, **next_values},
         ).fetchone()
@@ -547,7 +557,7 @@ def get_project_task(settings: Settings, owner_id: str, project_id: UUID, task_i
             SELECT t.id::text, t.project_id::text, t.title, t.description, t.status, t.priority,
                    t.completed_at::text, COALESCE(t.status_version, 0)::bigint AS status_version,
                    t.due_date::text, t.milestone_id::text, t.counts_toward_progress,
-                   t.source_provider, t.created_at::text, t.updated_at::text
+                   t.source_provider, t.source_key, t.created_at::text, t.updated_at::text
             FROM project_tasks t
             JOIN projects p ON p.id=t.project_id AND p.owner_id=%(owner_id)s
             WHERE t.owner_id=%(owner_id)s AND t.project_id=%(project_id)s AND t.id=%(task_id)s
@@ -648,17 +658,16 @@ _PROJECT_SUMMARY_SQL = """
            COALESCE(ts.remaining_tasks, 0)::int AS remaining_tasks,
            COALESCE(ts.derived_task_count, 0)::int AS derived_task_count,
            COALESCE(ms.milestone_count, 0)::int AS milestone_count,
-           CASE WHEN COALESCE(ts.total_tasks, 0) > 0
-                     AND COALESCE(ms.scoped_task_count, 0) = COALESCE(ts.total_tasks, 0)
-                     AND COALESCE(ms.scoped_task_count, 0) > 0 THEN 'milestone'
-                WHEN COALESCE(ts.total_tasks, 0) > 0 THEN 'wbs'
-                ELSE 'unscoped' END AS progress_basis,
-           CASE WHEN COALESCE(ts.total_tasks, 0) > 0
-                     AND COALESCE(ms.scoped_task_count, 0) = COALESCE(ts.total_tasks, 0)
-                     AND COALESCE(ms.scoped_task_count, 0) > 0 THEN COALESCE(ms.weighted_progress, 0)
-                WHEN COALESCE(ts.total_tasks, 0) > 0 THEN ROUND((ts.completed_tasks::numeric / ts.total_tasks::numeric) * 100)::int
-                ELSE 0 END AS progress_percent
+           worktrace_project_plan_context(p.owner_id, p.id) AS plan_context,
+           pa.version AS plan_version, pa.policy AS plan_policy, pa.context_fingerprint AS plan_fingerprint,
+           CASE WHEN pa.policy='milestone' THEN ms.weighted_progress
+                WHEN pa.policy='wbs' AND ts.total_tasks > 0 THEN ROUND((ts.completed_tasks::numeric / ts.total_tasks::numeric) * 100)::int
+                ELSE NULL END AS progress_percent
     FROM projects p
+    LEFT JOIN LATERAL (
+        SELECT version, policy, context_fingerprint FROM project_plan_approvals
+        WHERE owner_id=p.owner_id AND project_id=p.id ORDER BY version DESC LIMIT 1
+    ) pa ON true
     LEFT JOIN LATERAL (
         SELECT COUNT(*) FILTER (WHERE t.counts_toward_progress)::int AS total_tasks,
                COUNT(*) FILTER (WHERE t.counts_toward_progress AND t.status='done')::int AS completed_tasks,
@@ -666,6 +675,7 @@ _PROJECT_SUMMARY_SQL = """
                COUNT(*) FILTER (WHERE t.counts_toward_progress AND t.source_provider='derived-github')::int AS derived_task_count
         FROM project_tasks t
         WHERE t.owner_id=%(owner_id)s AND t.project_id=p.id
+          AND NOT (COALESCE(t.source_provider, '')='derived-github' AND COALESCE(t.source_key, '') LIKE 'milestone-validation:%%')
     ) ts ON true
     LEFT JOIN LATERAL (
         SELECT COUNT(*)::int AS milestone_count,
@@ -675,9 +685,10 @@ _PROJECT_SUMMARY_SQL = """
         LEFT JOIN LATERAL (
             SELECT COUNT(*)::int AS task_count,
                    CASE WHEN COUNT(*)=0 THEN 0
-                        ELSE ROUND((COUNT(*) FILTER (WHERE t.status='done')::numeric / COUNT(*)::numeric) * 100)::int END AS progress_percent
+                        ELSE (COUNT(*) FILTER (WHERE t.status='done')::numeric / COUNT(*)::numeric) * 100 END AS progress_percent
             FROM project_tasks t
             WHERE t.owner_id=%(owner_id)s AND t.project_id=p.id AND t.milestone_id=m.id AND t.counts_toward_progress
+              AND NOT (COALESCE(t.source_provider, '')='derived-github' AND COALESCE(t.source_key, '') LIKE 'milestone-validation:%%')
         ) mt ON true
         WHERE m.owner_id=%(owner_id)s AND m.project_id=p.id
     ) ms ON true
@@ -694,11 +705,15 @@ _MILESTONE_SQL = """
                 ELSE ROUND((COUNT(t.id) FILTER (WHERE t.counts_toward_progress AND t.status='done')::numeric /
                             COUNT(t.id) FILTER (WHERE t.counts_toward_progress)::numeric) * 100)::int END AS progress_percent
     FROM project_milestones m
-    LEFT JOIN project_tasks t ON t.milestone_id=m.id AND t.owner_id=%(owner_id)s
+    LEFT JOIN project_tasks t ON t.milestone_id=m.id AND t.project_id=m.project_id AND t.owner_id=%(owner_id)s
+      AND NOT (COALESCE(t.source_provider, '')='derived-github' AND COALESCE(t.source_key, '') LIKE 'milestone-validation:%%')
 """
 
 
 def _project_from_row(row) -> ProjectSummary:
+    latest = {"context_fingerprint": row.get("plan_fingerprint")} if row.get("plan_version") else None
+    plan_status = approval_status(row.get("plan_context") or {}, latest)
+    approved = plan_status == "approved"
     return ProjectSummary(
         id=row["id"], title=row["title"], description=row.get("description") or "",
         objective=row.get("objective") or "", success_criteria=row.get("success_criteria") or "",
@@ -709,8 +724,10 @@ def _project_from_row(row) -> ProjectSummary:
         role=row.get("role") or "", total_tasks=row.get("total_tasks") or 0,
         completed_tasks=row.get("completed_tasks") or 0, remaining_tasks=row.get("remaining_tasks") or 0,
         derived_task_count=row.get("derived_task_count") or 0, milestone_count=row.get("milestone_count") or 0,
-        progress_basis=row.get("progress_basis") or "unscoped",
-        progress_percent=row.get("progress_percent") or 0, updated_at=row["updated_at"],
+        progress_basis=row.get("plan_policy") if approved else "unscoped",
+        progress_percent=row.get("progress_percent") if approved else None,
+        progress_plan_status=plan_status, progress_plan_version=row.get("plan_version") or 0,
+        updated_at=row["updated_at"],
     )
 
 
@@ -781,5 +798,5 @@ def _task_from_row(row) -> ProjectTask:
         status=row["status"], completed_at=row.get("completed_at"), status_version=row.get("status_version") or 0,
         priority=row.get("priority") or "medium", due_date=row.get("due_date"),
         milestone_id=row.get("milestone_id"), counts_toward_progress=row.get("counts_toward_progress", True),
-        source_provider=row.get("source_provider"), created_at=row["created_at"], updated_at=row["updated_at"],
+        source_provider=row.get("source_provider"), source_key=row.get("source_key"), created_at=row["created_at"], updated_at=row["updated_at"],
     )

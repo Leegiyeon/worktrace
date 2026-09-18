@@ -70,7 +70,7 @@ export default function ProjectsPage() {
 
     return [...matches].sort((a, b) => {
       if (sort === "title_asc") return a.title.localeCompare(b.title, "ko-KR");
-      if (sort === "progress_desc") return b.progress_percent - a.progress_percent;
+      if (sort === "progress_desc") return (projectProgressDisplay(b).percent ?? -1) - (projectProgressDisplay(a).percent ?? -1);
       if (sort === "remaining_desc") return b.remaining_tasks - a.remaining_tasks;
       return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
     });

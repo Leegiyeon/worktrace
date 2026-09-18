@@ -9,6 +9,7 @@ from app.api.github_webhooks import router as github_webhooks_router
 from app.api.github_items import router as github_items_router
 from app.api.milestone_evidence import router as milestone_evidence_router
 from app.api.outcomes import router as outcomes_router
+from app.api.project_plans import router as project_plans_router
 from app.api.projects import router as projects_router
 from app.api.reports import router as reports_router
 from app.api.work_logs import router as work_logs_router
@@ -39,6 +40,7 @@ app.include_router(health_router)
 app.include_router(github_webhooks_router)
 app.include_router(github_items_router)
 app.include_router(ai_router)
+app.include_router(project_plans_router)
 app.include_router(projects_router)
 app.include_router(branch_activity_router)
 app.include_router(milestone_evidence_router)

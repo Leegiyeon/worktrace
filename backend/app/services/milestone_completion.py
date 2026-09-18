@@ -8,6 +8,7 @@ from app.core.config import Settings
 from app.db.connection import connect
 from app.schemas.milestone_evidence import MilestoneCompletion, MilestoneConfirmationRecord, MilestoneValidationUpdate
 from app.services.projects import ProjectMilestoneNotFoundError, ProjectNotFoundError, _lock_project_for_write
+from app.services.project_plan_state import approval_status, context_fingerprint
 
 
 class MilestoneConfirmationConflictError(Exception):
@@ -36,14 +37,26 @@ def _context(connection, owner_id: str, project_id: UUID, milestone_id: UUID) ->
           ) ORDER BY c.id) FROM project_milestone_evidence e
              JOIN github_commits c ON c.id=e.github_commit_id AND c.owner_id=e.owner_id AND c.project_id=e.project_id
              WHERE e.owner_id=m.owner_id AND e.project_id=m.project_id AND e.milestone_id=m.id), '[]'::jsonb)
-        ) AS context
+        ) AS context,
+        worktrace_project_plan_context(m.owner_id, m.project_id) AS plan_context,
+        (SELECT jsonb_build_object('version', a.version, 'context_fingerprint', a.context_fingerprint)
+         FROM project_plan_approvals a WHERE a.owner_id=m.owner_id AND a.project_id=m.project_id
+         ORDER BY a.version DESC LIMIT 1) AS plan_approval
         FROM project_milestones m WHERE m.owner_id=%s AND m.project_id=%s AND m.id=%s
         """,
         (owner_id, project_id, milestone_id),
     ).fetchone()
     if row is None:
         raise ProjectMilestoneNotFoundError()
-    return row["context"]
+    context = row["context"]
+    # Existing confirmations without exclusions keep their original context contract.
+    if any(not task["counts_toward_progress"] and not is_legacy_validation(task) for task in context["tasks"]):
+        context["plan"] = {
+            "status": approval_status(row["plan_context"], row["plan_approval"]),
+            "version": (row["plan_approval"] or {}).get("version", 0),
+            "context_fingerprint": context_fingerprint(row["plan_context"]),
+        }
+    return context
 
 
 def _fingerprint(context: dict) -> str:
@@ -61,6 +74,9 @@ def _block_reasons(context: dict) -> list[str]:
     pending = sum(1 for task in context["tasks"] if task["counts_toward_progress"] and task["status"] != "done" and not is_legacy_validation(task))
     if pending:
         reasons.append(f"산정 대상 WBS {pending}개가 미완료입니다.")
+    excluded = any(not task["counts_toward_progress"] and not is_legacy_validation(task) for task in context["tasks"])
+    if excluded and context.get("plan", {}).get("status") != "approved":
+        reasons.append("산정 제외 업무의 사유를 프로젝트 계획에서 승인하세요.")
     return reasons
 
 
@@ -90,7 +106,7 @@ def confirm_milestone(settings: Settings, owner_id: str, project_id: UUID, miles
             _lock_project_for_write(connection, owner_id, project_id)
         except ProjectNotFoundError as exc:
             raise ProjectMilestoneNotFoundError() from exc
-        # Lock the criterion row too: milestone edits do not all take the project lock.
+        # Keep the criterion row stable for the recorded confirmation snapshot.
         if connection.execute("SELECT id FROM project_milestones WHERE owner_id=%s AND project_id=%s AND id=%s FOR UPDATE",
                               (owner_id, project_id, milestone_id)).fetchone() is None:
             raise ProjectMilestoneNotFoundError()

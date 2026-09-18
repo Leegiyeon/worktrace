@@ -65,7 +65,9 @@ class ProjectSummary(ProjectBaseModel):
     derived_task_count: int = 0
     milestone_count: int = 0
     progress_basis: ProgressBasis = "unscoped"
-    progress_percent: int = 0
+    progress_percent: int | None = None
+    progress_plan_status: Literal["unapproved", "approved", "stale"] = "unapproved"
+    progress_plan_version: int = 0
     updated_at: str
 
 
@@ -193,6 +195,7 @@ class ProjectTask(ProjectBaseModel):
     milestone_id: str | None = None
     counts_toward_progress: bool = True
     source_provider: str | None = None
+    source_key: str | None = None
     created_at: str
     updated_at: str
 

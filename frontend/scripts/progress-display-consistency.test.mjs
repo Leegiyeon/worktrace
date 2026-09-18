@@ -14,25 +14,31 @@ const compiledHelper = transpileModule(helper, { compilerOptions: { module: Modu
 const { projectProgressDisplay, milestoneProgressDisplay, scopedProjectAverage, wbsActivityCounts } = await import(`data:text/javascript;base64,${Buffer.from(compiledHelper).toString("base64")}`);
 
 test("progress values distinguish an unscoped project from a real zero", () => {
-  assert.equal(projectProgressDisplay({ progress_basis: "unscoped", progress_percent: 0 }).percent, null);
-  assert.equal(projectProgressDisplay({ progress_basis: "wbs", progress_percent: 0, derived_task_count: 0 }).label, "0%");
+  assert.equal(projectProgressDisplay({ progress_basis: "unscoped", progress_percent: null, progress_plan_status: "approved" }).percent, null);
+  assert.equal(projectProgressDisplay({ progress_basis: "wbs", progress_percent: 0, progress_plan_status: "approved", derived_task_count: 0 }).label, "0%");
   assert.equal(scopedProjectAverage([]).label, "산정 전");
-  assert.equal(scopedProjectAverage([{ progress_basis: "unscoped", progress_percent: 0 }]).label, "산정 전");
+  assert.equal(scopedProjectAverage([{ progress_basis: "unscoped", progress_percent: null, progress_plan_status: "approved" }]).label, "산정 전");
   assert.deepEqual(scopedProjectAverage([
-    { progress_basis: "wbs", progress_percent: 60, derived_task_count: 0 },
-    { progress_basis: "milestone", progress_percent: 100, derived_task_count: 0 },
-    { progress_basis: "unscoped", progress_percent: 0 }
-  ]), { label: "80%", percent: 80, isScoped: true, isEstimate: false, basisLabel: "자동 구성·출처 미확인·미산정 제외", scopedProjects: 2 });
+    { progress_basis: "wbs", progress_percent: 60, progress_plan_status: "approved", derived_task_count: 0 },
+    { progress_basis: "milestone", progress_percent: 100, progress_plan_status: "approved", derived_task_count: 0 },
+    { progress_basis: "unscoped", progress_percent: null, progress_plan_status: "approved" }
+  ]), { label: "80%", percent: 80, isScoped: true, isEstimate: false, basisLabel: "현재 승인 계획 기준", scopedProjects: 2 });
 });
 
-test("derived commit plans and missing provenance never look like confirmed progress", () => {
-  const derived = { progress_basis: "milestone", progress_percent: 50, derived_task_count: 12 };
-  assert.equal(projectProgressDisplay(derived).label, "참고 50%");
-  assert.equal(projectProgressDisplay(derived).isEstimate, true);
+test("unapproved project plans and old summaries never look like confirmed progress", () => {
+  const derived = { progress_basis: "milestone", progress_percent: 50, progress_plan_status: "approved", derived_task_count: 12 };
+  assert.equal(projectProgressDisplay(derived).label, "50%");
+  assert.equal(projectProgressDisplay(derived).basisLabel, "승인 WBS (자동 구성 포함)");
+  assert.equal(projectProgressDisplay(derived).isEstimate, false);
+  assert.equal(projectProgressDisplay({ progress_basis: "wbs", progress_percent: 100, progress_plan_status: "unapproved", derived_task_count: 0 }).label, "계획 미승인");
+  assert.equal(projectProgressDisplay({ progress_basis: "wbs", progress_percent: 100, progress_plan_status: "stale", derived_task_count: 0 }).label, "계획 재승인 필요");
+  assert.equal(projectProgressDisplay({ progress_basis: "wbs", progress_percent: null, progress_plan_status: "stale", derived_task_count: 0 }).percent, null);
   assert.equal(projectProgressDisplay({ progress_basis: "wbs", progress_percent: 100 }).label, "기준 미확인");
   assert.equal(projectProgressDisplay({ progress_basis: "wbs", progress_percent: 100 }).percent, null);
-  assert.equal(scopedProjectAverage([derived]).percent, null);
-  assert.equal(scopedProjectAverage([derived, { progress_basis: "wbs", progress_percent: 20, derived_task_count: 0 }]).percent, 20);
+  assert.equal(projectProgressDisplay({ progress_basis: "wbs", progress_percent: Number.NaN, progress_plan_status: "approved", derived_task_count: 0 }).label, "기준 미확인");
+  assert.equal(projectProgressDisplay({ progress_basis: "wbs", progress_percent: 100, progress_plan_status: "approved" }).label, "기준 미확인");
+  assert.equal(scopedProjectAverage([derived]).percent, 50);
+  assert.equal(scopedProjectAverage([derived, { progress_basis: "wbs", progress_percent: 20, progress_plan_status: "approved", derived_task_count: 0 }]).percent, 35);
   assert.equal(milestoneProgressDisplay({ total_tasks: 0, progress_percent: 0, derived_task_count: 0 }).label, "산정 전");
   assert.equal(milestoneProgressDisplay({ total_tasks: 2, progress_percent: 50, derived_task_count: 2 }).label, "참고 50%");
 });
@@ -42,14 +48,20 @@ test("adding reference activities does not increase counted WBS", () => {
   assert.deepEqual(wbsActivityCounts([...counted, { counts_toward_progress: false }]), {
     allActivities: 3, countedWbs: 2, referenceActivities: 1
   });
+  assert.deepEqual(wbsActivityCounts([...counted, { counts_toward_progress: true, source_provider: "derived-github", source_key: "milestone-validation:m0" }]), {
+    allActivities: 2, countedWbs: 2, referenceActivities: 0
+  });
   assert.deepEqual(wbsActivityCounts([]), { allActivities: 0, countedWbs: 0, referenceActivities: 0 });
 });
 
 test("progress helper keeps unscoped projects out of averages", () => {
   assert.match(helper, /project\.progress_basis === "unscoped"/);
   assert.match(helper, /label: "산정 전"/);
+  assert.match(helper, /project\.progress_plan_status !== "approved"/);
   assert.match(helper, /return progress.isScoped && !progress.isEstimate/);
-  assert.match(helper, /scopedProjects\.reduce\(\(sum, project\) => sum \+ project\.progress_percent, 0\) \/ scopedProjects\.length/);
+  assert.match(helper, /project\.progress_percent \?\? 0/);
+  assert.match(helper, /Number\.isFinite\(value\)/);
+  assert.match(helper, /milestone-validation:/);
 });
 
 test("dashboard distinguishes all activities from counted WBS", () => {
@@ -64,6 +76,7 @@ test("dashboard distinguishes all activities from counted WBS", () => {
 test("project list and detail share progress display instead of treating unscoped as zero", () => {
   assert.match(projectsPage, /scopedProjectAverage\(projects\)/);
   assert.match(projectsPage, /projectProgressDisplay\(project\)/);
+  assert.match(projectsPage, /projectProgressDisplay\(b\)\.percent \?\? -1/);
   assert.match(detailPage, /projectProgressDisplay\(project\)\.label/);
   assert.match(detailPage, /projectProgressDisplay\(project\)\.percent === null/);
   assert.doesNotMatch(projectsPage, /dashboard\.averageProgress === null/);

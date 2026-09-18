@@ -97,3 +97,16 @@ def test_unknown_milestone_uses_stable_error(monkeypatch):
 
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "PROJECT_MILESTONE_NOT_FOUND"
+
+
+def test_milestone_write_lock_missing_project_is_404(monkeypatch):
+    def missing(*args):
+        raise projects.ProjectNotFoundError()
+
+    monkeypatch.setattr(projects, "update_project_milestone", missing)
+    monkeypatch.setattr(projects, "delete_project_milestone", missing)
+    client = TestClient(app)
+    path = f"/projects/{PROJECT_ID}/milestones/{MILESTONE_ID}"
+    for response in (client.patch(path, headers=HEADERS, json={"title": "Changed"}), client.delete(path, headers=HEADERS)):
+        assert response.status_code == 404
+        assert response.json()["detail"]["code"] == "PROJECT_NOT_FOUND"

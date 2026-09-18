@@ -113,7 +113,7 @@ def _progress_candidates(
             candidates.append(candidate)
             continue
 
-        progress_percent = None if summary.progress_basis == "unscoped" else summary.progress_percent
+        progress_percent = summary.progress_percent if summary.progress_plan_status == "approved" and summary.progress_basis != "unscoped" else None
         provenance = _progress_provenance(summary)
         reason = _progress_reason(summary, provenance)
         candidates.append(
@@ -127,6 +127,8 @@ def _progress_candidates(
                 progress_basis=summary.progress_basis,
                 progress_percent=progress_percent,
                 suggested_progress_percent=progress_percent,
+                progress_plan_status=summary.progress_plan_status,
+                progress_plan_version=summary.progress_plan_version,
                 provenance=provenance,
                 as_of=as_of,
                 reason=reason,
@@ -140,19 +142,24 @@ def _utc_as_of() -> str:
 
 
 def _progress_provenance(summary: ProjectSummary) -> str:
+    if summary.progress_plan_status == "unapproved":
+        return "계획 미승인"
+    if summary.progress_plan_status == "stale":
+        return "계획 재승인 필요"
     if summary.progress_basis == "unscoped":
         return "산정 전"
-    label = f"{summary.progress_percent}%"
-    return f"참고 {label}" if summary.derived_task_count > 0 else label
+    return f"{summary.progress_percent}%" if summary.progress_percent is not None else "기준 미확인"
 
 
 def _progress_reason(summary: ProjectSummary, provenance: str) -> str:
+    if summary.progress_plan_status != "approved":
+        return f"{provenance}: 등록된 산정 WBS {summary.completed_tasks}/{summary.total_tasks}개, 승인 완료율은 표시하지 않습니다."
     if summary.progress_basis == "unscoped":
         return "산정 대상 WBS가 없어 현재 WBS 진척은 산정 전입니다."
-    basis = "마일스톤 가중 WBS" if summary.progress_basis == "milestone" else "등록 WBS 완료 비율"
+    basis = "승인 마일스톤 가중 WBS" if summary.progress_basis == "milestone" else "승인 WBS 완료 비율"
     derived = f" · 자동 구성 WBS {summary.derived_task_count}개 포함" if summary.derived_task_count > 0 else ""
     return (
-        f"{basis}: 완료 {summary.completed_tasks}/{summary.total_tasks}개 기준의 현재 WBS 진척입니다"
+        f"계획 v{summary.progress_plan_version} · {basis}: 완료 {summary.completed_tasks}/{summary.total_tasks}개 기준의 현재 WBS 진척입니다"
         f" ({provenance}{derived})."
     )
 

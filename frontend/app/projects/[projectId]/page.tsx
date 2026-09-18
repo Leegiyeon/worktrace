@@ -8,6 +8,7 @@ import { parseApiErrorMessage } from "../../reports/api-error";
 import { CareerPanel } from "./CareerPanel";
 import { GitHubEvidencePanel } from "./GitHubEvidencePanel";
 import { ProjectLifecyclePanel } from "./ProjectLifecyclePanel";
+import { ProjectPlanPanel } from "./ProjectPlanPanel";
 import { TaskHistoryPanel } from "./TaskHistoryPanel";
 import styles from "./page.module.css";
 import type {
@@ -1124,6 +1125,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
                 <div className="metric-card"><span>조회된 커밋 근거</span><strong>{loadFailures.includes("commits") ? "-" : commits.length}</strong></div>
                 <div className="metric-card"><span>성과</span><strong>{loadFailures.includes("outcomes") ? "-" : outcomes.length}</strong></div>
               </section>
+              <ProjectPlanPanel projectId={projectId} onApproved={refreshPlanningData} />
               <section className="panel">
                 <div className="panel-title-row"><h2>진척</h2><span className="count-badge">{projectStatusLabels[project.status]}</span></div>
                 <ProgressEvidence project={project} />

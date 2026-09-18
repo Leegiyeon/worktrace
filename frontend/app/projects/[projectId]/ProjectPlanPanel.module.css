@@ -1,0 +1,186 @@
+.panel {
+  grid-column: 1 / -1;
+  align-self: start;
+  display: grid;
+  gap: 12px;
+  height: auto;
+}
+
+.heading,
+.actions,
+.historyHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.heading,
+.historyHeader {
+  justify-content: space-between;
+}
+
+.heading h2,
+.historyHeader h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.facts,
+.previewGrid,
+.milestoneList,
+.history {
+  display: grid;
+  gap: 8px;
+}
+
+.facts {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.facts div,
+.milestoneList div,
+.history article {
+  min-width: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.facts dt,
+.previewList small,
+.milestoneList dt,
+.history small,
+.muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.facts dd,
+.milestoneList dd {
+  margin: 3px 0 0;
+  font-weight: 700;
+}
+
+.previewList {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 6px 0;
+}
+
+.previewList article {
+  display: grid;
+  gap: 3px;
+  padding: 6px 0;
+}
+
+.previewList strong,
+.history strong,
+.history p {
+  overflow-wrap: anywhere;
+}
+
+.form {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 12px 0 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.form label:not(.check) {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.field label {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.form textarea,
+.form select {
+  width: 100%;
+  min-width: 0;
+}
+
+.form textarea {
+  min-height: 76px;
+}
+
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 13px;
+}
+
+.check input[type="checkbox"] {
+  appearance: auto;
+  width: 16px;
+  min-width: 16px;
+  max-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  flex: 0 0 16px;
+  margin-top: 2px;
+  accent-color: var(--primary);
+}
+
+.error,
+.success,
+.warning {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+.error { background: #fff1f0; color: var(--danger); }
+.success { background: #ecfdf3; color: var(--success); }
+.warning { background: #fffbeb; color: var(--warning); }
+
+.reviewDetails {
+  display: block;
+}
+
+.reviewDetails summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.reviewBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.72fr);
+  gap: 12px;
+  align-items: start;
+  margin-top: 12px;
+}
+
+@media (max-width: 720px) {
+  .reviewBody {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .actions button {
+    flex: 1 1 140px;
+  }
+}

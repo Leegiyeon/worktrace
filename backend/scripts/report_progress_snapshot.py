@@ -10,6 +10,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from app.core.config import get_settings
 from app.db.connection import connect
 from app.services.projects import list_project_milestones, list_projects
+from app.services.auto_report import _progress_provenance
 
 
 def main() -> None:
@@ -38,12 +39,13 @@ def main() -> None:
 
             basis = {
                 "milestone": "milestone",
-                "wbs": "wbs-fallback",
+                "wbs": "approved-wbs",
                 "unscoped": "unscoped",
             }.get(project.progress_basis, project.progress_basis)
-            progress_text = "산정 전" if project.progress_basis == "unscoped" else f"{project.progress_percent}%"
+            progress_text = _progress_provenance(project)
             print(
                 f"PROJECT {project.title}: progress={progress_text} basis={basis} "
+                f"plan={project.progress_plan_status} version={project.progress_plan_version} "
                 f"wbs={project.completed_tasks}/{project.total_tasks} remaining={project.remaining_tasks} "
                 f"milestones={project.milestone_count} evidence={evidence_count} "
                 f"derived_wbs={task_stats['synthetic_done']}/{task_stats['synthetic_total']} "

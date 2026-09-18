@@ -12,6 +12,8 @@ def test_gate_counts_manual_null_source_tasks_but_not_synthetic_checkpoints():
         {"status": "planned", "counts_toward_progress": True, "source_provider": "derived-github", "source_key": "milestone-validation:test"},
         {"status": "planned", "counts_toward_progress": False},
     ]}
+    assert _block_reasons(context) == ["산정 대상 WBS 1개가 미완료입니다.", "산정 제외 업무의 사유를 프로젝트 계획에서 승인하세요."]
+    context["plan"] = {"status": "approved"}
     assert _block_reasons(context) == ["산정 대상 WBS 1개가 미완료입니다."]
 
 

@@ -78,7 +78,7 @@ def test_deploy_reports_real_progress_without_business_data_sync() -> None:
     assert "github_issue_wbs=" in report
     assert "source_key LIKE 'issue:%%'" in report
     assert "source_key LIKE 'issue:%'" not in report.replace("issue:%%", "")
-    assert 'progress_text = "산정 전" if project.progress_basis == "unscoped"' in report
+    assert 'progress_text = _progress_provenance(project)' in report
 
 
 def test_deploy_script_runs_with_mocked_commands_at_verified_sha(tmp_path: Path) -> None:

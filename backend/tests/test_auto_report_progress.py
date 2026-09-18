@@ -18,7 +18,8 @@ def summary(**overrides):
     return ProjectSummary(**{
         "id": sample_dataset().projects[0].id, "title": "Project", "status": "done",
         "updated_at": AS_OF, "total_tasks": 4, "completed_tasks": 1, "remaining_tasks": 3,
-        "progress_basis": "wbs", "progress_percent": 25, "derived_task_count": 0, **overrides,
+        "progress_basis": "wbs", "progress_percent": 25, "derived_task_count": 0,
+        "progress_plan_status": "approved", "progress_plan_version": 1, **overrides,
     })
 
 
@@ -27,7 +28,7 @@ def summary(**overrides):
     ("wbs", 0, 0, "0%", 0),
     ("wbs", 25, 0, "25%", 25),
     ("milestone", 63, 0, "63%", 63),
-    ("milestone", 100, 4, "참고 100%", 100),
+    ("milestone", 100, 4, "100%", 100),
 ])
 def test_report_reuses_current_project_progress_without_inventing_scores(basis, percent, derived, label, expected):
     current = summary(progress_basis=basis, progress_percent=percent, derived_task_count=derived)
@@ -36,6 +37,7 @@ def test_report_reuses_current_project_progress_without_inventing_scores(basis, 
     assert candidate.progress_percent == candidate.suggested_progress_percent == expected
     assert candidate.total_tasks == 4 and candidate.completed_tasks == 1
     assert candidate.progress_basis == basis and candidate.derived_task_count == derived
+    assert candidate.progress_plan_status == "approved" and candidate.progress_plan_version == 1
     assert candidate.provenance == label and candidate.as_of == AS_OF
     assert "## 현재 WBS 진척" in report.markdown and AS_OF in report.markdown and label in report.markdown
     assert "진행률 후보" not in report.markdown
@@ -46,6 +48,16 @@ def test_missing_current_summary_stays_unknown_even_for_active_project_with_docu
     candidate = report.progress_candidates[0]
     assert candidate.progress_basis == "unknown" and candidate.progress_percent is None
     assert candidate.total_tasks is None and candidate.provenance == "기준 미확인"
+
+
+@pytest.mark.parametrize("state,label", [("unapproved", "계획 미승인"), ("stale", "계획 재승인 필요")])
+def test_report_never_presents_unapproved_or_stale_progress_as_percent(state, label):
+    report = build_auto_report_response(sample_dataset(), "weekly", date(2026, 6, 1), date(2026, 6, 7),
+                                        [summary(progress_plan_status=state, progress_percent=100)], AS_OF)
+    candidate = report.progress_candidates[0]
+    assert candidate.progress_percent is None and candidate.suggested_progress_percent is None
+    assert candidate.provenance == label
+    assert "100%" not in report.markdown
 
 
 def test_report_api_fetches_owner_scoped_canonical_summary(monkeypatch):

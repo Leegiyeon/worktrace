@@ -3,6 +3,8 @@ export type ServiceStatus = "unknown" | "not_released" | "operating" | "retired"
 export type TaskStatus = "planned" | "in_progress" | "done" | "on_hold";
 export type TaskPriority = "low" | "medium" | "high";
 export type ProgressBasis = "milestone" | "wbs" | "unscoped";
+export type ProgressPlanStatus = "unapproved" | "approved" | "stale";
+export type ProgressPlanPolicy = "wbs" | "milestone";
 export type WorkType = "planning" | "meeting" | "research" | "deliverable" | "development" | "testing" | "reporting" | "coordination" | "problem_solving" | "other";
 export type OutcomeType = "quantitative" | "qualitative";
 export type CareerTargetRole = "IT기획" | "PM" | "AI서비스기획" | "Backend" | "DevOps";
@@ -25,9 +27,53 @@ export type ProjectSummary = {
   remaining_tasks: number;
   milestone_count: number;
   progress_basis: ProgressBasis;
-  progress_percent: number;
+  progress_percent: number | null;
+  progress_plan_status?: ProgressPlanStatus;
+  progress_plan_version?: number;
   derived_task_count?: number;
   updated_at: string;
+};
+
+export type ProjectPlanTaskPreview = {
+  id: string;
+  title: string;
+  description: string;
+  milestone_id: string | null;
+  milestone_title?: string | null;
+  counts_toward_progress: boolean;
+  source_provider: string | null;
+  source_key: string | null;
+};
+
+export type ProjectPlanMilestonePreview = {
+  id: string;
+  title: string;
+  weight: number;
+};
+
+export type ProjectPlanHistory = {
+  id: string;
+  version: number;
+  policy: ProgressPlanPolicy;
+  reason: string;
+  exclusion_reason: string | null;
+  reviewed_derived: boolean;
+  approved_at: string;
+  actor_owner_id: string;
+};
+
+export type ProjectPlanSnapshot = {
+  version: number;
+  status: ProgressPlanStatus;
+  policy: ProgressPlanPolicy;
+  context_fingerprint: string;
+  total_tasks: number;
+  derived_task_count: number;
+  tasks: ProjectPlanTaskPreview[];
+  milestones: ProjectPlanMilestonePreview[];
+  excluded_tasks: { id: string; title: string }[];
+  policy_errors: Record<ProgressPlanPolicy, string[]>;
+  history: ProjectPlanHistory[];
 };
 
 export type ProjectMilestone = {
@@ -72,6 +118,7 @@ export type ProjectTask = {
   completed_at?: string | null;
   status_version?: number;
   source_provider?: string | null;
+  source_key?: string | null;
 };
 
 export type WorkLogItem = {

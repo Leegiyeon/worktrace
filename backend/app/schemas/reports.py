@@ -134,6 +134,8 @@ class ProjectProgressCandidate(BaseModel):
     progress_basis: ReportProgressBasis = "unknown"
     progress_percent: int | None = None
     suggested_progress_percent: int | None = None
+    progress_plan_status: str | None = None
+    progress_plan_version: int | None = None
     provenance: str
     as_of: str
     reason: str
