@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 ProjectStatus = Literal["idea", "review", "in_progress", "on_hold", "done"]
 ProjectServiceStatus = Literal["unknown", "not_released", "operating", "retired"]
@@ -153,6 +153,7 @@ class ProjectTaskCreate(ProjectBaseModel):
     title: str = Field(..., min_length=1, max_length=180)
     description: str = ""
     status: TaskStatus = "planned"
+    status_reason: str | None = Field(default=None, max_length=2000)
     priority: TaskPriority = "medium"
     due_date: date | None = None
     milestone_id: UUID | None = None
@@ -163,10 +164,20 @@ class ProjectTaskUpdate(ProjectBaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=180)
     description: str | None = None
     status: TaskStatus | None = None
+    status_reason: str | None = Field(default=None, max_length=2000)
+    expected_status_version: int | None = Field(default=None, ge=0)
     priority: TaskPriority | None = None
     due_date: date | None = None
     milestone_id: UUID | None = None
     counts_toward_progress: bool | None = None
+
+    @model_validator(mode="after")
+    def status_updates_require_expected_version(self) -> "ProjectTaskUpdate":
+        if "status" in self.model_fields_set and self.status is None:
+            raise ValueError("status must not be null")
+        if self.status is not None and self.expected_status_version is None:
+            raise ValueError("expected_status_version is required when status is supplied")
+        return self
 
 
 class ProjectTask(ProjectBaseModel):
@@ -175,12 +186,34 @@ class ProjectTask(ProjectBaseModel):
     title: str
     description: str = ""
     status: TaskStatus
+    completed_at: str | None = None
+    status_version: int = 0
     priority: TaskPriority = "medium"
     due_date: str | None = None
     milestone_id: str | None = None
     counts_toward_progress: bool = True
+    source_provider: str | None = None
     created_at: str
     updated_at: str
+
+
+TaskStatusHistorySource = Literal["user", "milestone_validation", "system"]
+
+
+class ProjectTaskStatusHistoryItem(ProjectBaseModel):
+    id: str
+    previous_status: TaskStatus | None = None
+    status: TaskStatus
+    actor_owner_id: str | None = None
+    source: TaskStatusHistorySource
+    reason: str | None = None
+    changed_at: str
+    status_version: int
+
+
+class ProjectTaskStatusHistory(ProjectBaseModel):
+    items: list[ProjectTaskStatusHistoryItem] = Field(default_factory=list)
+    total: int = 0
 
 
 class RepositorySourceCreate(BaseModel):

@@ -18,6 +18,8 @@ from app.schemas.projects import (
     ProjectSummary,
     ProjectTask,
     ProjectTaskCreate,
+    ProjectTaskStatusHistory,
+    ProjectTaskStatusHistoryItem,
     ProjectTaskUpdate,
     ProjectUpdate,
     RepositorySource,
@@ -46,6 +48,10 @@ class ProjectStatusUpdateForbiddenError(Exception):
 
 
 class ProjectTaskNotFoundError(Exception):
+    pass
+
+
+class ProjectTaskStatusConflictError(Exception):
     pass
 
 
@@ -411,8 +417,9 @@ def list_project_tasks(settings: Settings, owner_id: str, project_id: UUID) -> l
         rows = connection.execute(
             """
             SELECT t.id::text, t.project_id::text, t.title, t.description, t.status,
+                   t.completed_at::text, COALESCE(t.status_version, 0)::bigint AS status_version,
                    t.priority, t.due_date::text, t.milestone_id::text, t.counts_toward_progress,
-                   t.created_at::text, t.updated_at::text
+                   t.source_provider, t.created_at::text, t.updated_at::text
             FROM project_tasks t
             JOIN projects p ON p.id = t.project_id AND p.owner_id = %(owner_id)s
             WHERE t.owner_id = %(owner_id)s AND t.project_id = %(project_id)s
@@ -432,14 +439,16 @@ def create_project_task(settings: Settings, owner_id: str, project_id: UUID, pay
         _ensure_milestone_exists(settings, owner_id, project_id, payload.milestone_id)
     with connect(settings) as connection:
         _lock_project_for_write(connection, owner_id, project_id)
+        _set_task_status_context(connection, actor_owner_id=owner_id, source="user", reason=payload.status_reason)
         row = connection.execute(
             """
             INSERT INTO project_tasks (owner_id, project_id, title, description, status, priority, due_date, milestone_id, counts_toward_progress)
             VALUES (%(owner_id)s, %(project_id)s, %(title)s, %(description)s, %(status)s, %(priority)s, %(due_date)s, %(milestone_id)s, %(counts_toward_progress)s)
             RETURNING id::text, project_id::text, title, description, status, priority, due_date::text,
-                      milestone_id::text, counts_toward_progress, created_at::text, updated_at::text
+                      completed_at::text, COALESCE(status_version, 0)::bigint AS status_version,
+                      milestone_id::text, counts_toward_progress, source_provider, created_at::text, updated_at::text
             """,
-            {"owner_id": owner_id, "project_id": project_id, **payload.model_dump()},
+            {"owner_id": owner_id, "project_id": project_id, **payload.model_dump(exclude={"status_reason"})},
         ).fetchone()
         connection.execute("UPDATE projects SET updated_at=now() WHERE owner_id=%s AND id=%s", (owner_id, project_id))
     return _task_from_row(row)
@@ -452,8 +461,9 @@ def update_project_task(settings: Settings, owner_id: str, project_id: UUID, tas
         existing = connection.execute(
             """
             SELECT t.id::text, t.project_id::text, t.title, t.description, t.status, t.priority,
+                   t.completed_at::text, COALESCE(t.status_version, 0)::bigint AS status_version,
                    t.due_date::text, t.milestone_id::text, t.counts_toward_progress,
-                   t.created_at::text, t.updated_at::text
+                   t.source_provider, t.created_at::text, t.updated_at::text
             FROM project_tasks t
             WHERE t.owner_id=%s AND t.project_id=%s AND t.id=%s
             FOR UPDATE
@@ -462,6 +472,8 @@ def update_project_task(settings: Settings, owner_id: str, project_id: UUID, tas
         ).fetchone()
         if existing is None:
             raise ProjectTaskNotFoundError()
+        if "status" in updates and int(existing.get("status_version") or 0) != int(updates["expected_status_version"]):
+            raise ProjectTaskStatusConflictError()
         milestone_id = updates["milestone_id"] if "milestone_id" in updates else existing.get("milestone_id")
         if "milestone_id" in updates and milestone_id is not None:
             _ensure_milestone_exists_in_connection(connection, owner_id, project_id, UUID(str(milestone_id)))
@@ -474,6 +486,8 @@ def update_project_task(settings: Settings, owner_id: str, project_id: UUID, tas
             "milestone_id": milestone_id,
             "counts_toward_progress": updates.get("counts_toward_progress", existing.get("counts_toward_progress", True)),
         }
+        if "status" in updates:
+            _set_task_status_context(connection, actor_owner_id=owner_id, source="user", reason=updates.get("status_reason"))
         row = connection.execute(
             """
             UPDATE project_tasks t
@@ -484,8 +498,9 @@ def update_project_task(settings: Settings, owner_id: str, project_id: UUID, tas
             WHERE p.id=t.project_id AND p.owner_id=%(owner_id)s AND t.owner_id=%(owner_id)s
               AND t.project_id=%(project_id)s AND t.id=%(task_id)s
             RETURNING t.id::text, t.project_id::text, t.title, t.description, t.status, t.priority,
+                      t.completed_at::text, COALESCE(t.status_version, 0)::bigint AS status_version,
                       t.due_date::text, t.milestone_id::text, t.counts_toward_progress,
-                      t.created_at::text, t.updated_at::text
+                      t.source_provider, t.created_at::text, t.updated_at::text
             """,
             {"owner_id": owner_id, "project_id": project_id, "task_id": task_id, **next_values},
         ).fetchone()
@@ -514,8 +529,9 @@ def get_project_task(settings: Settings, owner_id: str, project_id: UUID, task_i
         row = connection.execute(
             """
             SELECT t.id::text, t.project_id::text, t.title, t.description, t.status, t.priority,
+                   t.completed_at::text, COALESCE(t.status_version, 0)::bigint AS status_version,
                    t.due_date::text, t.milestone_id::text, t.counts_toward_progress,
-                   t.created_at::text, t.updated_at::text
+                   t.source_provider, t.created_at::text, t.updated_at::text
             FROM project_tasks t
             JOIN projects p ON p.id=t.project_id AND p.owner_id=%(owner_id)s
             WHERE t.owner_id=%(owner_id)s AND t.project_id=%(project_id)s AND t.id=%(task_id)s
@@ -525,6 +541,36 @@ def get_project_task(settings: Settings, owner_id: str, project_id: UUID, task_i
     if row is None:
         raise ProjectTaskNotFoundError()
     return _task_from_row(row)
+
+
+def get_project_task_status_history(settings: Settings, owner_id: str, project_id: UUID, task_id: UUID) -> ProjectTaskStatusHistory:
+    with connect(settings) as connection:
+        task = connection.execute(
+            "SELECT id FROM project_tasks WHERE owner_id=%s AND project_id=%s AND id=%s",
+            (owner_id, project_id, task_id),
+        ).fetchone()
+        if task is None:
+            raise ProjectTaskNotFoundError()
+        total = connection.execute(
+            """
+            SELECT COUNT(*)::int AS total
+            FROM project_task_status_history
+            WHERE owner_id=%s AND project_id=%s AND task_id=%s
+            """,
+            (owner_id, project_id, task_id),
+        ).fetchone()["total"]
+        rows = connection.execute(
+            """
+            SELECT id::text, previous_status, next_status AS status, actor_owner_id, source,
+                   reason, changed_at::text, status_version
+            FROM project_task_status_history
+            WHERE owner_id=%s AND project_id=%s AND task_id=%s
+            ORDER BY status_version DESC
+            LIMIT 50
+            """,
+            (owner_id, project_id, task_id),
+        ).fetchall()
+    return ProjectTaskStatusHistory(items=[ProjectTaskStatusHistoryItem(**row) for row in rows], total=total)
 
 
 def _ensure_project_exists(settings: Settings, owner_id: str, project_id: UUID) -> None:
@@ -560,6 +606,18 @@ def _select_milestone(connection, owner_id: str, project_id: UUID, milestone_id:
         "SELECT id FROM project_milestones WHERE owner_id=%s AND project_id=%s AND id=%s",
         (owner_id, project_id, milestone_id),
     ).fetchone()
+
+
+def _set_task_status_context(connection, *, actor_owner_id: str | None, source: str, reason: str | None = None) -> None:
+    normalized_reason = reason if reason is not None and reason.strip() else ""
+    connection.execute(
+        """
+        SELECT set_config('worktrace.task_status_actor_owner_id', %s, true),
+               set_config('worktrace.task_status_source', %s, true),
+               set_config('worktrace.task_status_reason', %s, true)
+        """,
+        (actor_owner_id or "", source, normalized_reason),
+    )
 
 
 _PROJECT_SUMMARY_SQL = """
@@ -704,7 +762,8 @@ def _milestone_from_row(row) -> ProjectMilestone:
 def _task_from_row(row) -> ProjectTask:
     return ProjectTask(
         id=row["id"], project_id=row["project_id"], title=row["title"], description=row.get("description") or "",
-        status=row["status"], priority=row.get("priority") or "medium", due_date=row.get("due_date"),
+        status=row["status"], completed_at=row.get("completed_at"), status_version=row.get("status_version") or 0,
+        priority=row.get("priority") or "medium", due_date=row.get("due_date"),
         milestone_id=row.get("milestone_id"), counts_toward_progress=row.get("counts_toward_progress", True),
-        created_at=row["created_at"], updated_at=row["updated_at"],
+        source_provider=row.get("source_provider"), created_at=row["created_at"], updated_at=row["updated_at"],
     )

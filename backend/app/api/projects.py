@@ -18,6 +18,7 @@ from app.schemas.projects import (
     ProjectSummary,
     ProjectTask,
     ProjectTaskCreate,
+    ProjectTaskStatusHistory,
     ProjectTaskUpdate,
     ProjectUpdate,
     RepositorySource,
@@ -33,6 +34,7 @@ from app.services.projects import (
     ProjectNotFoundError,
     ProjectStatusUpdateForbiddenError,
     ProjectTaskNotFoundError,
+    ProjectTaskStatusConflictError,
     RepositorySourceConflictError,
     create_project,
     create_project_milestone,
@@ -44,6 +46,7 @@ from app.services.projects import (
     get_project,
     get_project_lifecycle,
     get_repository_source,
+    get_project_task_status_history,
     list_project_commits,
     list_project_milestones,
     list_project_tasks,
@@ -228,8 +231,20 @@ def patch_task(project_id: UUID, task_id: UUID, payload: ProjectTaskUpdate, owne
         raise _project_not_found() from exc
     except ProjectTaskNotFoundError as exc:
         raise _task_not_found() from exc
+    except ProjectTaskStatusConflictError as exc:
+        raise http_error(status.HTTP_409_CONFLICT, "PROJECT_TASK_STATUS_VERSION_CONFLICT", "Project task status version does not match.") from exc
     except ProjectMilestoneNotFoundError as exc:
         raise _milestone_not_found() from exc
+    except psycopg.Error as exc:
+        raise http_error(status.HTTP_503_SERVICE_UNAVAILABLE, "DATABASE_UNAVAILABLE", "Database is unavailable.") from exc
+
+
+@router.get("/{project_id}/tasks/{task_id}/history", response_model=ProjectTaskStatusHistory)
+def get_task_history(project_id: UUID, task_id: UUID, owner_id: str = Depends(require_report_access), settings: Settings = Depends(get_settings)) -> ProjectTaskStatusHistory:
+    try:
+        return get_project_task_status_history(settings, owner_id, project_id, task_id)
+    except ProjectTaskNotFoundError as exc:
+        raise _task_not_found() from exc
     except psycopg.Error as exc:
         raise http_error(status.HTTP_503_SERVICE_UNAVAILABLE, "DATABASE_UNAVAILABLE", "Database is unavailable.") from exc
 

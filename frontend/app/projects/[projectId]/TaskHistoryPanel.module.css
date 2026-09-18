@@ -1,0 +1,6 @@
+.history { min-width: 0; border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px; font-size: 13px; overflow-wrap: anywhere; }
+.history summary { cursor: pointer; font-weight: 600; line-height: 1.6; }
+.heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 0; }
+.history article { border-top: 1px solid var(--border); padding: 12px 0; display: grid; gap: 6px; }
+.history p { margin: 0; white-space: pre-wrap; }
+.history time, .history article span { color: var(--muted); }

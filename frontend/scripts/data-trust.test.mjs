@@ -3,10 +3,10 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("modified timestamps and bounded commit results have literal labels", () => {
-  assert.match(read("app/page.tsx"), /이번 주 갱신된 완료 업무/);
-  assert.match(read("app/page.tsx"), /<th>수정일<\/th>/);
-  assert.doesNotMatch(read("app/page.tsx"), /<th>완료일<\/th>/);
+test("recorded completion timestamps and bounded commit results have literal labels", () => {
+  assert.match(read("app/page.tsx"), /이번 주 완료 처리한 업무/);
+  assert.match(read("app/page.tsx"), /완료 처리일 \(한국 시간\)/);
+  assert.match(read("app/page.tsx"), /recordedCompletionsThisWeek\(/);
   assert.match(read("app/projects/[projectId]/page.tsx"), /조회된 커밋 근거/);
 });
 

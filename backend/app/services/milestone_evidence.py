@@ -4,7 +4,7 @@ from app.core.config import Settings
 from app.db.connection import connect
 from app.schemas.milestone_evidence import MilestoneEvidenceItem, MilestoneEvidenceSummary, MilestoneWorkItem
 from app.services.milestone_review_state import latest_review_allows_completion
-from app.services.projects import ProjectMilestoneNotFoundError
+from app.services.projects import ProjectMilestoneNotFoundError, ProjectNotFoundError, _lock_project_for_write, _set_task_status_context
 
 
 class MilestoneValidationTaskNotFoundError(Exception):
@@ -133,6 +133,10 @@ def update_milestone_validation_status(
     next_status: str,
 ) -> MilestoneEvidenceSummary:
     with connect(settings) as connection:
+        try:
+            _lock_project_for_write(connection, owner_id, project_id)
+        except ProjectNotFoundError as exc:
+            raise ProjectMilestoneNotFoundError() from exc
         milestone = connection.execute(
             """
             SELECT id, COALESCE(acceptance_criteria, '') AS acceptance_criteria
@@ -177,6 +181,7 @@ def update_milestone_validation_status(
             if not latest_review_allows_completion(settings, owner_id, project_id, milestone_id):
                 raise MilestoneValidationBlockedError()
 
+        _set_task_status_context(connection, actor_owner_id=owner_id, source="milestone_validation")
         connection.execute(
             """
             UPDATE project_tasks

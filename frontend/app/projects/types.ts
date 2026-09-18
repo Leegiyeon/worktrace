@@ -69,6 +69,9 @@ export type ProjectTask = {
   counts_toward_progress: boolean;
   created_at: string;
   updated_at: string;
+  completed_at?: string | null;
+  status_version?: number;
+  source_provider?: string | null;
 };
 
 export type WorkLogItem = {

@@ -24,6 +24,10 @@ class FakeConnection:
 
     def execute(self, query, params):
         normalized = " ".join(query.split())
+        if "SELECT id FROM projects" in normalized:
+            return FakeResult({"id": params[1]})
+        if "set_config(" in normalized:
+            return FakeResult(None)
         if "FROM project_milestones" in normalized:
             return FakeResult({"id": params[2], "acceptance_criteria": self.criteria})
         if "SELECT id FROM project_tasks" in normalized:
@@ -36,6 +40,20 @@ class FakeConnection:
         if "UPDATE projects" in normalized:
             return FakeResult(None)
         raise AssertionError(normalized)
+
+
+def test_missing_project_preserves_milestone_not_found_error(monkeypatch):
+    @contextmanager
+    def fake_connect(settings):
+        yield FakeConnection(0)
+
+    def missing(*args):
+        raise service.ProjectNotFoundError()
+
+    monkeypatch.setattr(service, "connect", fake_connect)
+    monkeypatch.setattr(service, "_lock_project_for_write", missing)
+    with pytest.raises(service.ProjectMilestoneNotFoundError):
+        service.update_milestone_validation_status(SimpleNamespace(), "owner", uuid4(), uuid4(), "done")
 
 
 def test_validation_completion_is_blocked_while_real_wbs_remains(monkeypatch) -> None:

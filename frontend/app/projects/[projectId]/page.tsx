@@ -8,6 +8,7 @@ import { parseApiErrorMessage } from "../../reports/api-error";
 import { CareerPanel } from "./CareerPanel";
 import { GitHubEvidencePanel } from "./GitHubEvidencePanel";
 import { ProjectLifecyclePanel } from "./ProjectLifecyclePanel";
+import { TaskHistoryPanel } from "./TaskHistoryPanel";
 import styles from "./page.module.css";
 import type {
   CareerAsset,
@@ -47,6 +48,8 @@ type DetailLoadFailure = "logs" | "outcomes" | "career" | "commits" | "githubSta
 type OutcomeStage = "candidates" | "review" | "confirmed";
 
 type TaskForm = {
+  status_reason: string;
+  expected_status_version?: number;
   title: string;
   description: string;
   status: TaskStatus;
@@ -107,6 +110,7 @@ const taskViewModes: TaskViewMode[] = ["board", "list", "calendar"];
 const taskSortKeys = ["due_date", "priority", "created_at", "status", "progress_scope"] as const;
 type TaskSortKey = (typeof taskSortKeys)[number];
 const initialTaskForm: TaskForm = {
+  status_reason: "",
   title: "",
   description: "",
   status: "planned",
@@ -372,6 +376,8 @@ export default function ProjectDetailPage({ params }: PageProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingProject, setIsSavingProject] = useState(false);
   const [isSavingTask, setIsSavingTask] = useState(false);
+  const [taskConflict, setTaskConflict] = useState(false);
+  const taskBusy = useRef(false);
   const [isSavingLog, setIsSavingLog] = useState(false);
   const [isSavingOutcome, setIsSavingOutcome] = useState(false);
   const [isGeneratingCareer, setIsGeneratingCareer] = useState(false);
@@ -419,6 +425,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
   }
 
   function cancelTaskForm() {
+    setTaskConflict(false);
     setEditingTaskId(null);
     setTaskForm(initialTaskForm);
     setIsTaskFormVisible(false);
@@ -630,6 +637,12 @@ export default function ProjectDetailPage({ params }: PageProps) {
 
   async function handleSaveTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (taskBusy.current || taskConflict) return;
+    if (editingTaskId && taskForm.expected_status_version === undefined) {
+      setTaskConflict(true);
+      setErrorMessage("최신 업무 상태를 먼저 확인하세요.");
+      return;
+    }
     setSuccessMessage("");
     if (!taskForm.title.trim()) {
       setErrorMessage("업무명을 입력하세요.");
@@ -638,6 +651,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
 
     const payload = { ...taskForm, due_date: taskForm.due_date || null, milestone_id: taskForm.milestone_id || null };
     const success = editingTaskId ? "업무 수정 완료" : "업무 추가 완료";
+    taskBusy.current = true;
     setIsSavingTask(true);
     setErrorMessage("");
     setSuccessMessage("");
@@ -660,16 +674,21 @@ export default function ProjectDetailPage({ params }: PageProps) {
       await loadProject();
       setSuccessMessage(success);
     } catch (error) {
+      if (editingTaskId) setTaskConflict(true);
       setErrorMessage(error instanceof Error ? error.message : "업무를 저장하지 못했습니다.");
     } finally {
+      taskBusy.current = false;
       setIsSavingTask(false);
     }
   }
 
   function startEdit(task: ProjectTask) {
+    setTaskConflict(false);
     setSuccessMessage("");
     setEditingTaskId(task.id);
     setTaskForm({
+      status_reason: "",
+      expected_status_version: task.status_version,
       title: task.title,
       description: task.description,
       status: task.status,
@@ -683,13 +702,22 @@ export default function ProjectDetailPage({ params }: PageProps) {
   }
 
   async function updateStatus(task: ProjectTask, status: TaskStatus) {
+    if (taskBusy.current) return;
+    if (task.status_version === undefined) {
+      startEdit(task);
+      setTaskConflict(true);
+      setErrorMessage("최신 업무 상태를 먼저 확인하세요.");
+      return;
+    }
+    taskBusy.current = true;
+    setIsSavingTask(true);
     setErrorMessage("");
     setSuccessMessage("");
     try {
       const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status })
+        body: JSON.stringify({ status, expected_status_version: task.status_version })
       });
       if (!response.ok) {
         const detail = await response.json().catch(() => null);
@@ -698,7 +726,35 @@ export default function ProjectDetailPage({ params }: PageProps) {
       await loadProject();
       setSuccessMessage("업무 상태 변경 완료");
     } catch (error) {
+      startEdit(task);
+      setTaskConflict(true);
       setErrorMessage(error instanceof Error ? error.message : "업무 상태를 변경하지 못했습니다.");
+    } finally {
+      taskBusy.current = false;
+      setIsSavingTask(false);
+    }
+  }
+
+  async function refreshTaskStatus() {
+    if (taskBusy.current || !editingTaskId) return;
+    taskBusy.current = true;
+    setIsSavingTask(true);
+    try {
+      const response = await fetch(`/api/projects/${projectId}/tasks`, { cache: "no-store" });
+      if (!response.ok) throw new Error("최신 업무 상태를 불러오지 못했습니다.");
+      const data: ProjectTask[] = await response.json();
+      const latest = data.find((task) => task.id === editingTaskId);
+      if (!latest || latest.status_version === undefined) throw new Error("업무가 없거나 상태 버전을 확인할 수 없습니다.");
+      setTasks(data);
+      setTaskForm((draft) => ({ ...draft, status: latest.status, expected_status_version: latest.status_version }));
+      setTaskConflict(false);
+      setErrorMessage("");
+      setSuccessMessage("최신 상태를 확인했습니다. 변경할 상태를 선택한 뒤 저장하세요.");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "최신 업무 상태를 불러오지 못했습니다.");
+    } finally {
+      taskBusy.current = false;
+      setIsSavingTask(false);
     }
   }
 
@@ -1164,6 +1220,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
 
       {activeTab === "tasks" ? (
             <section aria-labelledby="tab-tasks" className="task-workspace" id="panel-tasks" role="tabpanel">
+              <fieldset className={styles.taskControls} disabled={isSavingTask}>
               <div className={styles.taskCommandBar}>
                 <div className="view-switcher" aria-label="업무 보기 방식">
                   {taskViewModes.map((mode) => (
@@ -1180,7 +1237,8 @@ export default function ProjectDetailPage({ params }: PageProps) {
                 </div>
                 {!isTaskFormVisible ? <button className="primary-button" type="button" onClick={showNewTaskForm}>{editingTaskId ? "편집 양식 열기" : "WBS 항목 추가"}</button> : null}
               </div>
-              {isTaskFormVisible ? <TaskFormPanel editingTaskId={editingTaskId} isSavingTask={isSavingTask} milestones={milestones} milestonesUnavailable={loadFailures.includes("milestones")} taskForm={taskForm} setTaskForm={setTaskForm} onSubmit={handleSaveTask} onCancel={cancelTaskForm} onHide={hideTaskForm} /> : null}
+              {taskConflict ? <button className="secondary-button" type="button" onClick={() => void refreshTaskStatus()}>최신 업무 상태 확인</button> : null}
+              {isTaskFormVisible ? <TaskFormPanel task={tasks.find((task) => task.id === editingTaskId)} editingTaskId={editingTaskId} isSavingTask={isSavingTask || taskConflict} milestones={milestones} milestonesUnavailable={loadFailures.includes("milestones")} taskForm={taskForm} setTaskForm={setTaskForm} onSubmit={handleSaveTask} onCancel={cancelTaskForm} onHide={hideTaskForm} /> : null}
               {taskViewMode === "board" ? (
                 <section className="board-layout">
                   <section className="task-board" aria-label="업무 보드">
@@ -1198,6 +1256,7 @@ export default function ProjectDetailPage({ params }: PageProps) {
                 <section className="panel"><TaskTable issueFilter={taskIssueFilter} priorityFilter={taskPriorityFilter} setIssueFilter={(issue) => updateProjectDetailUrl({ tab: "tasks", issue })} setPriorityFilter={(priority) => updateProjectDetailUrl({ tab: "tasks", priority })} setSortKey={(sort) => updateProjectDetailUrl({ tab: "tasks", sort })} setStatusFilter={(status) => updateProjectDetailUrl({ tab: "tasks", status })} sortKey={taskSortKey} startEdit={startEdit} statusFilter={taskStatusFilter} tasks={dashboard.sortedTasks} updateStatus={updateStatus} /></section>
               ) : null}
               {taskViewMode === "calendar" ? <CalendarPanel tasks={tasks} /> : null}
+              </fieldset>
             </section>
           ) : null}
 
@@ -1234,7 +1293,7 @@ function MiniOutcomeList({ outcomes }: { outcomes: ProjectOutcome[] }) {
   return <div className="compact-list">{outcomes.map((outcome) => <div className="dense-list-row" key={outcome.id}><span>{outcome.title}</span><small>{outcomeMetric(outcome)}</small><b>{outcome.resume_ready ? "가능" : "보류"}</b></div>)}</div>;
 }
 
-function TaskFormPanel({ editingTaskId, isSavingTask, milestones, milestonesUnavailable, taskForm, setTaskForm, onSubmit, onCancel, onHide }: { editingTaskId: string | null; isSavingTask: boolean; milestones: ProjectMilestone[]; milestonesUnavailable: boolean; taskForm: TaskForm; setTaskForm: (form: TaskForm) => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; onCancel: () => void; onHide: () => void }) {
+function TaskFormPanel({ task, editingTaskId, isSavingTask, milestones, milestonesUnavailable, taskForm, setTaskForm, onSubmit, onCancel, onHide }: { task?: ProjectTask; editingTaskId: string | null; isSavingTask: boolean; milestones: ProjectMilestone[]; milestonesUnavailable: boolean; taskForm: TaskForm; setTaskForm: (form: TaskForm) => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; onCancel: () => void; onHide: () => void }) {
   const selectedMilestoneMissing = taskForm.milestone_id && !milestones.some((milestone) => milestone.id === taskForm.milestone_id);
   const titleInput = useRef<HTMLInputElement>(null);
 
@@ -1254,7 +1313,7 @@ function TaskFormPanel({ editingTaskId, isSavingTask, milestones, milestonesUnav
       <form className="stacked-form compact-form" onSubmit={onSubmit}>
         <div className="form-grid three-columns">
           <label>항목명<input ref={titleInput} placeholder="예: API 응답 시간 개선" value={taskForm.title} onChange={(event) => setTaskForm({ ...taskForm, title: event.target.value })} /></label>
-          <label>상태<select value={taskForm.status} onChange={(event) => setTaskForm({ ...taskForm, status: event.target.value as TaskStatus })}>{Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label>상태<select aria-label="업무 상태" value={taskForm.status} onChange={(event) => setTaskForm({ ...taskForm, status: event.target.value as TaskStatus })}>{Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>우선순위<select value={taskForm.priority} onChange={(event) => setTaskForm({ ...taskForm, priority: event.target.value as TaskPriority })}>{Object.entries(taskPriorityLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         </div>
         <div className="form-grid two-columns">
@@ -1265,8 +1324,10 @@ function TaskFormPanel({ editingTaskId, isSavingTask, milestones, milestonesUnav
           <label>마일스톤<select aria-label="마일스톤" disabled={milestonesUnavailable} value={taskForm.milestone_id} onChange={(event) => setTaskForm({ ...taskForm, milestone_id: event.target.value })}><option value="">미지정</option>{selectedMilestoneMissing ? <option value={taskForm.milestone_id}>현재 연결된 마일스톤</option> : null}{milestones.map((milestone) => <option key={milestone.id} value={milestone.id}>{milestone.title}</option>)}</select></label>
           <label className="checkbox-row"><input checked={taskForm.counts_toward_progress} type="checkbox" onChange={(event) => setTaskForm({ ...taskForm, counts_toward_progress: event.target.checked })} /><span>진척 산정에 포함</span></label>
         </div>
-        <div className="form-actions"><button type="submit" disabled={isSavingTask}>{isSavingTask ? "저장 중" : editingTaskId ? "수정 저장" : "WBS 항목 추가"}</button></div>
+        <label>상태 변경 사유 (선택)<textarea maxLength={2000} value={taskForm.status_reason} onChange={(event) => setTaskForm({ ...taskForm, status_reason: event.target.value })} /></label>
+        <div className="form-actions"><button type="submit" disabled={isSavingTask}>{editingTaskId ? "수정 저장" : "WBS 항목 추가"}</button></div>
       </form>
+      {task ? <TaskHistoryPanel key={`${task.id}:${task.status_version}`} task={task} /> : null}
     </section>
   );
 }

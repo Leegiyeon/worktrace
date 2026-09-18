@@ -212,7 +212,7 @@ def test_project_tasks_crud_routes_use_owner_context(monkeypatch):
     update_response = client.patch(
         f"/projects/{PROJECT_ID}/tasks/{TASK_ID}",
         headers=HEADERS,
-        json={"status": "done", "priority": "low", "due_date": None},
+        json={"status": "done", "expected_status_version": 0, "priority": "low", "due_date": None},
     )
     delete_response = client.delete(f"/projects/{PROJECT_ID}/tasks/{TASK_ID}", headers=HEADERS)
 
@@ -231,6 +231,38 @@ def test_project_tasks_crud_routes_use_owner_context(monkeypatch):
     assert calls[2][2] == UUID(TASK_ID)
 
 
+def test_task_status_requires_version_and_rejects_null():
+    client = TestClient(app)
+    for payload in ({"status": "done"}, {"status": None, "expected_status_version": 0}):
+        response = client.patch(f"/projects/{PROJECT_ID}/tasks/{TASK_ID}", headers=HEADERS, json=payload)
+        assert response.status_code == 422
+
+
+def test_task_status_conflict_returns_stable_error(monkeypatch):
+    def conflict(*args):
+        raise projects.ProjectTaskStatusConflictError()
+
+    monkeypatch.setattr(projects, "update_project_task", conflict)
+    response = TestClient(app).patch(f"/projects/{PROJECT_ID}/tasks/{TASK_ID}", headers=HEADERS,
+                                     json={"status": "done", "expected_status_version": 1})
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "PROJECT_TASK_STATUS_VERSION_CONFLICT"
+
+
+def test_task_history_route_uses_authenticated_owner(monkeypatch):
+    from app.schemas.projects import ProjectTaskStatusHistory
+
+    def get_history(settings, owner_id, project_id, task_id):
+        assert owner_id == "local-owner" and project_id == UUID(PROJECT_ID) and task_id == UUID(TASK_ID)
+        return ProjectTaskStatusHistory(items=[], total=0)
+
+    monkeypatch.setattr(projects, "get_project_task_status_history", get_history)
+    client = TestClient(app)
+    path = f"/projects/{PROJECT_ID}/tasks/{TASK_ID}/history"
+    assert client.get(path).status_code == 401
+    assert client.get(path, headers=HEADERS).json() == {"items": [], "total": 0}
+
+
 def test_project_and_task_not_found_use_stable_errors(monkeypatch):
     def fake_get_project(settings, owner_id, project_id):
         raise ProjectNotFoundError()
@@ -246,7 +278,7 @@ def test_project_and_task_not_found_use_stable_errors(monkeypatch):
     task_response = client.patch(
         f"/projects/{PROJECT_ID}/tasks/{TASK_ID}",
         headers=HEADERS,
-        json={"status": "done"},
+        json={"status": "done", "expected_status_version": 0},
     )
 
     assert project_response.status_code == 404

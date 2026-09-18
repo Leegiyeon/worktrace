@@ -6,6 +6,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { ProjectSummary, ProjectTask, TaskStatus, WorkLogItem, WorkType } from "./projects/types";
 import { projectStatusLabels, serviceStatusLabels, taskPriorityLabels, taskStatusLabels, workTypeLabels } from "./projects/types";
 import { projectProgressDisplay, scopedProjectAverage, wbsActivityCounts } from "./projects/progress-display";
+import { completionDateLabel, recordedCompletionsThisWeek } from "./projects/task-completion";
 import { parseApiErrorMessage } from "./reports/api-error";
 import styles from "./page.module.css";
 
@@ -85,11 +86,6 @@ function managementIssueLabel(task: ProjectTask) {
   return "정상";
 }
 
-function isCompletedThisWeek(task: ProjectTask, weekStart: Date) {
-  if (task.status !== "done") return false;
-  return new Date(task.updated_at) >= weekStart;
-}
-
 type ProjectTaskBundle = {
   project: ProjectSummary;
   tasks: ProjectTask[];
@@ -165,9 +161,7 @@ export default function HomePage() {
     const activeProjects = projects.filter((project) => activeStatuses.has(project.status));
     const remainingTasks = projects.reduce((sum, project) => sum + project.remaining_tasks, 0);
     const averageProgress = scopedProjectAverage(projects);
-    const completedThisWeek = allTasks
-      .filter((task) => isCompletedThisWeek(task, weekStart))
-      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+    const completedThisWeek = recordedCompletionsThisWeek(allTasks);
     const attentionTasks = allTasks
       .filter(isManagementIssue)
       .sort((a, b) => {
@@ -548,7 +542,7 @@ export default function HomePage() {
 
         <section className="panel completed-panel">
           <div className="panel-title-row">
-            <h2>이번 주 갱신된 완료 업무</h2>
+            <h2>이번 주 완료 처리한 업무</h2>
             <span className="count-badge">{tasksUnavailable ? "-" : `${dashboard.completedThisWeek.length}개`}</span>
           </div>
           {tasksUnavailable ? <div className="empty-state">완료 업무를 확인하지 못했습니다.</div> : null}
@@ -561,7 +555,7 @@ export default function HomePage() {
                     <th>업무</th>
                     <th>프로젝트</th>
                     <th>우선순위</th>
-                    <th>수정일</th>
+                    <th>완료 처리일 (한국 시간)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -570,7 +564,7 @@ export default function HomePage() {
                       <td>{task.title}</td>
                       <td>{task.project_title}</td>
                       <td><span className={`meta-pill priority-${task.priority}`}>{taskPriorityLabels[task.priority]}</span></td>
-                      <td>{task.updated_at.slice(0, 10)}</td>
+                      <td>{completionDateLabel(task.completed_at)}</td>
                     </tr>
                   ))}
                 </tbody>
