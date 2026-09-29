@@ -46,6 +46,8 @@ def create_work_request(
                 f"SELECT {_SELECT_COLUMNS} FROM work_requests WHERE owner_id=%s AND request_id=%s",
                 (owner_id, payload.request_id),
             ).fetchone()
+            if row is None:
+                raise WorkRequestConflictError()
             if str(row["project_id"]) != str(project_id) or any(
                 row[field] != getattr(payload, field)
                 for field in ("title", "body", "desired_outcome", "constraints", "source")
