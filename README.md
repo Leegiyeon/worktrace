@@ -415,10 +415,10 @@ docker compose exec -T backend python scripts/sync_github_data.py \\
   --only-repository Leegiyeon/oneul-ui-gyeol --since 2026-09-01 --dry-run
 
 # 운영 DB 백업·복구와 기존 프로젝트 UUID 확인 후에만 실제 연결
-# <기존-프로젝트-UUID>를 Worktrace의 해당 프로젝트 ID로 교체
+# YOUR_EXISTING_PROJECT_UUID를 Worktrace의 해당 프로젝트 ID로 교체
 docker compose exec -T backend python scripts/sync_github_data.py \\
   --only-repository Leegiyeon/oneul-ui-gyeol --since 2026-09-01 \\
-  --project-id <기존-프로젝트-UUID>
+  --project-id YOUR_EXISTING_PROJECT_UUID
 ```
 
 지정한 프로젝트가 없거나 저장소가 다른 프로젝트에 이미 연결돼 있으면 수집을 중단합니다. 실제 연결은 기본 저장소 세 곳을 건드리지 않습니다. 미리보기의 건수와 실제 수집 결과, 실패 내용을 운영 기록에 남기세요.
