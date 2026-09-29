@@ -10,6 +10,7 @@ import { GitHubEvidencePanel } from "./GitHubEvidencePanel";
 import { ProjectLifecyclePanel } from "./ProjectLifecyclePanel";
 import { ProjectPlanPanel } from "./ProjectPlanPanel";
 import { TaskHistoryPanel } from "./TaskHistoryPanel";
+import { WorkRequestPanel } from "./WorkRequestPanel";
 import styles from "./page.module.css";
 import type {
   CareerAsset,
@@ -43,7 +44,7 @@ type PageProps = {
   params: Promise<{ projectId: string }>;
 };
 
-type DetailTab = "overview" | "tasks" | "github" | "logs" | "outcomes" | "career";
+type DetailTab = "overview" | "requests" | "tasks" | "github" | "logs" | "outcomes" | "career";
 type TaskViewMode = "board" | "list" | "calendar";
 type DetailLoadFailure = "logs" | "outcomes" | "career" | "commits" | "githubStatus" | "milestones";
 type OutcomeStage = "candidates" | "review" | "confirmed";
@@ -98,6 +99,7 @@ type OutcomeCandidate = OutcomeForm & {
 
 const tabs: { id: DetailTab; label: string }[] = [
   { id: "overview", label: "현황" },
+  { id: "requests", label: "요청" },
   { id: "tasks", label: "WBS · 이슈" },
   { id: "github", label: "GitHub 근거" },
   { id: "logs", label: "업무 로그" },
@@ -1218,6 +1220,10 @@ export default function ProjectDetailPage({ params }: PageProps) {
       <section aria-labelledby="tab-github" id="panel-github" role="tabpanel" hidden={activeTab !== "github"}>
         <GitHubEvidencePanel key={projectId} projectId={projectId} active={activeTab === "github"} tasks={tasks}
           onPlanningChanged={refreshPlanningData} onOpenTask={startEdit} />
+      </section>
+
+      <section aria-labelledby="tab-requests" id="panel-requests" role="tabpanel" hidden={activeTab !== "requests"}>
+        <WorkRequestPanel key={projectId} projectId={projectId} active={activeTab === "requests"} />
       </section>
 
       {activeTab === "tasks" ? (

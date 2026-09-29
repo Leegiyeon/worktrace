@@ -1,0 +1,11 @@
+.workspace { display: grid; gap: 16px; min-width: 0; }
+.workspace label { min-width: 0; }
+.workspace textarea { min-height: 88px; }
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.list li { min-width: 0; border-top: 1px solid var(--border); padding: 12px 0; overflow-wrap: anywhere; }
+.list li > div { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
+.list li small { color: var(--muted); }
+.list p { margin: 8px 0 0; white-space: pre-wrap; }
+.list b { margin-right: 6px; }
+.error { color: var(--danger); }
+.notice { color: var(--muted); }

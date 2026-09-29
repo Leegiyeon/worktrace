@@ -44,6 +44,11 @@ MVP는 다음 기능을 중심으로 설계한다.
 
 ## 3. 권장 기술 스택
 
+아래는 초기 문서 분석 MVP의 제안 스택이다. 현재 구현의 실행 기준은
+`README.md`와 실제 Compose·코드이며 FastAPI, PostgreSQL/pgvector,
+Next.js, Oracle Cloud 배포를 사용한다. 아래 Supabase/Drizzle 항목을
+현재 운영 구성으로 해석하지 않는다.
+
 초기 MVP 권장 스택은 다음을 기준으로 한다.
 
 - **App**: Next.js App Router, TypeScript

@@ -14,6 +14,7 @@ from app.api.projects import router as projects_router
 from app.api.reports import router as reports_router
 from app.api.report_snapshots import router as report_snapshots_router
 from app.api.work_logs import router as work_logs_router
+from app.api.work_requests import router as work_requests_router
 from app.core.config import get_settings, validate_runtime_settings
 
 settings = get_settings()
@@ -50,6 +51,7 @@ app.include_router(outcomes_router)
 app.include_router(reports_router)
 app.include_router(report_snapshots_router)
 app.include_router(work_logs_router)
+app.include_router(work_requests_router)
 
 
 @app.get("/")
