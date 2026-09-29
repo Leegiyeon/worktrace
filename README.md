@@ -407,6 +407,22 @@ docker compose exec -T backend python scripts/sync_github_data.py
 docker compose exec -T backend python scripts/report_progress_snapshot.py
 ```
 
+결틈처럼 **기존 Worktrace 프로젝트**에 비공개 저장소 하나를 연결할 때는 기본 명령을 사용하지 말고 범위를 명시합니다. 서버의 `GITHUB_SYNC_TOKEN`에 그 저장소의 읽기 권한이 필요합니다. `--since`는 기준 브랜치 커밋의 날짜와 Issue·PR의 수정일에 적용됩니다. 미수정 과거 Issue는 포함되지 않으므로 선택한 기간과 건수를 기록한 뒤 필요한 기간을 판단합니다. 미리보기는 DB에 연결하지 않고 원문도 출력하지 않습니다.
+
+```bash
+# 먼저 대상과 건수만 확인; DB 변경 없음
+docker compose exec -T backend python scripts/sync_github_data.py \\
+  --only-repository Leegiyeon/oneul-ui-gyeol --since 2026-09-01 --dry-run
+
+# 운영 DB 백업·복구와 기존 프로젝트 UUID 확인 후에만 실제 연결
+# <기존-프로젝트-UUID>를 Worktrace의 해당 프로젝트 ID로 교체
+docker compose exec -T backend python scripts/sync_github_data.py \\
+  --only-repository Leegiyeon/oneul-ui-gyeol --since 2026-09-01 \\
+  --project-id <기존-프로젝트-UUID>
+```
+
+지정한 프로젝트가 없거나 저장소가 다른 프로젝트에 이미 연결돼 있으면 수집을 중단합니다. 실제 연결은 기본 저장소 세 곳을 건드리지 않습니다. 미리보기의 건수와 실제 수집 결과, 실패 내용을 운영 기록에 남기세요.
+
 실행 전 `014_github_source_preservation.sql`까지 적용되어 있어야 합니다.
 재실행 시 GitHub 원본만 갱신하며 오래된 Issue·PR 응답은 최신 원본을 되돌리지 않습니다.
 사용자 편집 여부를 판별할 과거 이력이 없으므로 기존 업무 로그는 모두 보존합니다.
