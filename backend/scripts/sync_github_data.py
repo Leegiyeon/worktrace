@@ -7,6 +7,7 @@ import os
 import sys
 from collections import defaultdict
 from datetime import date
+from uuid import UUID
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import urlencode
@@ -244,7 +245,7 @@ def milestone_id_for(connection, owner_id: str, project_id: str, project_title: 
     return row["id"] if row else None
 
 
-def project_for(connection, owner_id: str, metadata: dict, title: str, fallback: str, role: str, readme: str = "") -> tuple[str, str]:
+def project_for(connection, owner_id: str, metadata: dict, title: str, fallback: str, role: str, readme: str = "", existing_project_id: str | None = None) -> tuple[str, str]:
     connection.execute(
         "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
         (f"github-source:{owner_id}:{metadata['id']}",),
@@ -255,6 +256,16 @@ def project_for(connection, owner_id: str, metadata: dict, title: str, fallback:
     ).fetchone()
     if source:
         project_id = source["project_id"]
+        if existing_project_id and str(project_id) != existing_project_id:
+            raise ValueError("Repository is already linked to a different project")
+    elif existing_project_id:
+        project = connection.execute(
+            "SELECT id::text FROM projects WHERE owner_id=%s AND id=%s FOR UPDATE",
+            (owner_id, existing_project_id),
+        ).fetchone()
+        if project is None:
+            raise ValueError("Target project does not exist for this owner")
+        project_id = project["id"]
     else:
         project_id = connection.execute(
             "INSERT INTO projects(owner_id,title,description,status) VALUES(%s,%s,%s,'idea') RETURNING id::text",
@@ -270,15 +281,15 @@ def project_for(connection, owner_id: str, metadata: dict, title: str, fallback:
     return project_id, metadata["full_name"]
 
 
-def sync_repo(connection, client: GitHubClient, owner_id: str, config: tuple[str, str, str, str], max_tasks: int) -> tuple[int, int, int]:
+def sync_repo(connection, client: GitHubClient, owner_id: str, config: tuple[str, str, str, str], max_tasks: int, *, since: str | None = None, existing_project_id: str | None = None) -> tuple[int, int, int]:
     requested, title, fallback, role = config
     metadata = client.get(f"/repos/{requested}")
-    project_id, full_name = project_for(connection, owner_id, metadata, title, fallback, role)
+    project_id, full_name = project_for(connection, owner_id, metadata, title, fallback, role, existing_project_id=existing_project_id)
     source = connection.execute(
         "SELECT id::text, default_branch FROM repository_sources WHERE owner_id=%s AND repository_id=%s", (owner_id, metadata["id"])
     ).fetchone()
     source_id = source["id"]
-    commits = client.pages(f"/repos/{full_name}/commits", sha=source["default_branch"])
+    commits = client.pages(f"/repos/{full_name}/commits", **{"sha": source["default_branch"], **({"since": since} if since else {})})
     by_day: dict[str, list[str]] = defaultdict(list)
     for item in commits:
         commit = item.get("commit") or {}
@@ -318,7 +329,7 @@ def sync_repo(connection, client: GitHubClient, owner_id: str, config: tuple[str
                DO NOTHING""",
             (owner_id, project_id, date.fromisoformat(day), f"GitHub 작업 · {len(titles)}개 커밋", content, f"day:{source_id}:{day}"),
         )
-    issues = client.pages(f"/repos/{full_name}/issues", state="all")
+    issues = client.pages(f"/repos/{full_name}/issues", **{"state": "all", **({"since": since} if since else {})})
     for issue in issues:
         kind = "pr" if "pull_request" in issue else "issue"
         connection.execute(
@@ -337,10 +348,50 @@ def sync_repo(connection, client: GitHubClient, owner_id: str, config: tuple[str
 def main() -> None:
     parser = argparse.ArgumentParser(description="Synchronize real GitHub evidence into Worktrace.")
     parser.add_argument("--cleanup-samples", action="store_true")
+    parser.add_argument("--only-repository", help="Synchronize exactly one owner/repository, without defaults.")
+    parser.add_argument("--since", help="UTC date (YYYY-MM-DD) for commits and issues updated since that day.")
+    parser.add_argument("--project-id", help="Existing Worktrace project UUID; never create a new project.")
+    parser.add_argument("--dry-run", action="store_true", help="Fetch counts without connecting to or changing Worktrace DB.")
     parser.add_argument("--repository", action="append", default=[], help="Additional owner/repository to synchronize and blueprint automatically.")
     parser.add_argument("--max-commit-tasks", type=int, default=100, help="Deprecated compatibility option; commits are evidence only.")
     args = parser.parse_args()
+    if args.only_repository:
+        if args.cleanup_samples or args.repository:
+            parser.error("--only-repository cannot be combined with --cleanup-samples or --repository")
+        if not args.since:
+            parser.error("--only-repository requires --since")
+        if not args.dry_run and not args.project_id:
+            parser.error("--only-repository write requires --project-id")
+        if len(args.only_repository.split("/")) != 2 or not all(args.only_repository.split("/")):
+            parser.error("--only-repository must be owner/repository")
+    elif args.dry_run or args.since or args.project_id:
+        parser.error("--dry-run, --since and --project-id require --only-repository")
+    if args.since:
+        try:
+            since = date.fromisoformat(args.since).isoformat()
+        except ValueError:
+            parser.error("--since must be a valid YYYY-MM-DD date")
+        if since != args.since:
+            parser.error("--since must use YYYY-MM-DD")
+    if args.project_id:
+        try:
+            project_id = str(UUID(args.project_id))
+        except ValueError:
+            parser.error("--project-id must be a UUID")
     settings, client = get_settings(), GitHubClient()
+    configs = repository_configs([args.only_repository])[-1:] if args.only_repository else repository_configs(args.repository)
+    if args.only_repository:
+        configs = tuple(config for config in repository_configs([args.only_repository]) if config[0].lower() == args.only_repository.lower())
+        if len(configs) != 1:
+            parser.error("--only-repository must identify one repository")
+    if args.dry_run:
+        config = configs[0]
+        metadata = client.get(f"/repos/{config[0]}")
+        full_name = metadata["full_name"]
+        commits = client.pages(f"/repos/{full_name}/commits", sha=metadata.get("default_branch") or "main", since=since)
+        issues = client.pages(f"/repos/{full_name}/issues", state="all", since=since)
+        print(f"GitHub sync preview: repository={full_name}, repository_id={metadata['id']}, since={since}, commits={len(commits)}, issue_pr={len(issues)}; database_changes=0")
+        return
     totals = [0, 0, 0]
     with connect(settings) as connection:
         if args.cleanup_samples:
@@ -348,8 +399,10 @@ def main() -> None:
                 "DELETE FROM projects WHERE owner_id=%s AND (title LIKE '[샘플]%%' OR title LIKE '[user_project_seed]%%')",
                 (settings.default_owner_id,),
             )
-        for config in repository_configs(args.repository):
-            counts = sync_repo(connection, client, settings.default_owner_id, config, args.max_commit_tasks)
+        for config in configs:
+            counts = sync_repo(connection, client, settings.default_owner_id, config, args.max_commit_tasks,
+                               since=f"{since}T00:00:00Z" if args.only_repository else None,
+                               existing_project_id=project_id if args.only_repository else None)
             totals = [left + right for left, right in zip(totals, counts)]
     print(f"GitHub sync complete: commits_fetched={totals[0]}, issue_pr_fetched={totals[1]}, work_log_days_seen={totals[2]}")
 
