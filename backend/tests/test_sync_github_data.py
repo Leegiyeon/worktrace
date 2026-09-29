@@ -1,3 +1,10 @@
+import sys
+from uuid import uuid4
+
+import pytest
+
+from scripts import sync_github_data as sync
+
 from scripts.sync_github_data import (
     REPOSITORIES,
     blueprint_for,
@@ -66,3 +73,70 @@ def test_known_project_keeps_curated_blueprint() -> None:
 
     assert "관제 업무" in blueprint["objective"]
     assert any(item[0] == "ai-assistant" for item in blueprint["milestones"])
+
+
+class _Result:
+    def __init__(self, row=None):
+        self.row = row
+
+    def fetchone(self):
+        return self.row
+
+
+def test_existing_project_link_uses_project_id_without_creating_duplicate() -> None:
+    project_id = str(uuid4())
+    queries = []
+
+    class Connection:
+        def execute(self, query, params):
+            queries.append((" ".join(query.split()), params))
+            if "SELECT project_id::text FROM repository_sources" in query:
+                return _Result()
+            if "SELECT id::text FROM projects" in query:
+                return _Result({"id": project_id})
+            return _Result()
+
+    linked, name = sync.project_for(
+        Connection(), "owner", {"id": 1329341236, "full_name": "Leegiyeon/oneul-ui-gyeol", "default_branch": "main"},
+        "oneul-ui-gyeol", "fallback", "developer", existing_project_id=project_id,
+    )
+    assert (linked, name) == (project_id, "Leegiyeon/oneul-ui-gyeol")
+    assert not any("INSERT INTO projects" in query for query, _ in queries)
+    assert any("INSERT INTO repository_sources" in query for query, _ in queries)
+
+
+def test_preview_fetches_only_selected_window_without_database(monkeypatch, capsys) -> None:
+    calls = []
+
+    class Client:
+        def get(self, path):
+            calls.append(("get", path))
+            return {"id": 1329341236, "full_name": "Leegiyeon/oneul-ui-gyeol", "default_branch": "main"}
+
+        def pages(self, path, **params):
+            calls.append((path, params))
+            return [{"id": 1}]
+
+    monkeypatch.setattr(sync, "GitHubClient", Client)
+    monkeypatch.setattr(sync, "get_settings", lambda: object())
+    monkeypatch.setattr(sync, "connect", lambda _: pytest.fail("preview must not open database"))
+    monkeypatch.setattr(sys, "argv", [
+        "sync_github_data.py", "--only-repository", "Leegiyeon/oneul-ui-gyeol",
+        "--since", "2026-09-01", "--dry-run",
+    ])
+    sync.main()
+    assert calls == [
+        ("get", "/repos/Leegiyeon/oneul-ui-gyeol"),
+        ("/repos/Leegiyeon/oneul-ui-gyeol/commits", {"sha": "main", "since": "2026-09-01T00:00:00Z"}),
+        ("/repos/Leegiyeon/oneul-ui-gyeol/issues", {"state": "all", "since": "2026-09-01T00:00:00Z"}),
+    ]
+    assert "database_changes=0" in capsys.readouterr().out
+
+
+def test_scoped_write_requires_existing_project(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "argv", [
+        "sync_github_data.py", "--only-repository", "Leegiyeon/oneul-ui-gyeol", "--since", "2026-09-01",
+    ])
+    with pytest.raises(SystemExit) as error:
+        sync.main()
+    assert error.value.code == 2
