@@ -379,7 +379,7 @@ def main() -> None:
         except ValueError:
             parser.error("--project-id must be a UUID")
     settings, client = get_settings(), GitHubClient()
-    configs = repository_configs([args.only_repository])[-1:] if args.only_repository else repository_configs(args.repository)
+    configs = repository_configs(args.repository)
     if args.only_repository:
         configs = tuple(config for config in repository_configs([args.only_repository]) if config[0].lower() == args.only_repository.lower())
         if len(configs) != 1:
@@ -388,8 +388,8 @@ def main() -> None:
         config = configs[0]
         metadata = client.get(f"/repos/{config[0]}")
         full_name = metadata["full_name"]
-        commits = client.pages(f"/repos/{full_name}/commits", sha=metadata.get("default_branch") or "main", since=since)
-        issues = client.pages(f"/repos/{full_name}/issues", state="all", since=since)
+        commits = client.pages(f"/repos/{full_name}/commits", sha=metadata.get("default_branch") or "main", since=f"{since}T00:00:00Z")
+        issues = client.pages(f"/repos/{full_name}/issues", state="all", since=f"{since}T00:00:00Z")
         print(f"GitHub sync preview: repository={full_name}, repository_id={metadata['id']}, since={since}, commits={len(commits)}, issue_pr={len(issues)}; database_changes=0")
         return
     totals = [0, 0, 0]
