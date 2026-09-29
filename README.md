@@ -9,7 +9,7 @@
 AI 검토, 경력 자료 생성까지 연결합니다. 저장소 이름은 `Leegiyeon/worktrace`,
 운영 대상 도메인은 `worktrace.cloud`입니다.
 
-이 문서는 2026-09-18 기준 저장소의 구현·설정을 설명합니다. 배포 성공 여부,
+이 문서는 2026-09-29 기준 저장소의 구현·설정을 설명합니다. 배포 성공 여부,
 운영 DB 데이터, DNS·인증서·웹훅의 현재 상태는 별도 운영 점검이 필요합니다.
 UI 구조는 [DESIGN.md](DESIGN.md), 공통 시각 규칙은
 [디자인 시스템](docs/DESIGN_SYSTEM.md)을 참조합니다.
@@ -23,6 +23,7 @@ UI 구조는 [DESIGN.md](DESIGN.md), 공통 시각 규칙은
 - 프로젝트 생성/조회/수정/삭제 API
 - 프로젝트 목록/생성/상세 화면
 - 프로젝트별 업무 생성/조회/수정/삭제 API와 화면
+- 프로젝트별 요청 접수함: 원문·기대 결과·제약을 별도로 보존하고 같은 요청 ID 재시도를 중복 없이 처리
 - 업무 상태: `planned`, `in_progress`, `done`, `on_hold`
 - 업무 우선순위: `low`, `medium`, `high`
 - 업무 마감일 저장/수정
@@ -47,6 +48,28 @@ UI 구조는 [DESIGN.md](DESIGN.md), 공통 시각 규칙은
 
 파일 업로드·AI 문서 분석·RAG·다중 사용자 인증과 원격 백업 자동 복제는
 아직 구현하지 않았습니다. 배포 코드가 있는 것과 운영 복구 절차가 검증된 것은 구분합니다.
+
+## 요청 접수와 첫 사이드 프로젝트 연결
+
+프로젝트 상세의 **요청** 탭은 모바일에서 요청 제목·상황·기대 결과·제약을 접수합니다.
+`POST /projects/{project_id}/requests`는 기존 소유자 인증 헤더를 요구하며
+`request_id`(UUID), `title`, `body`, `desired_outcome`, `constraints`,
+`source`(`manual` 또는 `chat`)를 받습니다. 동일 소유자·요청 ID의 같은 본문은
+기존 기록을 반환하고, 다른 내용이나 프로젝트로 재사용하면 409입니다.
+`GET /projects/{project_id}/requests?limit=20&offset=0`은 최근 요청을 조회합니다.
+접수는 GitHub Issue 생성, WBS 승인, 완료 확인, 배포를 실행하지 않습니다.
+
+첫 연결 대상으로 `Leegiyeon/oneul-ui-gyeol`(GitHub repository ID `1329341236`,
+기준 브랜치 `main`)을 제안합니다. 운영에서 해당 프로젝트가 이미 연결됐는지 확인한 뒤
+기존 프로젝트의 **GitHub 저장소 연결**에서 ID·이름·브랜치를 등록할 수 있습니다.
+최초 GitHub 근거를 가져올 때는 기존 `sync_github_data.py --repository
+Leegiyeon/oneul-ui-gyeol` 옵션을 사용할 수 있으나, 이 스크립트는 기본 저장소들도
+함께 조회하고 전체 이력을 가져옵니다. 운영 DB 백업·마이그레이션 상태와 private
+저장소 읽기 권한을 확인한 뒤 실행해야 합니다. 연결만으로 과거 이력이 수집되지는 않습니다.
+
+다음 확장: 요청을 프로젝트 저장소의 Issue와 연결하고, Issue·PR 변경 이벤트 및
+일일 재대조를 통해 Worktrace 근거를 갱신한 다음, 확인된 요약만 Notion에 발행합니다.
+현재는 이 연결과 Notion 자동 반영이 구현됐다고 표시하지 않습니다.
 
 ## 실제 사용 흐름과 진척 기준
 
